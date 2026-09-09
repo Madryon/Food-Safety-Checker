@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5" />
+      <stop offset="50%" stop-color="#2563eb" />
+      <stop offset="100%" stop-color="#00d4ff" />
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Background Circle Badge -->
+  <circle cx="50" cy="50" r="48" fill="url(#grad)" />
+  <circle cx="50" cy="50" r="44" fill="#0f1118" />
+
+  <!-- Outer Ring Accent -->
+  <circle cx="50" cy="50" r="44" fill="none" stroke="url(#grad)" stroke-width="2" opacity="0.6"/>
+
+  <!-- Center Plate / Food Symbol -->
+  <circle cx="50" cy="50" r="30" fill="#1e2436" stroke="#00d4ff" stroke-width="2.5" />
+  <circle cx="50" cy="50" r="22" fill="none" stroke="#2563eb" stroke-width="1.5" stroke-dasharray="3 3"/>
+
+  <!-- Stylized Fork and Leaf / Nutrition Spark -->
+  <!-- Leaf / Health check icon -->
+  <path d="M 50 28 C 38 34 38 48 50 56 C 62 48 62 34 50 28 Z" fill="#22c55e" filter="url(#shadow)"/>
+  <path d="M 50 34 L 50 52" stroke="#15803d" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Checkmark verification badge -->
+  <circle cx="68" cy="68" r="14" fill="#22c55e" stroke="#0f1118" stroke-width="3" />
+  <path d="M 62 68 L 66 72 L 74 63" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
