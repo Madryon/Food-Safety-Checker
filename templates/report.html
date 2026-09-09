@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FoodCheck Report — {{ report.product_name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <a href="/" class="logo-link"><h1>🍽️ FoodCheck</h1></a>
+            <p class="tagline">Product Health Report</p>
+        </header>
+
+        <main class="report">
+            <!-- Product Info -->
+            <section class="report-card product-info">
+                <div class="product-header">
+                    {% if report.off_match and report.off_match.image_url %}
+                    <img src="{{ report.off_match.image_url }}" alt="Product" class="product-thumb">
+                    {% endif %}
+                    <div>
+                        <h2>{{ report.product_name }}</h2>
+                        <p class="brand-name">by {{ report.brand }}</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Health Score -->
+            <section class="report-card health-score">
+                <h3>Health & Safety Score</h3>
+                {% if report.health.score is not none %}
+                <div class="score-display">
+                    <div class="score-badge 
+                        {% if report.health.verdict == 'safe' %}score-safe
+                        {% elif report.health.verdict == 'moderate' %}score-moderate
+                        {% else %}score-unsafe{% endif %}">
+                        {{ report.health.score }}
+                    </div>
+                    <span class="verdict-label 
+                        {% if report.health.verdict == 'safe' %}text-safe
+                        {% elif report.health.verdict == 'moderate' %}text-moderate
+                        {% else %}text-unsafe{% endif %}">
+                        {{ report.health.verdict | upper }}
+                    </span>
+                </div>
+                {% else %}
+                <p class="muted">Score could not be determined</p>
+                {% endif %}
+                <p class="reasoning">{{ report.health.reasoning }}</p>
+            </section>
+
+            <!-- Flags -->
+            {% if report.health.flags %}
+            <section class="report-card flags-section">
+                <h3>⚠️ Health Flags</h3>
+                <div class="flags-list">
+                    {% for flag in report.health.flags %}
+                    <div class="flag-item severity-{{ flag.severity | default('medium') }}">
+                        <span class="flag-type">{{ flag.type }}</span>
+                        <span class="flag-severity">{{ flag.severity | default('medium') | upper }}</span>
+                        <p>{{ flag.explanation }}</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endif %}
+
+            <!-- Healthier Alternatives -->
+            {% if report.health.alternatives %}
+            <section class="report-card alternatives-section">
+                <h3>💡 Healthier & Cleaner Alternatives</h3>
+                <p class="section-subtitle">Better choices in the Indian market with cleaner ingredients & superior nutrition:</p>
+                <div class="alternatives-grid">
+                    {% for alt in report.health.alternatives %}
+                    <div class="alt-card">
+                        <div class="alt-card-header">
+                            <h4>{{ alt.name }}</h4>
+                            <span class="alt-category-badge">{{ alt.category or 'Healthier Swap' }}</span>
+                        </div>
+                        <p class="alt-why"><strong>Why it's better:</strong> {{ alt.why_better }}</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endif %}
+
+            <!-- Ingredients -->
+            <section class="report-card">
+                <h3>📋 Ingredients</h3>
+                <p class="ingredients-text">{{ report.ingredients_text or 'Not available' }}</p>
+            </section>
+
+            <!-- Nutrition Facts -->
+            {% if report.nutrition_facts %}
+            <section class="report-card">
+                <h3>📊 Nutrition Facts <span class="per-serving">(per 100g)</span></h3>
+                <table class="nutrition-table">
+                    <thead>
+                        <tr><th>Nutrient</th><th>Value</th></tr>
+                    </thead>
+                    <tbody>
+                        {% set labels = {
+                            'energy_kcal': 'Energy (kcal)',
+                            'protein_g': 'Protein (g)',
+                            'total_fat_g': 'Total Fat (g)',
+                            'saturated_fat_g': 'Saturated Fat (g)',
+                            'trans_fat_g': 'Trans Fat (g)',
+                            'carbohydrates_g': 'Carbohydrates (g)',
+                            'total_sugar_g': 'Total Sugar (g)',
+                            'sodium_mg': 'Sodium (mg)',
+                            'fiber_g': 'Dietary Fiber (g)'
+                        } %}
+                        {% for key, label in labels.items() %}
+                            {% if report.nutrition_facts.get(key) is not none %}
+                            <tr>
+                                <td>{{ label }}</td>
+                                <td>{{ report.nutrition_facts[key] | round(1) }}</td>
+                            </tr>
+                            {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+
+                {% if report.off_match %}
+                <div class="db-match-note">
+                    ✅ Cross-checked with Open Food Facts database
+                    {% if report.off_match.nutriscore_grade %}
+                    • Nutri-Score: <strong>{{ report.off_match.nutriscore_grade | upper }}</strong>
+                    {% endif %}
+                    {% if report.off_match.nova_group %}
+                    • NOVA Group: <strong>{{ report.off_match.nova_group }}</strong>
+                    {% endif %}
+                </div>
+                {% else %}
+                <div class="db-match-note warn">
+                    ℹ️ No database match found — results are based on AI analysis only
+                </div>
+                {% endif %}
+            </section>
+            {% endif %}
+
+            <!-- Company News -->
+            {% if report.news %}
+            <section class="report-card news-section">
+                <h3>📰 Recent Company News</h3>
+                <div class="news-grid">
+                    {% for article in report.news %}
+                    <a href="{{ article.url }}" target="_blank" rel="noopener" class="news-card">
+                        {% if article.image %}
+                        <img src="{{ article.image }}" alt="" class="news-thumb" loading="lazy">
+                        {% endif %}
+                        <div class="news-content">
+                            <h4>{{ article.title }}</h4>
+                            <div class="news-meta">
+                                <span>{{ article.source }}</span>
+                                <span>{{ article.published_at[:10] if article.published_at else '' }}</span>
+                            </div>
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+            </section>
+            {% else %}
+            <section class="report-card news-section">
+                <h3>📰 Company News</h3>
+                <p class="muted">No recent news found for this brand.</p>
+            </section>
+            {% endif %}
+
+            <div class="report-actions">
+                <a href="/" class="btn-primary">← Analyze Another Product</a>
+            </div>
+        </main>
+
+        <footer>
+            <p>Powered by Google Gemini AI & Open Food Facts • Made for the Indian consumer 🇮🇳</p>
+        </footer>
+    </div>
+</body>
+</html>
