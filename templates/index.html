@@ -4,12 +4,201 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FoodCheck — AI Food Safety Analyzer</title>
+    <meta name="theme-color" content="#0b1117">
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
-    <link rel="alternate icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍽️</text></svg>">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="alternate icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🍽️%3C/text%3E%3C/svg%3E">
+    <script>
+        /* apply saved theme before first paint (no flash) */
+        try {
+            var t = localStorage.getItem('foodcheck-theme');
+            if (t === 'light' || t === 'dark' || t === 'techno') document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {}
+    </script>
+    <style>
+/* ===== Theme tokens (dark = default) ===== */
+:root {
+    --bg: #0b1117; --surface: #121c27; --surface-2: #182535; --border: rgba(255,255,255,.09);
+    --text: #e8eef5; --muted: #8ea0b3; --accent: #34d399; --accent-2: #22d3ee; --on-accent: #04261b;
+    --good: #34d399; --warn: #fbbf24; --bad: #f87171;
+    --shadow: 0 12px 32px rgba(0,0,0,.35); --radius: 18px;
+    --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+[data-theme="light"] {
+    --bg: #f6f8f5; --surface: #ffffff; --surface-2: #eef3ee; --border: rgba(20,40,30,.12);
+    --text: #14221b; --muted: #5c6f64; --accent: #15803d; --accent-2: #0891b2; --on-accent: #ffffff;
+    --good: #15803d; --warn: #b45309; --bad: #dc2626; --shadow: 0 10px 28px rgba(20,40,30,.10);
+}
+[data-theme="techno"], [data-theme="tech"] {
+    --bg: #05060d; --surface: rgba(12,16,32,.78); --surface-2: rgba(20,26,52,.85); --border: rgba(0,240,255,.28);
+    --text: #e6f7ff; --muted: #7f95b8; --accent: #00f0ff; --accent-2: #ff2bd6; --on-accent: #001418;
+    --good: #39ff88; --warn: #ffd23f; --bad: #ff4d6d; --shadow: 0 0 24px rgba(0,240,255,.16);
+}
+
+/* ===== Base ===== */
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; background: var(--bg); color: var(--text);
+    font-family: var(--font); line-height: 1.55; transition: background .3s, color .3s; }
+main { flex: 1; width: min(1120px, 100% - 32px); margin: 0 auto; padding: 28px 0 48px; }
+h1, h2, h3, h4 { line-height: 1.2; margin: 0 0 .5em; }
+p { margin: 0 0 .75em; }
+a { color: var(--accent); }
+img { max-width: 100%; }
+.hidden { display: none !important; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ===== Tech background ===== */
+.techno-bg { display: none; position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+[data-theme="techno"] .techno-bg, [data-theme="tech"] .techno-bg { display: block; }
+.grid-lines { position: absolute; inset: 0; background-image: linear-gradient(rgba(0,240,255,.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,240,255,.08) 1px, transparent 1px); background-size: 44px 44px;
+    -webkit-mask-image: radial-gradient(circle at 50% 30%, #000, transparent 75%); mask-image: radial-gradient(circle at 50% 30%, #000, transparent 75%); }
+.glow-orb { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .45; animation: float 14s ease-in-out infinite alternate; }
+.orb-1 { width: 380px; height: 380px; background: #00f0ff; top: -80px; left: -60px; }
+.orb-2 { width: 340px; height: 340px; background: #ff2bd6; top: 35%; right: -80px; animation-delay: -5s; }
+.orb-3 { width: 300px; height: 300px; background: #6d5cff; bottom: -80px; left: 30%; animation-delay: -9s; }
+@keyframes float { to { transform: translate(40px, 30px) scale(1.12); } }
+
+/* ===== Top bar + theme switcher ===== */
+.top-bar { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 10px max(16px, calc((100% - 1120px) / 2)); background: color-mix(in srgb, var(--bg) 82%, transparent);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-bottom: 1px solid var(--border); }
+.logo { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.15rem; color: var(--text); text-decoration: none; }
+.logo-mark { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 11px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
+.theme-toggle-wrap { display: flex; align-items: center; gap: 10px; }
+.theme-label { font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.slider-track { position: relative; padding: 4px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); }
+.slider-track::before { content: ""; position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / 3); border-radius: 999px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)); transition: transform .25s ease; }
+[data-theme="light"] .slider-track::before { transform: translateX(0); }
+[data-theme="dark"] .slider-track::before { transform: translateX(100%); }
+[data-theme="techno"] .slider-track::before, [data-theme="tech"] .slider-track::before { transform: translateX(200%); }
+.slider-track input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; pointer-events: none; margin: 0; }
+.slider-track:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.slider-labels { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); }
+.slider-labels span { padding: 6px 12px; font-size: .8rem; text-align: center; cursor: pointer; color: var(--muted); white-space: nowrap; user-select: none; transition: color .2s; }
+.slider-labels b { font-weight: 600; }
+[data-theme="light"] .slider-labels [data-val="0"], [data-theme="dark"] .slider-labels [data-val="1"],
+[data-theme="techno"] .slider-labels [data-val="2"], [data-theme="tech"] .slider-labels [data-val="2"] { color: var(--on-accent); }
+
+/* ===== Hero ===== */
+.hero-text { text-align: center; max-width: 720px; margin: 12px auto 32px; }
+.hero-badge { display: inline-block; padding: 5px 14px; margin-bottom: 16px; border-radius: 999px; font-size: .8rem; color: var(--muted); background: var(--surface); border: 1px solid var(--border); }
+.hero-text h1 { font-size: clamp(2.1rem, 6vw, 3.6rem); font-weight: 800; letter-spacing: -.02em; }
+.accent-text { background: linear-gradient(90deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+[data-theme="techno"] .accent-text { filter: drop-shadow(0 0 14px rgba(0,240,255,.45)); }
+.hero-sub { color: var(--muted); font-size: 1.05rem; }
+
+.hero-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.upload-card { display: flex; cursor: pointer; border-radius: var(--radius); background: var(--surface); border: 2px dashed var(--border);
+    box-shadow: var(--shadow); transition: transform .2s, border-color .2s, background .2s; }
+.upload-card:hover, .upload-card.dragover, .upload-card.drag-over, .upload-card.dragging, .upload-card.active { transform: translateY(-3px); border-color: var(--accent); background: var(--surface-2); }
+.camera-upload-card { border-style: solid; }
+.upload-card-inner { width: 100%; padding: 40px 24px; text-align: center; }
+.upload-icon { display: grid; place-items: center; width: 72px; height: 72px; margin: 0 auto 16px; font-size: 2rem; border-radius: 20px;
+    background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.upload-card h2 { font-size: 1.35rem; }
+.upload-card p { color: var(--muted); }
+.file-hint { font-size: .82rem; opacity: .85; }
+
+/* ===== Buttons ===== */
+button { font: inherit; cursor: pointer; }
+.btn-upload, .btn-primary { padding: 12px 24px; border: 0; border-radius: 12px; font-weight: 700; color: var(--on-accent);
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)); transition: transform .15s, box-shadow .2s, filter .2s; }
+.btn-upload:hover, .btn-primary:hover { transform: translateY(-1px); filter: brightness(1.08); box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 35%, transparent); }
+.btn-secondary { padding: 11px 20px; border-radius: 12px; font-weight: 600; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); transition: border-color .2s; }
+.btn-secondary:hover { border-color: var(--accent); }
+.btn-icon { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--border); color: var(--text); background: var(--surface-2); }
+
+/* ===== Preview ===== */
+#preview-section { margin-top: 24px; }
+.preview-wrap { display: grid; justify-items: center; gap: 16px; padding: 20px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
+#image-preview { max-height: 360px; border-radius: 14px; object-fit: contain; }
+.preview-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+
+/* ===== How it works / facts / stats ===== */
+.how-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 36px; }
+.how-card { padding: 22px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); }
+.how-card h3 { font-size: 1.05rem; }
+.how-card p { margin: 0; color: var(--muted); font-size: .92rem; }
+.how-num { display: grid; place-items: center; width: 32px; height: 32px; margin-bottom: 12px; border-radius: 10px; font-weight: 800; color: var(--on-accent); background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
+.facts-strip { margin-top: 28px; overflow: hidden; border-block: 1px solid var(--border); padding: 12px 0;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); }
+.facts-scroll { display: flex; gap: 12px; width: max-content; animation: scroll 60s linear infinite; }
+.facts-strip:hover .facts-scroll { animation-play-state: paused; }
+.fact-chip { white-space: nowrap; padding: 8px 16px; border-radius: 999px; font-size: .88rem; background: var(--surface); border: 1px solid var(--border); }
+@keyframes scroll { to { transform: translateX(calc(-50% - 6px)); } }
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 28px; }
+.stat-card { padding: 20px; text-align: center; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); }
+.stat-icon { font-size: 1.5rem; }
+.stat-number { margin-top: 6px; font-size: 1.8rem; font-weight: 800; color: var(--accent); }
+.stat-label { font-size: .82rem; color: var(--muted); }
+
+/* ===== Camera modal ===== */
+.modal { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px; background: rgba(0,0,0,.72); backdrop-filter: blur(6px); }
+.modal-content { width: min(560px, 100%); padding: 16px; border-radius: var(--radius); background: var(--surface-solid, var(--bg)); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.modal-header h3 { margin: 0; font-size: 1.05rem; }
+.camera-viewport { position: relative; overflow: hidden; border-radius: 14px; background: #000; aspect-ratio: 4 / 3; }
+#camera-video { width: 100%; height: 100%; object-fit: cover; }
+.viewfinder-guide { position: absolute; inset: 14%; pointer-events: none; }
+.guide-corner { position: absolute; width: 26px; height: 26px; border: 3px solid var(--accent); }
+.top-left { top: 0; left: 0; border-right: 0; border-bottom: 0; border-radius: 8px 0 0 0; }
+.top-right { top: 0; right: 0; border-left: 0; border-bottom: 0; border-radius: 0 8px 0 0; }
+.bottom-left { bottom: 0; left: 0; border-right: 0; border-top: 0; border-radius: 0 0 0 8px; }
+.bottom-right { bottom: 0; right: 0; border-left: 0; border-top: 0; border-radius: 0 0 8px 0; }
+.guide-text { position: absolute; left: 0; right: 0; bottom: -34px; margin: 0; text-align: center; font-size: .8rem; color: #fff; text-shadow: 0 1px 4px #000; }
+.camera-controls { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 16px; }
+.btn-snap { width: 68px; height: 68px; padding: 0; border-radius: 50%; border: 3px solid var(--accent); background: transparent; }
+.shutter-circle { display: block; width: 50px; height: 50px; margin: auto; border-radius: 50%; background: var(--accent); transition: transform .1s; }
+.btn-snap:active .shutter-circle { transform: scale(.88); }
+
+/* ===== Loading / error ===== */
+.full-center { display: grid; place-items: center; min-height: 55vh; }
+.loading-box, .error-card { width: min(440px, 100%); padding: 32px; text-align: center; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.spinner { width: 52px; height: 52px; margin: 0 auto 18px; border-radius: 50%; border: 4px solid var(--border); border-top-color: var(--accent); animation: spin .9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-steps { display: grid; gap: 8px; margin-top: 18px; text-align: left; }
+.step { padding: 10px 14px; border-radius: 10px; font-size: .9rem; color: var(--muted); background: var(--surface-2); border: 1px solid transparent; opacity: .6; transition: all .25s; }
+.step.active, .step.running, .step.loading { opacity: 1; color: var(--text); border-color: var(--accent); }
+.step.done, .step.complete, .step.completed { opacity: 1; color: var(--good); }
+.error-icon { display: block; font-size: 2.4rem; margin-bottom: 8px; }
+#error-message { color: var(--bad); }
+
+/* ===== Report (also styles whatever script.js renders inside the cards) ===== */
+.report-layout { display: grid; gap: 20px; }
+.report-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+.report-col { display: grid; gap: 20px; }
+#report-section [id$="-card"]:not(:empty) { padding: 22px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); animation: rise .4s ease both; }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+#report-section ul { padding-left: 1.2em; margin: 0 0 .75em; }
+#report-section li { margin-bottom: .3em; }
+#report-section table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+#report-section th, #report-section td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+#report-section th { color: var(--muted); font-weight: 600; }
+#report-section hr { border: 0; border-top: 1px solid var(--border); }
+#report-section button { padding: 10px 18px; border-radius: 10px; font-weight: 600; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); }
+#report-section button:hover { border-color: var(--accent); }
+#report-actions-card:not(:empty) { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+
+footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(--muted); border-top: 1px solid var(--border); }
+[data-theme="techno"] .logo span:last-child, [data-theme="techno"] h1, [data-theme="techno"] .stat-number { font-family: var(--mono); }
+
+/* ===== Responsive ===== */
+@media (max-width: 860px) {
+    .report-grid, .hero-grid, .how-grid { grid-template-columns: 1fr; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 520px) {
+    .theme-label { display: none; }
+    .slider-labels span { padding: 6px 9px; }
+    .slider-labels b { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+    </style>
 </head>
 <body>
-    <!-- Techno background graphics (only visible in techno theme) -->
     <div class="techno-bg" aria-hidden="true">
         <div class="grid-lines"></div>
         <div class="glow-orb orb-1"></div>
@@ -17,55 +206,52 @@
         <div class="glow-orb orb-3"></div>
     </div>
 
-    <!-- Top Bar -->
     <nav class="top-bar">
-        <a href="/" class="logo">🍽️ <span>FoodCheck</span></a>
+        <a href="/" class="logo"><span class="logo-mark">🍽️</span><span>FoodCheck</span></a>
         <div class="theme-toggle-wrap">
             <label class="theme-label" for="theme-slider">Theme</label>
             <div class="slider-track">
-                <input type="range" id="theme-slider" min="0" max="2" step="1" value="1">
+                <input type="range" id="theme-slider" min="0" max="2" step="1" value="1" aria-label="Theme: light, dark or tech">
                 <div class="slider-labels">
-                    <span data-val="0">☀️ Light</span>
-                    <span data-val="1">🌙 Dark</span>
-                    <span data-val="2">💎 Tech</span>
+                    <span data-val="0">☀️ <b>Light</b></span>
+                    <span data-val="1">🌙 <b>Dark</b></span>
+                    <span data-val="2">💎 <b>Tech</b></span>
                 </div>
             </div>
         </div>
     </nav>
 
     <main>
-        <!-- ── HERO / UPLOAD SECTION ──────────────────────────────────── -->
+        <!-- UPLOAD / HERO -->
         <section id="upload-section" class="hero-section">
             <div class="hero-text">
+                <span class="hero-badge">🇮🇳 Built for Indian food brands</span>
                 <h1>Scan. Analyze. <span class="accent-text">Eat Safe.</span></h1>
-                <p class="hero-sub">AI-powered food safety & corporate transparency checker for India 🇮🇳</p>
+                <p class="hero-sub">Snap a product label and get an AI health report, ingredient flags, healthier swaps and the latest company news.</p>
             </div>
 
             <div class="hero-grid">
-                <!-- Big Upload Card -->
                 <div class="upload-card" id="drop-zone">
                     <div class="upload-card-inner">
                         <div class="upload-icon">📁</div>
                         <h2>Upload Photo</h2>
-                        <p>Drag & drop or click to browse<br><span class="file-hint">JPG, PNG, WebP • Max 5MB</span></p>
+                        <p>Drag &amp; drop or click to browse<br><span class="file-hint">JPG, PNG, WebP • Max 5MB</span></p>
                         <button type="button" id="browse-btn" class="btn-upload">Choose File</button>
                     </div>
                     <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp" hidden>
                 </div>
 
-                <!-- Big Camera Card -->
                 <div class="upload-card camera-upload-card" id="camera-card-trigger">
                     <div class="upload-card-inner">
                         <div class="upload-icon">📸</div>
                         <h2>Open Camera</h2>
-                        <p>Snap a photo of the product label or packaging</p>
+                        <p>Snap the product label or packaging<br><span class="file-hint">Works best in good light</span></p>
                         <button type="button" id="open-camera-btn" class="btn-upload btn-camera-action">Start Camera</button>
                     </div>
                     <input type="file" id="mobile-camera-input" accept="image/*" capture="environment" hidden>
                 </div>
             </div>
 
-            <!-- Preview -->
             <div id="preview-section" class="hidden">
                 <div class="preview-wrap">
                     <img id="image-preview" alt="Product preview">
@@ -76,10 +262,15 @@
                 </div>
             </div>
 
-            <!-- Food Facts Marquee -->
+            <div class="how-grid">
+                <div class="how-card"><span class="how-num">1</span><h3>Add a photo</h3><p>Upload or snap the front or back of the pack.</p></div>
+                <div class="how-card"><span class="how-num">2</span><h3>AI reads the label</h3><p>Ingredients and nutrition are extracted and scored.</p></div>
+                <div class="how-card"><span class="how-num">3</span><h3>Get your report</h3><p>Health verdict, red flags, swaps and company news.</p></div>
+            </div>
+
             <div class="facts-strip">
                 <div class="facts-scroll">
-                    <div class="fact-chip">🔥 An avg Indian consumes 2,000 kcal/day</div>
+                    <div class="fact-chip">🔥 An avg Indian consumes ~2,000 kcal/day</div>
                     <div class="fact-chip">🧂 WHO recommends &lt;5g salt per day</div>
                     <div class="fact-chip">🍬 Added sugars should be &lt;25g/day</div>
                     <div class="fact-chip">💪 Protein RDA: 0.8g per kg body weight</div>
@@ -87,39 +278,26 @@
                     <div class="fact-chip">🥦 Fiber goal: 25-30g per day</div>
                     <div class="fact-chip">⚠️ India has 77M+ diabetics — check sugar!</div>
                     <div class="fact-chip">🥛 Calcium RDA: 1000mg/day for adults</div>
-                    <div class="fact-chip">🔥 An avg Indian consumes 2,000 kcal/day</div>
-                    <div class="fact-chip">🧂 WHO recommends &lt;5g salt per day</div>
-                    <div class="fact-chip">🍬 Added sugars should be &lt;25g/day</div>
-                    <div class="fact-chip">💪 Protein RDA: 0.8g per kg body weight</div>
+                    <div class="fact-chip" aria-hidden="true">🔥 An avg Indian consumes ~2,000 kcal/day</div>
+                    <div class="fact-chip" aria-hidden="true">🧂 WHO recommends &lt;5g salt per day</div>
+                    <div class="fact-chip" aria-hidden="true">🍬 Added sugars should be &lt;25g/day</div>
+                    <div class="fact-chip" aria-hidden="true">💪 Protein RDA: 0.8g per kg body weight</div>
+                    <div class="fact-chip" aria-hidden="true">🫒 Trans fat should be 0g ideally</div>
+                    <div class="fact-chip" aria-hidden="true">🥦 Fiber goal: 25-30g per day</div>
+                    <div class="fact-chip" aria-hidden="true">⚠️ India has 77M+ diabetics — check sugar!</div>
+                    <div class="fact-chip" aria-hidden="true">🥛 Calcium RDA: 1000mg/day for adults</div>
                 </div>
             </div>
 
-            <!-- Decorative Stat Cards -->
             <div class="stats-grid">
-                <div class="stat-card">
-                    <span class="stat-icon">🔍</span>
-                    <div class="stat-number">500+</div>
-                    <div class="stat-label">Products Analyzed</div>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-icon">⚠️</span>
-                    <div class="stat-number">12</div>
-                    <div class="stat-label">Harmful Additives Tracked</div>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-icon">🌿</span>
-                    <div class="stat-number">50+</div>
-                    <div class="stat-label">Healthier Alternatives</div>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-icon">📰</span>
-                    <div class="stat-number">Live</div>
-                    <div class="stat-label">Company News Feed</div>
-                </div>
+                <div class="stat-card"><span class="stat-icon">🔍</span><div class="stat-number">500+</div><div class="stat-label">Products Analyzed</div></div>
+                <div class="stat-card"><span class="stat-icon">⚠️</span><div class="stat-number">12</div><div class="stat-label">Harmful Additives Tracked</div></div>
+                <div class="stat-card"><span class="stat-icon">🌿</span><div class="stat-number">50+</div><div class="stat-label">Healthier Alternatives</div></div>
+                <div class="stat-card"><span class="stat-icon">📰</span><div class="stat-number">Live</div><div class="stat-label">Company News Feed</div></div>
             </div>
         </section>
 
-        <!-- ── CAMERA MODAL ───────────────────────────────────────────── -->
+        <!-- CAMERA MODAL -->
         <div id="camera-modal" class="modal hidden">
             <div class="modal-content camera-card">
                 <div class="modal-header">
@@ -145,29 +323,29 @@
             </div>
         </div>
 
-        <!-- ── LOADING ────────────────────────────────────────────────── -->
+        <!-- LOADING -->
         <section id="loading-section" class="hidden full-center">
             <div class="loading-box">
                 <div class="spinner"></div>
                 <p id="loading-text">Analyzing your product...</p>
                 <div class="loading-steps">
                     <div class="step" id="step-vision">📷 Reading product label...</div>
-                    <div class="step" id="step-health">🧪 Analyzing health & safety...</div>
+                    <div class="step" id="step-health">🧪 Analyzing health &amp; safety...</div>
                     <div class="step" id="step-news">📰 Fetching company news...</div>
                 </div>
             </div>
         </section>
 
-        <!-- ── ERROR ──────────────────────────────────────────────────── -->
+        <!-- ERROR -->
         <section id="error-section" class="hidden full-center">
             <div class="error-card">
                 <span class="error-icon">⚠️</span>
                 <p id="error-message"></p>
-                <button id="retry-btn" class="btn-primary" style="width:auto;display:inline-block;">Try Again</button>
+                <button id="retry-btn" class="btn-primary">Try Again</button>
             </div>
         </section>
 
-        <!-- ── PROGRESSIVE REPORT ─────────────────────────────────────── -->
+        <!-- REPORT -->
         <section id="report-section" class="hidden report-layout">
             <div id="product-card"></div>
             <div class="report-grid">
@@ -187,9 +365,41 @@
     </main>
 
     <footer>
-        <p>Powered by Google Gemini AI & Open Food Facts • Made for the Indian consumer 🇮🇳</p>
+        <p>Powered by Google Gemini AI &amp; Open Food Facts • Made for the Indian consumer 🇮🇳</p>
     </footer>
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script>
+/* Theme switcher: 0 = light, 1 = dark, 2 = techno. Saved in localStorage. */
+(function () {
+    var THEMES = ['light', 'dark', 'techno'];
+    var COLORS = { light: '#f6f8f5', dark: '#0b1117', techno: '#05060d' };
+    var KEY = 'foodcheck-theme';
+    var root = document.documentElement;
+    var slider = document.getElementById('theme-slider');
+    var meta = document.querySelector('meta[name="theme-color"]');
+
+    function apply(name, save) {
+        if (THEMES.indexOf(name) < 0) name = 'dark';
+        root.setAttribute('data-theme', name);
+        if (slider) slider.value = THEMES.indexOf(name);
+        if (meta) meta.setAttribute('content', COLORS[name]);
+        if (save) { try { localStorage.setItem(KEY, name); } catch (e) {} }
+    }
+
+    var saved = null;
+    try { saved = localStorage.getItem(KEY); } catch (e) {}
+    apply(saved || root.getAttribute('data-theme'), false);
+
+    if (slider) {
+        slider.addEventListener('input', function () { apply(THEMES[+slider.value], true); });
+    }
+    document.querySelectorAll('.slider-labels span').forEach(function (el) {
+        el.addEventListener('click', function () {
+            apply(THEMES[+el.getAttribute('data-val')], true);
+        });
+    });
+})();
+    </script>
 </body>
 </html>
