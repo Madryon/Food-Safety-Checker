@@ -5,8 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FoodCheck — AI Food Safety Analyzer</title>
     <meta name="theme-color" content="#0b1117">
-    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
-    <link rel="alternate icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🍽️%3C/text%3E%3C/svg%3E">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🍽️%3C/text%3E%3C/svg%3E">
     <script>
         /* apply saved theme before first paint (no flash) */
         try {
@@ -170,17 +169,7 @@ button { font: inherit; cursor: pointer; }
 .report-layout { display: grid; gap: 20px; }
 .report-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
 .report-col { display: grid; gap: 20px; }
-#report-section [id$="-card"]:not(:empty) { padding: 22px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); animation: rise .4s ease both; }
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
-#report-section ul { padding-left: 1.2em; margin: 0 0 .75em; }
-#report-section li { margin-bottom: .3em; }
-#report-section table { width: 100%; border-collapse: collapse; font-size: .92rem; }
-#report-section th, #report-section td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
-#report-section th { color: var(--muted); font-weight: 600; }
-#report-section hr { border: 0; border-top: 1px solid var(--border); }
-#report-section button { padding: 10px 18px; border-radius: 10px; font-weight: 600; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); }
-#report-section button:hover { border-color: var(--accent); }
-#report-actions-card:not(:empty) { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
 
 footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(--muted); border-top: 1px solid var(--border); }
 [data-theme="techno"] .logo span:last-child, [data-theme="techno"] h1, [data-theme="techno"] .stat-number { font-family: var(--mono); }
@@ -196,6 +185,84 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
     .slider-labels b { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+/* ===== Report page ===== */
+.container { width: min(860px, 100% - 32px); margin: 0 auto; padding: 28px 0 48px; flex: 1; }
+.page-head { margin-bottom: 18px; }
+.tagline { display: inline-block; margin: 0; padding: 5px 14px; border-radius: 999px; font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); background: var(--surface); border: 1px solid var(--border); }
+.report { display: grid; gap: 18px; }
+.report-card { padding: 24px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); animation: rise .4s ease both; }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+.report-card h3 { font-size: 1.1rem; }
+.muted, .section-subtitle, .brand-name { color: var(--muted); }
+.product-info h2 { margin: 0 0 4px; font-size: clamp(1.5rem, 4vw, 2.1rem); letter-spacing: -.01em; }
+.brand-name { margin: 0; }
+
+.score-display { display: flex; align-items: center; gap: 18px; margin: 8px 0 14px; }
+.score-badge { display: grid; place-items: center; width: 92px; height: 92px; border-radius: 50%; font-size: 2rem; font-weight: 800; border: 5px solid var(--muted); }
+.score-safe { color: var(--good); border-color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); }
+.score-moderate { color: var(--warn); border-color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.score-unsafe { color: var(--bad); border-color: var(--bad); background: color-mix(in srgb, var(--bad) 14%, transparent); }
+.verdict-label { font-size: 1.3rem; font-weight: 800; letter-spacing: .08em; }
+.text-safe { color: var(--good); } .text-moderate { color: var(--warn); } .text-unsafe { color: var(--bad); }
+.reasoning { margin: 0; color: var(--muted); }
+
+.flags-list { display: grid; gap: 12px; }
+.flag-item { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 14px 16px; border-radius: 12px; background: var(--surface-2); border-left: 4px solid var(--warn); }
+.flag-item p { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: .92rem; }
+.flag-type { font-weight: 700; }
+.flag-severity { align-self: center; padding: 2px 10px; border-radius: 999px; font-size: .7rem; font-weight: 700; letter-spacing: .06em; color: var(--on-accent); background: var(--warn); }
+.severity-low { border-left-color: var(--good); } .severity-low .flag-severity { background: var(--good); }
+.severity-high, .severity-critical, .severity-severe { border-left-color: var(--bad); }
+.severity-high .flag-severity, .severity-critical .flag-severity, .severity-severe .flag-severity { background: var(--bad); }
+
+.alternatives-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-top: 14px; }
+.alt-card { padding: 16px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--border); transition: border-color .2s, transform .2s; }
+.alt-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.alt-card-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.alt-card h4 { margin: 0; }
+.alt-category-badge { padding: 2px 10px; border-radius: 999px; font-size: .72rem; font-weight: 600; color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.alt-why { margin: 0; font-size: .92rem; color: var(--muted); }
+.alt-why strong { color: var(--text); }
+
+.ingredients-text { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+.per-serving { font-size: .8rem; font-weight: 500; color: var(--muted); }
+.nutrition-table { width: 100%; border-collapse: collapse; }
+.nutrition-table th, .nutrition-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+.nutrition-table th { font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.nutrition-table td:last-child, .nutrition-table th:last-child { text-align: right; font-weight: 600; }
+.nutrition-table tbody tr:nth-child(even) { background: var(--surface-2); }
+.db-match-note { margin-top: 16px; padding: 10px 14px; border-radius: 12px; font-size: .88rem; color: var(--good); background: color-mix(in srgb, var(--good) 12%, transparent); }
+.db-match-note.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+
+.news-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-top: 14px; }
+.news-card { display: flex; flex-direction: column; overflow: hidden; border-radius: 14px; text-decoration: none; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); transition: border-color .2s, transform .2s; }
+.news-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.news-thumb { width: 100%; height: 140px; object-fit: cover; }
+.news-content { padding: 14px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+.news-content h4 { margin: 0; font-size: .98rem; }
+.news-meta { display: flex; justify-content: space-between; gap: 8px; margin-top: auto; font-size: .78rem; color: var(--muted); }
+
+.report-actions { display: flex; justify-content: center; margin-top: 6px; }
+.btn-primary { display: inline-block; text-decoration: none; }
+footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(--muted); border-top: 1px solid var(--border); }
+[data-theme="techno"] h1, [data-theme="techno"] h2, [data-theme="techno"] .score-badge { font-family: var(--mono); }
+@media (max-width: 520px) {
+    .theme-label { display: none; }
+    .slider-labels span { padding: 6px 9px; }
+    .slider-labels b { display: none; }
+    .score-badge { width: 76px; height: 76px; font-size: 1.6rem; }
+}
+@media print { .top-bar, .techno-bg, .report-actions { display: none; } body { background: #fff; color: #000; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* ===== App states ===== */
+.report-actions { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 6px; }
+.skel { height: 14px; margin: 12px 0; border-radius: 7px; background: linear-gradient(90deg, var(--surface-2), var(--border), var(--surface-2)); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; }
+.skel.short { width: 55%; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+.toast { position: fixed; left: 50%; bottom: 24px; z-index: 200; max-width: min(92vw, 460px); padding: 12px 18px; border-radius: 12px; font-size: .92rem; color: #fff; background: #b91c1c; box-shadow: 0 10px 28px rgba(0,0,0,.4); transform: translate(-50%, 20px); opacity: 0; pointer-events: none; transition: all .25s; }
+.toast.on { transform: translate(-50%, 0); opacity: 1; }
+.report-card .alt-category-badge { display: inline-block; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -368,7 +435,6 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
         <p>Powered by Google Gemini AI &amp; Open Food Facts • Made for the Indian consumer 🇮🇳</p>
     </footer>
 
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
     <script>
 /* Theme switcher: 0 = light, 1 = dark, 2 = techno. Saved in localStorage. */
 (function () {
@@ -399,6 +465,275 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             apply(THEMES[+el.getAttribute('data-val')], true);
         });
     });
+})();
+    </script>
+    <script>
+/* FoodCheck app: upload / camera -> /analyze/vision -> (/analyze/health + /news in parallel) -> report */
+(function () {
+    'use strict';
+    var $ = function (id) { return document.getElementById(id); };
+    var MAX_BYTES = 5 * 1024 * 1024;
+    var VIEWS = ['upload-section', 'loading-section', 'error-section', 'report-section'];
+    var NUTRIENTS = [
+        ['energy_kcal', 'Energy (kcal)'], ['protein_g', 'Protein (g)'], ['total_fat_g', 'Total Fat (g)'],
+        ['saturated_fat_g', 'Saturated Fat (g)'], ['trans_fat_g', 'Trans Fat (g)'], ['carbohydrates_g', 'Carbohydrates (g)'],
+        ['total_sugar_g', 'Total Sugar (g)'], ['sodium_mg', 'Sodium (mg)'], ['fiber_g', 'Dietary Fiber (g)']
+    ];
+    var file = null, previewURL = null, stream = null, facing = 'environment', busy = false, runId = 0, toastTimer = null;
+
+    /* ---------- helpers ---------- */
+    function esc(s) {
+        var map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return map[c]; });
+    }
+    function safeUrl(u) { return /^https?:\/\//i.test(u || '') ? u : '#'; }
+    function num(v) { var n = Number(v); return isFinite(n) ? String(Math.round(n * 10) / 10) : null; }
+    function show(id) {
+        VIEWS.forEach(function (v) { $(v).classList.toggle('hidden', v !== id); });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    function toast(msg) {
+        var t = $('fc-toast');
+        if (!t) { t = document.createElement('div'); t.id = 'fc-toast'; t.className = 'toast'; document.body.appendChild(t); }
+        t.textContent = msg; t.classList.add('on');
+        clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove('on'); }, 4500);
+    }
+    function fill(id, html, extra) {
+        var el = $(id);
+        el.className = html ? 'report-card' + (extra ? ' ' + extra : '') : '';
+        el.innerHTML = html || '';
+    }
+    function skeleton(title) {
+        return '<h3>' + title + '</h3><div class="skel"></div><div class="skel"></div><div class="skel short"></div>';
+    }
+    function api(url, opts, ms) {
+        var ctl = new AbortController(), timer = setTimeout(function () { ctl.abort(); }, ms || 60000);
+        opts = opts || {}; opts.signal = ctl.signal;
+        return fetch(url, opts).then(function (r) {
+            return r.json().catch(function () { return {}; }).then(function (j) {
+                if (!r.ok) throw new Error(j.error || 'Server error (' + r.status + ')');
+                return j;
+            });
+        }).catch(function (e) {
+            if (e && e.name === 'AbortError') throw new Error('The request took too long. Please try again.');
+            if (e instanceof TypeError) throw new Error('Could not reach the server. Check your connection and try again.');
+            throw e;
+        }).then(function (j) { clearTimeout(timer); return j; }, function (e) { clearTimeout(timer); throw e; });
+    }
+
+    /* ---------- file selection ---------- */
+    function setFile(f) {
+        if (!f) return;
+        var okType = /^image\/(jpeg|png|webp)$/i.test(f.type) || (!f.type && /\.(jpe?g|png|webp)$/i.test(f.name || ''));
+        if (!okType) { toast('Please choose a JPG, PNG or WebP image.'); return; }
+        file = f;
+        if (previewURL) URL.revokeObjectURL(previewURL);
+        previewURL = URL.createObjectURL(f);
+        $('image-preview').src = previewURL;
+        $('preview-section').classList.remove('hidden');
+        document.querySelector('.hero-grid').classList.add('hidden');
+        show('upload-section');
+    }
+    function clearFile() {
+        file = null;
+        $('file-input').value = ''; $('mobile-camera-input').value = '';
+        $('preview-section').classList.add('hidden');
+        document.querySelector('.hero-grid').classList.remove('hidden');
+    }
+    function extFor(type) { return type === 'image/png' ? 'png' : type === 'image/webp' ? 'webp' : 'jpg'; }
+    /* shrink big phone photos so they stay under the 5MB server limit and upload faster */
+    function prepare(f) {
+        if (f.size <= 1.5 * 1024 * 1024) return Promise.resolve(f);
+        return new Promise(function (resolve) {
+            var img = new Image(), url = URL.createObjectURL(f), done = false;
+            var finish = function (v) { if (!done) { done = true; resolve(v); } };
+            setTimeout(function () { finish(f); }, 8000); /* never hang on a photo the browser can't decode */
+            img.onload = function () {
+                var s = Math.min(1, 1800 / Math.max(img.width, img.height)), c = document.createElement('canvas');
+                c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+                c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+                URL.revokeObjectURL(url);
+                c.toBlob(function (b) { finish(b && b.size < f.size ? b : f); }, 'image/jpeg', 0.85);
+            };
+            img.onerror = function () { URL.revokeObjectURL(url); finish(f); };
+            img.src = url;
+        });
+    }
+
+    /* ---------- camera ---------- */
+    function stopStream() {
+        if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
+        $('camera-video').srcObject = null;
+    }
+    function closeCamera() { stopStream(); $('camera-modal').classList.add('hidden'); }
+    function startStream() {
+        stopStream();
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false })
+            .then(function (s) { stream = s; var v = $('camera-video'); v.srcObject = s; var p = v.play && v.play(); if (p && p.catch) p.catch(function () {}); })
+            .catch(function () { closeCamera(); toast('Camera blocked or unavailable. Allow camera access, or use Upload Photo.'); });
+    }
+    function openCamera() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { $('mobile-camera-input').click(); return; }
+        $('camera-modal').classList.remove('hidden');
+        startStream();
+    }
+    function snap() {
+        var v = $('camera-video'), c = $('camera-canvas');
+        if (!v.videoWidth) { toast('Camera is still starting, try again.'); return; }
+        c.width = v.videoWidth; c.height = v.videoHeight;
+        c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+        c.toBlob(function (b) {
+            if (!b) { toast('Could not capture the photo.'); return; }
+            closeCamera();
+            setFile(new File([b], 'photo.jpg', { type: 'image/jpeg' }));
+        }, 'image/jpeg', 0.9);
+    }
+
+    /* ---------- analysis flow ---------- */
+    function setStep(id, state) {
+        ['step-vision', 'step-health', 'step-news'].forEach(function (s) { $(s).classList.remove('active', 'done'); });
+        if (state) $(id).classList.add(state);
+    }
+    function fail(e) {
+        $('error-message').textContent = (e && e.message) || 'Something went wrong. Please try again.';
+        show('error-section');
+    }
+    function analyze() {
+        if (!file || busy) return;
+        busy = true; var my = ++runId;
+        $('loading-text').textContent = 'Reading the product label...';
+        setStep('step-vision', 'active'); show('loading-section');
+        prepare(file).then(function (blob) {
+            if (blob.size > MAX_BYTES) throw new Error('This image is over 5MB even after resizing. Please use a smaller photo.');
+            var fd = new FormData();
+            fd.append('image', blob, 'photo.' + extFor(blob.type));
+            return api('/analyze/vision', { method: 'POST', body: fd }, 120000);
+        }).then(function (v) {
+            if (my !== runId) return;
+            setStep('step-vision', 'done');
+            renderVision(v);
+            runHealth(v, my);
+            runNews(v.brand, my);
+        }).catch(function (e) { if (my === runId) fail(e); })
+          .then(function () { busy = false; });
+    }
+
+    function renderVision(v) {
+        var src = v.off_match ? 'Matched in Open Food Facts' : 'Read from the photo';
+        fill('product-card',
+            '<h2>' + esc(v.product_name || 'Unknown Product') + '</h2><p class="brand-name">by ' + esc(v.brand || 'Unknown') + '</p>' +
+            '<span class="alt-category-badge">' + src + '</span>', 'product-info');
+        fill('ingredients-card', '<h3>📋 Ingredients</h3><p class="ingredients-text">' + esc(v.ingredients_text || 'Not available') + '</p>');
+
+        var n = v.nutrition_facts || {}, rows = '';
+        NUTRIENTS.forEach(function (p) { var x = num(n[p[0]]); if (n[p[0]] != null && x !== null) rows += '<tr><td>' + p[1] + '</td><td>' + x + '</td></tr>'; });
+        var note = '';
+        if (v.off_match) {
+            note = '<div class="db-match-note">✅ Cross-checked with Open Food Facts database' +
+                (v.off_match.nutriscore_grade ? ' • Nutri-Score: <strong>' + esc(String(v.off_match.nutriscore_grade).toUpperCase()) + '</strong>' : '') +
+                (v.off_match.nova_group ? ' • NOVA Group: <strong>' + esc(v.off_match.nova_group) + '</strong>' : '') + '</div>';
+        } else {
+            note = '<div class="db-match-note warn">ℹ️ No database match found — results are based on AI analysis only</div>';
+        }
+        fill('nutrition-card', '<h3>📊 Nutrition Facts <span class="per-serving">(per 100g)</span></h3>' +
+            (rows ? '<table class="nutrition-table"><thead><tr><th>Nutrient</th><th>Value</th></tr></thead><tbody>' + rows + '</tbody></table>'
+                  : '<p class="muted">No nutrition values were found on the label.</p>') + note);
+
+        fill('health-card', skeleton('Health &amp; Safety Score'));
+        fill('flags-card', ''); fill('alternatives-card', '');
+        fill('news-card', skeleton('📰 Recent Company News'));
+        fill('report-actions-card', '<button type="button" class="btn-primary" id="again-btn">← Analyze Another Product</button>' +
+            '<button type="button" class="btn-secondary" id="print-btn">🖨 Save / Print</button>');
+        $('report-actions-card').className = 'report-actions';
+        show('report-section');
+    }
+
+    function runHealth(v, my) {
+        api('/analyze/health', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ingredients_text: v.ingredients_text || '', nutrition_facts: v.nutrition_facts || {}, product_name: v.product_name || '' })
+        }, 90000).catch(function (e) {
+            return { score: null, verdict: 'unknown', flags: [], alternatives: [], reasoning: 'Health analysis failed: ' + e.message };
+        }).then(function (h) { if (my === runId) renderHealth(h); });
+    }
+
+    function renderHealth(h) {
+        var verdict = String(h.verdict || 'unknown'), cls = verdict === 'safe' ? 'safe' : verdict === 'moderate' ? 'moderate' : 'unsafe';
+        var score = (h.score === null || h.score === undefined)
+            ? '<p class="muted">Score could not be determined</p>'
+            : '<div class="score-display"><div class="score-badge score-' + cls + '">' + esc(h.score) + '</div>' +
+              '<span class="verdict-label text-' + cls + '">' + esc(verdict.toUpperCase()) + '</span></div>';
+        fill('health-card', '<h3>Health &amp; Safety Score</h3>' + score + '<p class="reasoning">' + esc(h.reasoning || '') + '</p>');
+
+        var flags = h.flags || [];
+        fill('flags-card', flags.length ? '<h3>⚠️ Health Flags</h3><div class="flags-list">' + flags.map(function (f) {
+            var sev = String(f.severity || 'medium').toLowerCase();
+            return '<div class="flag-item severity-' + esc(sev.replace(/[^a-z]/g, '')) + '"><span class="flag-type">' + esc(f.type) +
+                '</span><span class="flag-severity">' + esc(sev.toUpperCase()) + '</span><p>' + esc(f.explanation) + '</p></div>';
+        }).join('') + '</div>' : '', 'flags-section');
+
+        var alts = h.alternatives || [];
+        fill('alternatives-card', alts.length ? '<h3>💡 Healthier &amp; Cleaner Alternatives</h3>' +
+            '<p class="section-subtitle">Better choices in the Indian market with cleaner ingredients &amp; superior nutrition:</p>' +
+            '<div class="alternatives-grid">' + alts.map(function (a) {
+                return '<div class="alt-card"><div class="alt-card-header"><h4>' + esc(a.name) + '</h4><span class="alt-category-badge">' +
+                    esc(a.category || 'Healthier Swap') + '</span></div><p class="alt-why"><strong>Why it\'s better:</strong> ' + esc(a.why_better) + '</p></div>';
+            }).join('') + '</div>' : '', 'alternatives-section');
+    }
+
+    function runNews(brand, my) {
+        var none = function () { return { articles: [] }; };
+        var p = (!brand || brand === 'Unknown') ? Promise.resolve(none()) : api('/news?brand=' + encodeURIComponent(brand), {}, 30000).catch(none);
+        p.then(function (r) {
+            if (my !== runId) return;
+            var list = (r && r.articles) || [];
+            fill('news-card', '<h3>📰 ' + (list.length ? 'Recent Company News' : 'Company News') + '</h3>' + (list.length
+                ? '<div class="news-grid">' + list.map(function (a) {
+                    return '<a href="' + esc(safeUrl(a.url)) + '" target="_blank" rel="noopener" class="news-card">' +
+                        (a.image ? '<img src="' + esc(safeUrl(a.image)) + '" alt="" class="news-thumb" loading="lazy">' : '') +
+                        '<div class="news-content"><h4>' + esc(a.title) + '</h4><div class="news-meta"><span>' + esc(a.source) +
+                        '</span><span>' + esc(a.published_at ? String(a.published_at).slice(0, 10) : '') + '</span></div></div></a>';
+                }).join('') + '</div>' : '<p class="muted">No recent news found for this brand.</p>'), 'news-section');
+            document.querySelectorAll('#news-card .news-thumb').forEach(function (im) {
+                im.addEventListener('error', function () { im.remove(); });
+            });
+        });
+    }
+
+    function resetAll() {
+        runId++; busy = false; clearFile();
+        ['product-card', 'ingredients-card', 'nutrition-card', 'health-card', 'flags-card', 'alternatives-card', 'news-card', 'report-actions-card']
+            .forEach(function (id) { fill(id, ''); });
+        show('upload-section');
+    }
+
+    /* ---------- wiring ---------- */
+    var fi = $('file-input'), cam = $('mobile-camera-input'), zone = $('drop-zone');
+    $('browse-btn').addEventListener('click', function (e) { e.stopPropagation(); fi.click(); });
+    zone.addEventListener('click', function () { fi.click(); });
+    $('open-camera-btn').addEventListener('click', function (e) { e.stopPropagation(); openCamera(); });
+    $('camera-card-trigger').addEventListener('click', openCamera);
+    fi.addEventListener('click', function (e) { e.stopPropagation(); });
+    cam.addEventListener('click', function (e) { e.stopPropagation(); });
+    fi.addEventListener('change', function () { setFile(fi.files && fi.files[0]); fi.value = ''; });
+    cam.addEventListener('change', function () { setFile(cam.files && cam.files[0]); cam.value = ''; });
+    ['dragenter', 'dragover'].forEach(function (ev) { zone.addEventListener(ev, function (e) { e.preventDefault(); zone.classList.add('dragover'); }); });
+    ['dragleave', 'drop'].forEach(function (ev) { zone.addEventListener(ev, function (e) { e.preventDefault(); zone.classList.remove('dragover'); }); });
+    zone.addEventListener('drop', function (e) { setFile(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]); });
+    $('change-btn').addEventListener('click', clearFile);
+    $('analyze-btn').addEventListener('click', analyze);
+    $('retry-btn').addEventListener('click', function () { show('upload-section'); });
+    $('close-camera-btn').addEventListener('click', closeCamera);
+    $('camera-modal').addEventListener('click', function (e) { if (e.target === this) closeCamera(); });
+    $('flip-camera-btn').addEventListener('click', function () { facing = facing === 'environment' ? 'user' : 'environment'; startStream(); });
+    $('snap-btn').addEventListener('click', snap);
+    $('fallback-camera-btn').addEventListener('click', function () { closeCamera(); cam.click(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeCamera(); });
+    $('report-actions-card').addEventListener('click', function (e) {
+        if (e.target.id === 'again-btn') resetAll();
+        if (e.target.id === 'print-btn') window.print();
+    });
+    window.addEventListener('pagehide', stopStream);
 })();
     </script>
 </body>
