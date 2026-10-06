@@ -27,14 +27,58 @@ DEFAULT_MODEL_FALLBACK_LIST = [
 # Per-request timeout (seconds). Prevents any single model from stalling.
 REQUEST_TIMEOUT = int(os.getenv("GEMINI_TIMEOUT", "25"))
 
+CACHED_AVAILABLE_MODELS: list[str] | None = None
 
-def get_model_pool() -> list[str]:
+
+def discover_available_models(api_key: str) -> list[str]:
+    """Query Google AI Studio for the exact models supported by this API key."""
+    global CACHED_AVAILABLE_MODELS
+    if CACHED_AVAILABLE_MODELS:
+        return CACHED_AVAILABLE_MODELS
+
+    try:
+        genai.configure(api_key=api_key)
+        discovered = []
+        for m in genai.list_models():
+            methods = getattr(m, "supported_generation_methods", []) or []
+            if "generateContent" in methods:
+                name = m.name.replace("models/", "")
+                # Only include chat/text/vision models, ignore embedding/aqa models
+                if "embedding" not in name and "aqa" not in name:
+                    discovered.append(name)
+
+        if discovered:
+            # Reorder with fastest models first
+            speed_rank = [
+                "gemini-2.0-flash",
+                "gemini-2.5-flash",
+                "gemini-2.5-flash-lite",
+                "gemini-1.5-flash",
+                "gemini-1.5-flash-8b",
+                "gemini-1.5-pro",
+            ]
+            ranked = [m for m in speed_rank if m in discovered]
+            others = [m for m in discovered if m not in ranked]
+            CACHED_AVAILABLE_MODELS = ranked + others
+            logger.info(f"🌟 Discovered {len(CACHED_AVAILABLE_MODELS)} valid models from API: {CACHED_AVAILABLE_MODELS}")
+            return CACHED_AVAILABLE_MODELS
+    except Exception as e:
+        logger.warning(f"Could not query list_models dynamically: {e}")
+
+    # Fallback to static list if dynamic discovery is unavailable
+    CACHED_AVAILABLE_MODELS = DEFAULT_MODEL_FALLBACK_LIST
+    return CACHED_AVAILABLE_MODELS
+
+
+def get_model_pool(api_key: str | None = None) -> list[str]:
     """Return model list, prioritizing any user-specified model from GEMINI_MODEL."""
     preferred = os.getenv("GEMINI_MODEL", "").strip()
     pool = []
     if preferred:
         pool.append(preferred)
-    for m in DEFAULT_MODEL_FALLBACK_LIST:
+
+    base_list = discover_available_models(api_key) if api_key else DEFAULT_MODEL_FALLBACK_LIST
+    for m in base_list:
         if m not in pool:
             pool.append(m)
     return pool
@@ -52,7 +96,7 @@ def generate_content_with_retry(
         raise ValueError("Missing GEMINI_API_KEY or GOOGLE_API_KEY in environment variables.")
 
     genai.configure(api_key=api_key)
-    models = get_model_pool()
+    models = get_model_pool(api_key)
     last_error = None
     meaningful_error = None
     req_timeout = timeout or REQUEST_TIMEOUT

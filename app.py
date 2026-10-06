@@ -162,7 +162,36 @@ def news_endpoint():
 
 @app.route("/health")
 def health_check():
-    return jsonify({"status": "ok", "version": "v1.2.1-clean-models"})
+    return jsonify({"status": "ok", "version": "v1.2.2-dynamic-models"})
+
+
+@app.route("/debug/models")
+def debug_models():
+    """Diagnostic endpoint to inspect active models and key validity."""
+    import google.generativeai as genai
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        return jsonify({"error": "No GEMINI_API_KEY set in environment."}), 500
+
+    masked_key = api_key[:6] + "..." + api_key[-4:] if len(api_key) > 10 else "too_short"
+    try:
+        genai.configure(api_key=api_key)
+        available = []
+        for m in genai.list_models():
+            methods = getattr(m, "supported_generation_methods", []) or []
+            if "generateContent" in methods:
+                available.append(m.name)
+        return jsonify({
+            "key_preview": masked_key,
+            "total_supported": len(available),
+            "models": available,
+        })
+    except Exception as e:
+        return jsonify({
+            "key_preview": masked_key,
+            "error": str(e),
+            "error_type": type(e).__name__,
+        }), 500
 
 
 @app.errorhandler(413)
