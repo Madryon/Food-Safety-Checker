@@ -4,7 +4,7 @@ FROM python:3.11-slim
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PORT=5000
+    PORT=7860
 
 # Set work directory
 WORKDIR /app
@@ -24,8 +24,11 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy application files
 COPY . .
 
-# Expose port (default 5000 or Render's PORT)
-EXPOSE 5000
+# Expose port (HF Spaces uses 7860, Render uses dynamic PORT)
+EXPOSE 7860
 
-# Run with Gunicorn using dynamic PORT support
-CMD exec gunicorn --bind 0.0.0.0:${PORT:-5000} --workers 2 --threads 4 --timeout 120 app:app
+# Run with Gunicorn — optimised for free-tier containers:
+# • 2 workers + 4 threads = handles concurrent requests well
+# • 300s timeout = enough for Gemini vision calls (HF Spaces has no proxy timeout)
+# • keep-alive 5 = reuse connections
+CMD exec gunicorn --bind 0.0.0.0:${PORT:-7860} --workers 2 --threads 4 --timeout 300 --keep-alive 5 app:app
