@@ -162,7 +162,7 @@ def news_endpoint():
 
 @app.route("/health")
 def health_check():
-    return jsonify({"status": "ok"})
+    return jsonify({"status": "ok", "version": "v1.2.1-clean-models"})
 
 
 @app.errorhandler(413)

@@ -7,26 +7,24 @@ from google.api_core.exceptions import ResourceExhausted, GoogleAPICallError
 
 logger = logging.getLogger(__name__)
 
-# ── Speed-optimised fallback order ──────────────────────────────────────────
-# Fastest → slowest.  Google AI Studio free-tier quotas are tracked PER MODEL.
-# • gemini-2.0-flash   — 15 RPM, fast, great multimodal quality
-# • gemini-1.5-flash-8b — 15 RPM, lightest/fastest model available
-# • gemini-1.5-flash    — 15 RPM, reliable workhorse
-# • gemini-2.5-flash    — 15 RPM, but "thinking" model → can be slow
-# • gemini-3.6-flash    — only 5 RPM, last resort
+# ── Verified Production Models (Speed & Reliability Order) ─────────────────
+# Free-tier quotas are tracked PER MODEL in Google AI Studio:
+# • gemini-2.0-flash       — 15 RPM, ultra-fast multimodal
+# • gemini-2.5-flash       — 15 RPM, high quality hybrid reasoning
+# • gemini-2.5-flash-lite  — 15 RPM, high throughput, low latency
+# • gemini-1.5-flash       — 15 RPM, stable standard fallback
+# • gemini-1.5-flash-8b    — 15 RPM, lightweight & fast
+# • gemini-1.5-pro         — 2 RPM, heavy fallback
 DEFAULT_MODEL_FALLBACK_LIST = [
     "gemini-2.0-flash",
-    "gemini-1.5-flash-8b",
-    "gemini-1.5-flash",
     "gemini-2.5-flash",
-    "gemini-3.6-flash",
-    "gemini-3.7-flash",
-    "gemini-3.8-flash",
-    "gemini-3.1-pro",
+    "gemini-2.5-flash-lite",
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-8b",
+    "gemini-1.5-pro",
 ]
 
-# Per-request timeout (seconds).  Prevents a single slow model from blocking
-# the entire fallback chain.  Override via GEMINI_TIMEOUT env var.
+# Per-request timeout (seconds). Prevents any single model from stalling.
 REQUEST_TIMEOUT = int(os.getenv("GEMINI_TIMEOUT", "25"))
 
 
@@ -48,13 +46,7 @@ def generate_content_with_retry(
     max_retries_per_model: int = 1,
     timeout: int | None = None,
 ) -> str:
-    """Generate content using Gemini with automatic fallback across models.
-
-    Fast-path design:
-    • Each model gets at most `timeout` seconds (default 25 s) before we move on.
-    • On 429 / quota errors we switch models immediately (no wait).
-    • Total worst-case ≈ len(pool) × timeout, but usually the first model wins.
-    """
+    """Generate content using Gemini with automatic fallback across models."""
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if not api_key:
         raise ValueError("Missing GEMINI_API_KEY or GOOGLE_API_KEY in environment variables.")
@@ -62,6 +54,7 @@ def generate_content_with_retry(
     genai.configure(api_key=api_key)
     models = get_model_pool()
     last_error = None
+    meaningful_error = None
     req_timeout = timeout or REQUEST_TIMEOUT
 
     for model_name in models:
@@ -83,18 +76,22 @@ def generate_content_with_retry(
             except ResourceExhausted as e:
                 logger.warning(f"429 quota hit on '{model_name}' → switching model")
                 last_error = e
-                break  # next model immediately
+                meaningful_error = e
+                break
 
             except GoogleAPICallError as e:
                 err_str = str(e).lower()
                 if "429" in err_str or "quota" in err_str or "resource_exhausted" in err_str:
                     logger.warning(f"Rate limited on '{model_name}' → switching model")
                     last_error = e
+                    meaningful_error = e
                     break
                 logger.error(f"API error on '{model_name}': {e}")
                 last_error = e
                 if "404" in err_str or "not found" in err_str:
+                    # Non-existent model on this API version; skip without polluting meaningful_error
                     break
+                meaningful_error = e
                 time.sleep(0.5)
 
             except Exception as e:
@@ -102,18 +99,22 @@ def generate_content_with_retry(
                 if "429" in err_str or "quota" in err_str:
                     logger.warning(f"Quota error on '{model_name}' → switching model")
                     last_error = e
+                    meaningful_error = e
                     break
                 if "deadline" in err_str or "timeout" in err_str or "timed out" in err_str:
                     logger.warning(f"Timeout on '{model_name}' after {req_timeout}s → switching model")
                     last_error = e
+                    meaningful_error = e
                     break
                 logger.error(f"Unexpected error with '{model_name}': {e}")
                 last_error = e
+                meaningful_error = e
                 time.sleep(0.5)
 
+    err_to_report = meaningful_error or last_error
     err_message = (
         "AI rate limit reached across all available Gemini models. "
         "Please wait 30–60 seconds before retrying. "
-        f"(Underlying error: {last_error})"
+        f"(Underlying error: {err_to_report})"
     )
     raise RuntimeError(err_message)
