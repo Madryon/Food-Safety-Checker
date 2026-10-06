@@ -4,7 +4,7 @@ import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 import requests
-import google.generativeai as genai
+from services.gemini_client import generate_content_with_retry
 
 
 def get_news(brand: str) -> list[dict] | None:
@@ -147,14 +147,7 @@ def _fetch_gnews(brand: str) -> list[dict] | None:
 
 def _fetch_ai_transparency(brand: str) -> list[dict] | None:
     """AI fallback: Generates known Indian regulatory, FSSAI, and safety records for the brand."""
-    gemini_key = os.getenv("GEMINI_API_KEY")
-    if not gemini_key:
-        return None
-
     try:
-        genai.configure(api_key=gemini_key)
-        model = genai.GenerativeModel("gemini-3.6-flash")
-
         prompt = f"""You are a corporate transparency and food safety database.
 List up to 3 known historical or recent regulatory notices, FSSAI advisories, product recalls, consumer court cases, or safety controversies regarding the brand or company '{brand}' in India.
 
@@ -173,8 +166,7 @@ Return ONLY a valid JSON array of objects with exactly these keys:
 
 Do NOT wrap in markdown code blocks. Return raw JSON array only."""
 
-        response = model.generate_content(prompt)
-        text = response.text.strip()
+        text = generate_content_with_retry(prompt)
         if text.startswith("```json"):
             text = text[7:]
         if text.startswith("```"):

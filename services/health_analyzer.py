@@ -1,22 +1,18 @@
-import google.generativeai as genai
 import json
-import os
+import logging
+from services.gemini_client import generate_content_with_retry
+
+logger = logging.getLogger(__name__)
 
 
 def analyze(ingredients_text: str, nutrition_facts: dict | None, product_name: str = "") -> dict:
     """Send ingredients and nutrition to Gemini for health/safety scoring.
-    
+    Uses automatic multi-model fallback to recover from 429 quota exhaustion.
+
     Returns:
         dict with keys: score (0-100), verdict (safe/moderate/unsafe),
-        flags (list), reasoning (str)
+        flags (list), reasoning (str), alternatives (list)
     """
-    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        return _fallback_response("Missing GEMINI_API_KEY. Please set your key in .env.")
-
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-3.6-flash")
-
     nutrition_str = json.dumps(nutrition_facts, indent=2) if nutrition_facts else "Not available"
 
     prompt = f"""You are a food safety and health analyst specializing in the Indian market (FSSAI regulations).
@@ -39,7 +35,7 @@ Flag and explain if ANY of the following are present:
 2. Palm oil or palm kernel oil — flag as PALM OIL (environmental and health concern)
 3. Hydrogenated oil or trans fat > 0g — flag as TRANS FAT / HYDROGENATED OIL
 4. Artificial colors or preservatives (INS codes like INS 110, INS 211, etc.) — flag as ARTIFICIAL ADDITIVES
-5. Protein content misleading vs. product's health claims (e.g., product marketed as "protein bar" but has < 10g protein per 100g) — flag as MISLEADING CLAIMS
+5. Protein content misleading vs. product's health claims — flag as MISLEADING CLAIMS
 6. Allergens present (nuts, dairy, gluten, soy) — flag as ALLERGEN with specifics
 7. High sodium (> 500mg per 100g) — flag as HIGH SODIUM
 8. Ultra-processed indicators (long ingredient list with many chemical additives) — flag as ULTRA-PROCESSED
@@ -50,7 +46,7 @@ Flag and explain if ANY of the following are present:
 - Score 0-39: verdict = "unsafe"
 
 === ALTERNATIVES SUGGESTION ===
-Suggest 2 to 3 healthier or cleaner alternative products or food options available in the Indian market for this specific product or category (e.g., if instant noodles with palm oil/maida, suggest millet noodles like Slurrp Farm or whole wheat noodles; if sugary biscuits, suggest whole oat or nut-based clean snacks; if ultra-processed chips, suggest roasted makhana or vacuum-cooked vegetable crisps).
+Suggest 2 to 3 healthier or cleaner alternative products or food options available in the Indian market for this specific product or category.
 
 === OUTPUT FORMAT ===
 Return ONLY valid JSON with exactly these keys:
@@ -78,8 +74,7 @@ Do NOT wrap in markdown code blocks. Return raw JSON only.
 """
 
     try:
-        response = model.generate_content(prompt)
-        text = response.text.strip()
+        text = generate_content_with_retry(prompt)
         
         # Clean up potential markdown wrapping
         if text.startswith("```json"):
@@ -115,9 +110,11 @@ Do NOT wrap in markdown code blocks. Return raw JSON only.
         return result
     
     except json.JSONDecodeError:
-        return _fallback_response("Could not parse AI health analysis response.")
+        logger.error("JSON decode error parsing Gemini output.")
+        return _fallback_response("Could not parse AI health analysis response. Please retry in a few moments.")
     except Exception as e:
-        return _fallback_response(f"Health analysis failed: {str(e)}")
+        logger.error(f"Health analysis failed: {e}")
+        return _fallback_response(str(e))
 
 
 def _fallback_response(error_msg: str) -> dict:

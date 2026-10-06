@@ -23,6 +23,10 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 
+# Simple in-memory caches to save API quota on repeated lookups
+HEALTH_CACHE = {}
+NEWS_CACHE = {}
+
 
 def allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -113,8 +117,15 @@ def analyze_health():
     nutrition_facts = data.get("nutrition_facts", {})
     product_name = data.get("product_name", "")
 
+    cache_key = f"{product_name.strip().lower()}:{ingredients_text.strip().lower()[:150]}"
+    if cache_key in HEALTH_CACHE:
+        app.logger.info(f"Serving health analysis from cache for key: {cache_key}")
+        return jsonify(HEALTH_CACHE[cache_key])
+
     try:
         health_result = analyze(ingredients_text, nutrition_facts, product_name)
+        if health_result.get("score") is not None:
+            HEALTH_CACHE[cache_key] = health_result
         return jsonify(health_result)
     except Exception as e:
         app.logger.error(f"Health analysis error: {e}", exc_info=True)
@@ -135,9 +146,16 @@ def news_endpoint():
     if not brand:
         return jsonify({"articles": []}), 200
 
+    brand_key = brand.lower()
+    if brand_key in NEWS_CACHE:
+        return jsonify({"articles": NEWS_CACHE[brand_key]})
+
     try:
         articles = get_news(brand)
-        return jsonify({"articles": articles or []})
+        articles_list = articles or []
+        if articles_list:
+            NEWS_CACHE[brand_key] = articles_list
+        return jsonify({"articles": articles_list})
     except Exception:
         return jsonify({"articles": []})
 

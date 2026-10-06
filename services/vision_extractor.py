@@ -1,23 +1,23 @@
-import google.generativeai as genai
 import json
+import logging
 import os
 from PIL import Image
+from services.gemini_client import generate_content_with_retry
+
+logger = logging.getLogger(__name__)
 
 
 def extract(image_path: str) -> dict:
     """Send image to Gemini Vision and extract product information.
+    Uses automatic multi-model fallback across Gemini models on 429 quota exhaustion.
 
     Returns:
-        dict with keys: brand, product_name, ingredients_text, nutrition_facts
+        dict with keys: brand, product_name, ingredients_text, nutrition_facts, data_source
     """
-    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        return {"error": "Missing GEMINI_API_KEY. Please add your key to the .env file."}
-
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-3.6-flash")
-
-    img = Image.open(image_path)
+    try:
+        img = Image.open(image_path)
+    except Exception as e:
+        return {"error": f"Invalid image file: {e}"}
 
     prompt = """Look at this image of a packaged food product sold in India.
 
@@ -43,8 +43,7 @@ Only if the image does NOT contain any food product at all, return:
 """
 
     try:
-        response = model.generate_content([prompt, img])
-        text = response.text.strip()
+        text = generate_content_with_retry([prompt, img])
 
         # Clean up potential markdown wrapping
         if text.startswith("```json"):
@@ -60,4 +59,5 @@ Only if the image does NOT contain any food product at all, return:
     except json.JSONDecodeError:
         return {"error": "Could not parse the AI response. Please try again with a clearer photo."}
     except Exception as e:
+        logger.error(f"Vision analysis failed: {e}")
         return {"error": f"Vision analysis failed: {str(e)}"}

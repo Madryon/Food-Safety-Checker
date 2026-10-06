@@ -54,6 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let selectedFile = null;
     let cameraStream = null;
     let currentFacingMode = 'environment';
+    let currentVision = null;
 
     // ── File & Drop ────────────────────────────────────────────────────────
     dropZone.addEventListener('click', (e) => {
@@ -188,6 +189,8 @@ document.addEventListener('DOMContentLoaded', () => {
             let vision;
             try { vision = await vr.json(); } catch { showError('Server returned invalid response.'); return; }
             if (!vr.ok) { showError(vision.error || 'Vision analysis failed.'); return; }
+
+            currentVision = vision;
 
             // ── Show product + ingredients + nutrition INSTANTLY ─────────
             loadingSection.classList.add('hidden');
@@ -328,16 +331,50 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderHealthCard(h) {
         const sc = h.verdict === 'safe' ? 'safe' : h.verdict === 'moderate' ? 'moderate' : 'unsafe';
+        const isError = h.score == null;
+
+        let contentHtml = '';
+        if (!isError) {
+            contentHtml = `
+                <div class="score-display">
+                    <div class="score-badge score-${sc}">${h.score}</div>
+                    <span class="verdict-label text-${sc}">${h.verdict.toUpperCase()}</span>
+                </div>
+                <p class="reasoning">${esc(h.reasoning)}</p>
+            `;
+        } else {
+            contentHtml = `
+                <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid var(--unsafe); border-radius: 12px; padding: 16px; margin-bottom: 10px;">
+                    <p style="color: var(--unsafe); font-weight: 600; margin-bottom: 6px;">⚠️ Health Scoring Temporarily Unavailable</p>
+                    <p class="reasoning" style="font-size: 0.9rem;">${esc(h.reasoning)}</p>
+                    <button id="retry-health-btn" class="btn-secondary" style="margin-top: 12px; display: inline-flex; align-items: center; gap: 6px;">
+                        🔄 Retry Health Scoring
+                    </button>
+                </div>
+            `;
+        }
+
         document.getElementById('health-card').innerHTML = `
             <section class="report-card fade-in health-score">
                 <h3>Health & Safety Score</h3>
-                ${h.score != null ? `
-                    <div class="score-display">
-                        <div class="score-badge score-${sc}">${h.score}</div>
-                        <span class="verdict-label text-${sc}">${h.verdict.toUpperCase()}</span>
-                    </div>` : '<p class="muted">Score could not be determined</p>'}
-                <p class="reasoning">${esc(h.reasoning)}</p>
+                ${contentHtml}
             </section>`;
+
+        if (isError) {
+            const retryBtn = document.getElementById('retry-health-btn');
+            if (retryBtn) {
+                retryBtn.addEventListener('click', () => {
+                    if (currentVision) {
+                        renderHealthPlaceholder();
+                        fetchHealth(currentVision).then(newH => {
+                            renderHealthCard(newH);
+                            renderFlagsCard(newH);
+                            renderAlternativesCard(newH);
+                        });
+                    }
+                });
+            }
+        }
     }
 
     function renderFlagsCard(h) {
