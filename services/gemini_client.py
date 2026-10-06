@@ -15,8 +15,6 @@ DEFAULT_MODEL_FALLBACK_LIST = [
     "gemini-3.7-flash",
     "gemini-3.1-pro",
     "gemini-3.8-flash",
-    "gemini-2.5-flash-8b",
-    "gemini-3.6-flash",
 ]
 
 
