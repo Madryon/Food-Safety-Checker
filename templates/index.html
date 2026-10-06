@@ -4,12 +4,268 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FoodCheck — AI Food Safety Analyzer</title>
-    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
-    <link rel="alternate icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍽️</text></svg>">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <meta name="theme-color" content="#0b1117">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🍽️%3C/text%3E%3C/svg%3E">
+    <script>
+        /* apply saved theme before first paint (no flash) */
+        try {
+            var t = localStorage.getItem('foodcheck-theme');
+            if (t === 'light' || t === 'dark' || t === 'techno') document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {}
+    </script>
+    <style>
+/* ===== Theme tokens (dark = default) ===== */
+:root {
+    --bg: #0b1117; --surface: #121c27; --surface-2: #182535; --border: rgba(255,255,255,.09);
+    --text: #e8eef5; --muted: #8ea0b3; --accent: #34d399; --accent-2: #22d3ee; --on-accent: #04261b;
+    --good: #34d399; --warn: #fbbf24; --bad: #f87171;
+    --shadow: 0 12px 32px rgba(0,0,0,.35); --radius: 18px;
+    --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+[data-theme="light"] {
+    --bg: #f6f8f5; --surface: #ffffff; --surface-2: #eef3ee; --border: rgba(20,40,30,.12);
+    --text: #14221b; --muted: #5c6f64; --accent: #15803d; --accent-2: #0891b2; --on-accent: #ffffff;
+    --good: #15803d; --warn: #b45309; --bad: #dc2626; --shadow: 0 10px 28px rgba(20,40,30,.10);
+}
+[data-theme="techno"], [data-theme="tech"] {
+    --bg: #05060d; --surface: rgba(12,16,32,.78); --surface-2: rgba(20,26,52,.85); --border: rgba(0,240,255,.28);
+    --text: #e6f7ff; --muted: #7f95b8; --accent: #00f0ff; --accent-2: #ff2bd6; --on-accent: #001418;
+    --good: #39ff88; --warn: #ffd23f; --bad: #ff4d6d; --shadow: 0 0 24px rgba(0,240,255,.16);
+}
+
+/* ===== Base ===== */
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; background: var(--bg); color: var(--text);
+    font-family: var(--font); line-height: 1.55; transition: background .3s, color .3s; }
+main { flex: 1; width: min(1120px, 100% - 32px); margin: 0 auto; padding: 28px 0 48px; }
+h1, h2, h3, h4 { line-height: 1.2; margin: 0 0 .5em; }
+p { margin: 0 0 .75em; }
+a { color: var(--accent); }
+img { max-width: 100%; }
+.hidden { display: none !important; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ===== Tech background ===== */
+.techno-bg { display: none; position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+[data-theme="techno"] .techno-bg, [data-theme="tech"] .techno-bg { display: block; }
+.grid-lines { position: absolute; inset: 0; background-image: linear-gradient(rgba(0,240,255,.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,240,255,.08) 1px, transparent 1px); background-size: 44px 44px;
+    -webkit-mask-image: radial-gradient(circle at 50% 30%, #000, transparent 75%); mask-image: radial-gradient(circle at 50% 30%, #000, transparent 75%); }
+.glow-orb { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .45; animation: float 14s ease-in-out infinite alternate; }
+.orb-1 { width: 380px; height: 380px; background: #00f0ff; top: -80px; left: -60px; }
+.orb-2 { width: 340px; height: 340px; background: #ff2bd6; top: 35%; right: -80px; animation-delay: -5s; }
+.orb-3 { width: 300px; height: 300px; background: #6d5cff; bottom: -80px; left: 30%; animation-delay: -9s; }
+@keyframes float { to { transform: translate(40px, 30px) scale(1.12); } }
+
+/* ===== Top bar + theme switcher ===== */
+.top-bar { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 10px max(16px, calc((100% - 1120px) / 2)); background: color-mix(in srgb, var(--bg) 82%, transparent);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-bottom: 1px solid var(--border); }
+.logo { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.15rem; color: var(--text); text-decoration: none; }
+.logo-mark { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 11px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
+.theme-toggle-wrap { display: flex; align-items: center; gap: 10px; }
+.theme-label { font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.slider-track { position: relative; padding: 4px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); }
+.slider-track::before { content: ""; position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / 3); border-radius: 999px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)); transition: transform .25s ease; }
+[data-theme="light"] .slider-track::before { transform: translateX(0); }
+[data-theme="dark"] .slider-track::before { transform: translateX(100%); }
+[data-theme="techno"] .slider-track::before, [data-theme="tech"] .slider-track::before { transform: translateX(200%); }
+.slider-track input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; pointer-events: none; margin: 0; }
+.slider-track:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.slider-labels { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); }
+.slider-labels span { padding: 6px 12px; font-size: .8rem; text-align: center; cursor: pointer; color: var(--muted); white-space: nowrap; user-select: none; transition: color .2s; }
+.slider-labels b { font-weight: 600; }
+[data-theme="light"] .slider-labels [data-val="0"], [data-theme="dark"] .slider-labels [data-val="1"],
+[data-theme="techno"] .slider-labels [data-val="2"], [data-theme="tech"] .slider-labels [data-val="2"] { color: var(--on-accent); }
+
+/* ===== Hero ===== */
+.hero-text { text-align: center; max-width: 720px; margin: 12px auto 32px; }
+.hero-badge { display: inline-block; padding: 5px 14px; margin-bottom: 16px; border-radius: 999px; font-size: .8rem; color: var(--muted); background: var(--surface); border: 1px solid var(--border); }
+.hero-text h1 { font-size: clamp(2.1rem, 6vw, 3.6rem); font-weight: 800; letter-spacing: -.02em; }
+.accent-text { background: linear-gradient(90deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+[data-theme="techno"] .accent-text { filter: drop-shadow(0 0 14px rgba(0,240,255,.45)); }
+.hero-sub { color: var(--muted); font-size: 1.05rem; }
+
+.hero-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.upload-card { display: flex; cursor: pointer; border-radius: var(--radius); background: var(--surface); border: 2px dashed var(--border);
+    box-shadow: var(--shadow); transition: transform .2s, border-color .2s, background .2s; }
+.upload-card:hover, .upload-card.dragover, .upload-card.drag-over, .upload-card.dragging, .upload-card.active { transform: translateY(-3px); border-color: var(--accent); background: var(--surface-2); }
+.camera-upload-card { border-style: solid; }
+.upload-card-inner { width: 100%; padding: 40px 24px; text-align: center; }
+.upload-icon { display: grid; place-items: center; width: 72px; height: 72px; margin: 0 auto 16px; font-size: 2rem; border-radius: 20px;
+    background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.upload-card h2 { font-size: 1.35rem; }
+.upload-card p { color: var(--muted); }
+.file-hint { font-size: .82rem; opacity: .85; }
+
+/* ===== Buttons ===== */
+button { font: inherit; cursor: pointer; }
+.btn-upload, .btn-primary { padding: 12px 24px; border: 0; border-radius: 12px; font-weight: 700; color: var(--on-accent);
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)); transition: transform .15s, box-shadow .2s, filter .2s; }
+.btn-upload:hover, .btn-primary:hover { transform: translateY(-1px); filter: brightness(1.08); box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 35%, transparent); }
+.btn-secondary { padding: 11px 20px; border-radius: 12px; font-weight: 600; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); transition: border-color .2s; }
+.btn-secondary:hover { border-color: var(--accent); }
+.btn-icon { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--border); color: var(--text); background: var(--surface-2); }
+
+/* ===== Preview ===== */
+#preview-section { margin-top: 24px; }
+.preview-wrap { display: grid; justify-items: center; gap: 16px; padding: 20px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
+#image-preview { max-height: 360px; border-radius: 14px; object-fit: contain; }
+.preview-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+
+/* ===== How it works / facts / stats ===== */
+.how-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 36px; }
+.how-card { padding: 22px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); }
+.how-card h3 { font-size: 1.05rem; }
+.how-card p { margin: 0; color: var(--muted); font-size: .92rem; }
+.how-num { display: grid; place-items: center; width: 32px; height: 32px; margin-bottom: 12px; border-radius: 10px; font-weight: 800; color: var(--on-accent); background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
+.facts-strip { margin-top: 28px; overflow: hidden; border-block: 1px solid var(--border); padding: 12px 0;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); }
+.facts-scroll { display: flex; gap: 12px; width: max-content; animation: scroll 60s linear infinite; }
+.facts-strip:hover .facts-scroll { animation-play-state: paused; }
+.fact-chip { white-space: nowrap; padding: 8px 16px; border-radius: 999px; font-size: .88rem; background: var(--surface); border: 1px solid var(--border); }
+@keyframes scroll { to { transform: translateX(calc(-50% - 6px)); } }
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 28px; }
+.stat-card { padding: 20px; text-align: center; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); }
+.stat-icon { font-size: 1.5rem; }
+.stat-number { margin-top: 6px; font-size: 1.8rem; font-weight: 800; color: var(--accent); }
+.stat-label { font-size: .82rem; color: var(--muted); }
+
+/* ===== Camera modal ===== */
+.modal { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px; background: rgba(0,0,0,.72); backdrop-filter: blur(6px); }
+.modal-content { width: min(560px, 100%); padding: 16px; border-radius: var(--radius); background: var(--surface-solid, var(--bg)); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.modal-header h3 { margin: 0; font-size: 1.05rem; }
+.camera-viewport { position: relative; overflow: hidden; border-radius: 14px; background: #000; aspect-ratio: 4 / 3; }
+#camera-video { width: 100%; height: 100%; object-fit: cover; }
+.viewfinder-guide { position: absolute; inset: 14%; pointer-events: none; }
+.guide-corner { position: absolute; width: 26px; height: 26px; border: 3px solid var(--accent); }
+.top-left { top: 0; left: 0; border-right: 0; border-bottom: 0; border-radius: 8px 0 0 0; }
+.top-right { top: 0; right: 0; border-left: 0; border-bottom: 0; border-radius: 0 8px 0 0; }
+.bottom-left { bottom: 0; left: 0; border-right: 0; border-top: 0; border-radius: 0 0 0 8px; }
+.bottom-right { bottom: 0; right: 0; border-left: 0; border-top: 0; border-radius: 0 0 8px 0; }
+.guide-text { position: absolute; left: 0; right: 0; bottom: -34px; margin: 0; text-align: center; font-size: .8rem; color: #fff; text-shadow: 0 1px 4px #000; }
+.camera-controls { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 16px; }
+.btn-snap { width: 68px; height: 68px; padding: 0; border-radius: 50%; border: 3px solid var(--accent); background: transparent; }
+.shutter-circle { display: block; width: 50px; height: 50px; margin: auto; border-radius: 50%; background: var(--accent); transition: transform .1s; }
+.btn-snap:active .shutter-circle { transform: scale(.88); }
+
+/* ===== Loading / error ===== */
+.full-center { display: grid; place-items: center; min-height: 55vh; }
+.loading-box, .error-card { width: min(440px, 100%); padding: 32px; text-align: center; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.spinner { width: 52px; height: 52px; margin: 0 auto 18px; border-radius: 50%; border: 4px solid var(--border); border-top-color: var(--accent); animation: spin .9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-steps { display: grid; gap: 8px; margin-top: 18px; text-align: left; }
+.step { padding: 10px 14px; border-radius: 10px; font-size: .9rem; color: var(--muted); background: var(--surface-2); border: 1px solid transparent; opacity: .6; transition: all .25s; }
+.step.active, .step.running, .step.loading { opacity: 1; color: var(--text); border-color: var(--accent); }
+.step.done, .step.complete, .step.completed { opacity: 1; color: var(--good); }
+.error-icon { display: block; font-size: 2.4rem; margin-bottom: 8px; }
+#error-message { color: var(--bad); }
+
+/* ===== Report (also styles whatever script.js renders inside the cards) ===== */
+.report-layout { display: grid; gap: 20px; }
+.report-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+.report-col { display: grid; gap: 20px; }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+
+footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(--muted); border-top: 1px solid var(--border); }
+[data-theme="techno"] .logo span:last-child, [data-theme="techno"] h1, [data-theme="techno"] .stat-number { font-family: var(--mono); }
+
+/* ===== Responsive ===== */
+@media (max-width: 860px) {
+    .report-grid, .hero-grid, .how-grid { grid-template-columns: 1fr; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 520px) {
+    .theme-label { display: none; }
+    .slider-labels span { padding: 6px 9px; }
+    .slider-labels b { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+/* ===== Report page ===== */
+.container { width: min(860px, 100% - 32px); margin: 0 auto; padding: 28px 0 48px; flex: 1; }
+.page-head { margin-bottom: 18px; }
+.tagline { display: inline-block; margin: 0; padding: 5px 14px; border-radius: 999px; font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); background: var(--surface); border: 1px solid var(--border); }
+.report { display: grid; gap: 18px; }
+.report-card { padding: 24px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); animation: rise .4s ease both; }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+.report-card h3 { font-size: 1.1rem; }
+.muted, .section-subtitle, .brand-name { color: var(--muted); }
+.product-info h2 { margin: 0 0 4px; font-size: clamp(1.5rem, 4vw, 2.1rem); letter-spacing: -.01em; }
+.brand-name { margin: 0; }
+
+.score-display { display: flex; align-items: center; gap: 18px; margin: 8px 0 14px; }
+.score-badge { display: grid; place-items: center; width: 92px; height: 92px; border-radius: 50%; font-size: 2rem; font-weight: 800; border: 5px solid var(--muted); }
+.score-safe { color: var(--good); border-color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); }
+.score-moderate { color: var(--warn); border-color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.score-unsafe { color: var(--bad); border-color: var(--bad); background: color-mix(in srgb, var(--bad) 14%, transparent); }
+.verdict-label { font-size: 1.3rem; font-weight: 800; letter-spacing: .08em; }
+.text-safe { color: var(--good); } .text-moderate { color: var(--warn); } .text-unsafe { color: var(--bad); }
+.reasoning { margin: 0; color: var(--muted); }
+
+.flags-list { display: grid; gap: 12px; }
+.flag-item { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 14px 16px; border-radius: 12px; background: var(--surface-2); border-left: 4px solid var(--warn); }
+.flag-item p { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: .92rem; }
+.flag-type { font-weight: 700; }
+.flag-severity { align-self: center; padding: 2px 10px; border-radius: 999px; font-size: .7rem; font-weight: 700; letter-spacing: .06em; color: var(--on-accent); background: var(--warn); }
+.severity-low { border-left-color: var(--good); } .severity-low .flag-severity { background: var(--good); }
+.severity-high, .severity-critical, .severity-severe { border-left-color: var(--bad); }
+.severity-high .flag-severity, .severity-critical .flag-severity, .severity-severe .flag-severity { background: var(--bad); }
+
+.alternatives-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-top: 14px; }
+.alt-card { padding: 16px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--border); transition: border-color .2s, transform .2s; }
+.alt-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.alt-card-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.alt-card h4 { margin: 0; }
+.alt-category-badge { padding: 2px 10px; border-radius: 999px; font-size: .72rem; font-weight: 600; color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.alt-why { margin: 0; font-size: .92rem; color: var(--muted); }
+.alt-why strong { color: var(--text); }
+
+.ingredients-text { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+.per-serving { font-size: .8rem; font-weight: 500; color: var(--muted); }
+.nutrition-table { width: 100%; border-collapse: collapse; }
+.nutrition-table th, .nutrition-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+.nutrition-table th { font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.nutrition-table td:last-child, .nutrition-table th:last-child { text-align: right; font-weight: 600; }
+.nutrition-table tbody tr:nth-child(even) { background: var(--surface-2); }
+.db-match-note { margin-top: 16px; padding: 10px 14px; border-radius: 12px; font-size: .88rem; color: var(--good); background: color-mix(in srgb, var(--good) 12%, transparent); }
+.db-match-note.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+
+.news-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-top: 14px; }
+.news-card { display: flex; flex-direction: column; overflow: hidden; border-radius: 14px; text-decoration: none; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); transition: border-color .2s, transform .2s; }
+.news-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.news-thumb { width: 100%; height: 140px; object-fit: cover; }
+.news-content { padding: 14px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+.news-content h4 { margin: 0; font-size: .98rem; }
+.news-meta { display: flex; justify-content: space-between; gap: 8px; margin-top: auto; font-size: .78rem; color: var(--muted); }
+
+.report-actions { display: flex; justify-content: center; margin-top: 6px; }
+.btn-primary { display: inline-block; text-decoration: none; }
+footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(--muted); border-top: 1px solid var(--border); }
+[data-theme="techno"] h1, [data-theme="techno"] h2, [data-theme="techno"] .score-badge { font-family: var(--mono); }
+@media (max-width: 520px) {
+    .theme-label { display: none; }
+    .slider-labels span { padding: 6px 9px; }
+    .slider-labels b { display: none; }
+    .score-badge { width: 76px; height: 76px; font-size: 1.6rem; }
+}
+@media print { .top-bar, .techno-bg, .report-actions { display: none; } body { background: #fff; color: #000; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* ===== App states ===== */
+.report-actions { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 6px; }
+.skel { height: 14px; margin: 12px 0; border-radius: 7px; background: linear-gradient(90deg, var(--surface-2), var(--border), var(--surface-2)); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; }
+.skel.short { width: 55%; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+.toast { position: fixed; left: 50%; bottom: 24px; z-index: 200; max-width: min(92vw, 460px); padding: 12px 18px; border-radius: 12px; font-size: .92rem; color: #fff; background: #b91c1c; box-shadow: 0 10px 28px rgba(0,0,0,.4); transform: translate(-50%, 20px); opacity: 0; pointer-events: none; transition: all .25s; }
+.toast.on { transform: translate(-50%, 0); opacity: 1; }
+.report-card .alt-category-badge { display: inline-block; margin-top: 10px; }
+    </style>
 </head>
 <body>
-    <!-- Techno background graphics (only visible in techno theme) -->
     <div class="techno-bg" aria-hidden="true">
         <div class="grid-lines"></div>
         <div class="glow-orb orb-1"></div>
@@ -17,55 +273,52 @@
         <div class="glow-orb orb-3"></div>
     </div>
 
-    <!-- Top Bar -->
     <nav class="top-bar">
-        <a href="/" class="logo">🍽️ <span>FoodCheck</span></a>
+        <a href="/" class="logo"><span class="logo-mark">🍽️</span><span>FoodCheck</span></a>
         <div class="theme-toggle-wrap">
             <label class="theme-label" for="theme-slider">Theme</label>
             <div class="slider-track">
-                <input type="range" id="theme-slider" min="0" max="2" step="1" value="1">
+                <input type="range" id="theme-slider" min="0" max="2" step="1" value="1" aria-label="Theme: light, dark or tech">
                 <div class="slider-labels">
-                    <span data-val="0">☀️ Light</span>
-                    <span data-val="1">🌙 Dark</span>
-                    <span data-val="2">💎 Tech</span>
+                    <span data-val="0">☀️ <b>Light</b></span>
+                    <span data-val="1">🌙 <b>Dark</b></span>
+                    <span data-val="2">💎 <b>Tech</b></span>
                 </div>
             </div>
         </div>
     </nav>
 
     <main>
-        <!-- ── HERO / UPLOAD SECTION ──────────────────────────────────── -->
+        <!-- UPLOAD / HERO -->
         <section id="upload-section" class="hero-section">
             <div class="hero-text">
+                <span class="hero-badge">🇮🇳 Built for Indian food brands</span>
                 <h1>Scan. Analyze. <span class="accent-text">Eat Safe.</span></h1>
-                <p class="hero-sub">AI-powered food safety & corporate transparency checker for India 🇮🇳</p>
+                <p class="hero-sub">Snap a product label and get an AI health report, ingredient flags, healthier swaps and the latest company news.</p>
             </div>
 
             <div class="hero-grid">
-                <!-- Big Upload Card -->
                 <div class="upload-card" id="drop-zone">
                     <div class="upload-card-inner">
                         <div class="upload-icon">📁</div>
                         <h2>Upload Photo</h2>
-                        <p>Drag & drop or click to browse<br><span class="file-hint">JPG, PNG, WebP • Max 5MB</span></p>
+                        <p>Drag &amp; drop or click to browse<br><span class="file-hint">JPG, PNG, WebP • Max 5MB</span></p>
                         <button type="button" id="browse-btn" class="btn-upload">Choose File</button>
                     </div>
                     <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp" hidden>
                 </div>
 
-                <!-- Big Camera Card -->
                 <div class="upload-card camera-upload-card" id="camera-card-trigger">
                     <div class="upload-card-inner">
                         <div class="upload-icon">📸</div>
                         <h2>Open Camera</h2>
-                        <p>Snap a photo of the product label or packaging</p>
+                        <p>Snap the product label or packaging<br><span class="file-hint">Works best in good light</span></p>
                         <button type="button" id="open-camera-btn" class="btn-upload btn-camera-action">Start Camera</button>
                     </div>
                     <input type="file" id="mobile-camera-input" accept="image/*" capture="environment" hidden>
                 </div>
             </div>
 
-            <!-- Preview -->
             <div id="preview-section" class="hidden">
                 <div class="preview-wrap">
                     <img id="image-preview" alt="Product preview">
@@ -76,10 +329,15 @@
                 </div>
             </div>
 
-            <!-- Food Facts Marquee -->
+            <div class="how-grid">
+                <div class="how-card"><span class="how-num">1</span><h3>Add a photo</h3><p>Upload or snap the front or back of the pack.</p></div>
+                <div class="how-card"><span class="how-num">2</span><h3>AI reads the label</h3><p>Ingredients and nutrition are extracted and scored.</p></div>
+                <div class="how-card"><span class="how-num">3</span><h3>Get your report</h3><p>Health verdict, red flags, swaps and company news.</p></div>
+            </div>
+
             <div class="facts-strip">
                 <div class="facts-scroll">
-                    <div class="fact-chip">🔥 An avg Indian consumes 2,000 kcal/day</div>
+                    <div class="fact-chip">🔥 An avg Indian consumes ~2,000 kcal/day</div>
                     <div class="fact-chip">🧂 WHO recommends &lt;5g salt per day</div>
                     <div class="fact-chip">🍬 Added sugars should be &lt;25g/day</div>
                     <div class="fact-chip">💪 Protein RDA: 0.8g per kg body weight</div>
@@ -87,39 +345,26 @@
                     <div class="fact-chip">🥦 Fiber goal: 25-30g per day</div>
                     <div class="fact-chip">⚠️ India has 77M+ diabetics — check sugar!</div>
                     <div class="fact-chip">🥛 Calcium RDA: 1000mg/day for adults</div>
-                    <div class="fact-chip">🔥 An avg Indian consumes 2,000 kcal/day</div>
-                    <div class="fact-chip">🧂 WHO recommends &lt;5g salt per day</div>
-                    <div class="fact-chip">🍬 Added sugars should be &lt;25g/day</div>
-                    <div class="fact-chip">💪 Protein RDA: 0.8g per kg body weight</div>
+                    <div class="fact-chip" aria-hidden="true">🔥 An avg Indian consumes ~2,000 kcal/day</div>
+                    <div class="fact-chip" aria-hidden="true">🧂 WHO recommends &lt;5g salt per day</div>
+                    <div class="fact-chip" aria-hidden="true">🍬 Added sugars should be &lt;25g/day</div>
+                    <div class="fact-chip" aria-hidden="true">💪 Protein RDA: 0.8g per kg body weight</div>
+                    <div class="fact-chip" aria-hidden="true">🫒 Trans fat should be 0g ideally</div>
+                    <div class="fact-chip" aria-hidden="true">🥦 Fiber goal: 25-30g per day</div>
+                    <div class="fact-chip" aria-hidden="true">⚠️ India has 77M+ diabetics — check sugar!</div>
+                    <div class="fact-chip" aria-hidden="true">🥛 Calcium RDA: 1000mg/day for adults</div>
                 </div>
             </div>
 
-            <!-- Decorative Stat Cards -->
             <div class="stats-grid">
-                <div class="stat-card">
-                    <span class="stat-icon">🔍</span>
-                    <div class="stat-number">500+</div>
-                    <div class="stat-label">Products Analyzed</div>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-icon">⚠️</span>
-                    <div class="stat-number">12</div>
-                    <div class="stat-label">Harmful Additives Tracked</div>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-icon">🌿</span>
-                    <div class="stat-number">50+</div>
-                    <div class="stat-label">Healthier Alternatives</div>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-icon">📰</span>
-                    <div class="stat-number">Live</div>
-                    <div class="stat-label">Company News Feed</div>
-                </div>
+                <div class="stat-card"><span class="stat-icon">🔍</span><div class="stat-number">500+</div><div class="stat-label">Products Analyzed</div></div>
+                <div class="stat-card"><span class="stat-icon">⚠️</span><div class="stat-number">12</div><div class="stat-label">Harmful Additives Tracked</div></div>
+                <div class="stat-card"><span class="stat-icon">🌿</span><div class="stat-number">50+</div><div class="stat-label">Healthier Alternatives</div></div>
+                <div class="stat-card"><span class="stat-icon">📰</span><div class="stat-number">Live</div><div class="stat-label">Company News Feed</div></div>
             </div>
         </section>
 
-        <!-- ── CAMERA MODAL ───────────────────────────────────────────── -->
+        <!-- CAMERA MODAL -->
         <div id="camera-modal" class="modal hidden">
             <div class="modal-content camera-card">
                 <div class="modal-header">
@@ -145,29 +390,29 @@
             </div>
         </div>
 
-        <!-- ── LOADING ────────────────────────────────────────────────── -->
+        <!-- LOADING -->
         <section id="loading-section" class="hidden full-center">
             <div class="loading-box">
                 <div class="spinner"></div>
                 <p id="loading-text">Analyzing your product...</p>
                 <div class="loading-steps">
                     <div class="step" id="step-vision">📷 Reading product label...</div>
-                    <div class="step" id="step-health">🧪 Analyzing health & safety...</div>
+                    <div class="step" id="step-health">🧪 Analyzing health &amp; safety...</div>
                     <div class="step" id="step-news">📰 Fetching company news...</div>
                 </div>
             </div>
         </section>
 
-        <!-- ── ERROR ──────────────────────────────────────────────────── -->
+        <!-- ERROR -->
         <section id="error-section" class="hidden full-center">
             <div class="error-card">
                 <span class="error-icon">⚠️</span>
                 <p id="error-message"></p>
-                <button id="retry-btn" class="btn-primary" style="width:auto;display:inline-block;">Try Again</button>
+                <button id="retry-btn" class="btn-primary">Try Again</button>
             </div>
         </section>
 
-        <!-- ── PROGRESSIVE REPORT ─────────────────────────────────────── -->
+        <!-- REPORT -->
         <section id="report-section" class="hidden report-layout">
             <div id="product-card"></div>
             <div class="report-grid">
@@ -187,9 +432,309 @@
     </main>
 
     <footer>
-        <p>Powered by Google Gemini AI & Open Food Facts • Made for the Indian consumer 🇮🇳</p>
+        <p>Powered by Google Gemini AI &amp; Open Food Facts • Made for the Indian consumer 🇮🇳</p>
     </footer>
 
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script>
+/* Theme switcher: 0 = light, 1 = dark, 2 = techno. Saved in localStorage. */
+(function () {
+    var THEMES = ['light', 'dark', 'techno'];
+    var COLORS = { light: '#f6f8f5', dark: '#0b1117', techno: '#05060d' };
+    var KEY = 'foodcheck-theme';
+    var root = document.documentElement;
+    var slider = document.getElementById('theme-slider');
+    var meta = document.querySelector('meta[name="theme-color"]');
+
+    function apply(name, save) {
+        if (THEMES.indexOf(name) < 0) name = 'dark';
+        root.setAttribute('data-theme', name);
+        if (slider) slider.value = THEMES.indexOf(name);
+        if (meta) meta.setAttribute('content', COLORS[name]);
+        if (save) { try { localStorage.setItem(KEY, name); } catch (e) {} }
+    }
+
+    var saved = null;
+    try { saved = localStorage.getItem(KEY); } catch (e) {}
+    apply(saved || root.getAttribute('data-theme'), false);
+
+    if (slider) {
+        slider.addEventListener('input', function () { apply(THEMES[+slider.value], true); });
+    }
+    document.querySelectorAll('.slider-labels span').forEach(function (el) {
+        el.addEventListener('click', function () {
+            apply(THEMES[+el.getAttribute('data-val')], true);
+        });
+    });
+})();
+    </script>
+    <script>
+/* FoodCheck app: upload / camera -> /analyze/vision -> (/analyze/health + /news in parallel) -> report */
+(function () {
+    'use strict';
+    var $ = function (id) { return document.getElementById(id); };
+    var MAX_BYTES = 5 * 1024 * 1024;
+    var VIEWS = ['upload-section', 'loading-section', 'error-section', 'report-section'];
+    var NUTRIENTS = [
+        ['energy_kcal', 'Energy (kcal)'], ['protein_g', 'Protein (g)'], ['total_fat_g', 'Total Fat (g)'],
+        ['saturated_fat_g', 'Saturated Fat (g)'], ['trans_fat_g', 'Trans Fat (g)'], ['carbohydrates_g', 'Carbohydrates (g)'],
+        ['total_sugar_g', 'Total Sugar (g)'], ['sodium_mg', 'Sodium (mg)'], ['fiber_g', 'Dietary Fiber (g)']
+    ];
+    var file = null, previewURL = null, stream = null, facing = 'environment', busy = false, runId = 0, toastTimer = null;
+
+    /* ---------- helpers ---------- */
+    function esc(s) {
+        var map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return map[c]; });
+    }
+    function safeUrl(u) { return /^https?:\/\//i.test(u || '') ? u : '#'; }
+    function num(v) { var n = Number(v); return isFinite(n) ? String(Math.round(n * 10) / 10) : null; }
+    function show(id) {
+        VIEWS.forEach(function (v) { $(v).classList.toggle('hidden', v !== id); });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    function toast(msg) {
+        var t = $('fc-toast');
+        if (!t) { t = document.createElement('div'); t.id = 'fc-toast'; t.className = 'toast'; document.body.appendChild(t); }
+        t.textContent = msg; t.classList.add('on');
+        clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove('on'); }, 4500);
+    }
+    function fill(id, html, extra) {
+        var el = $(id);
+        el.className = html ? 'report-card' + (extra ? ' ' + extra : '') : '';
+        el.innerHTML = html || '';
+    }
+    function skeleton(title) {
+        return '<h3>' + title + '</h3><div class="skel"></div><div class="skel"></div><div class="skel short"></div>';
+    }
+    function api(url, opts, ms) {
+        var ctl = new AbortController(), timer = setTimeout(function () { ctl.abort(); }, ms || 60000);
+        opts = opts || {}; opts.signal = ctl.signal;
+        return fetch(url, opts).then(function (r) {
+            return r.json().catch(function () { return {}; }).then(function (j) {
+                if (!r.ok) throw new Error(j.error || 'Server error (' + r.status + ')');
+                return j;
+            });
+        }).catch(function (e) {
+            if (e && e.name === 'AbortError') throw new Error('The request took too long. Please try again.');
+            if (e instanceof TypeError) throw new Error('Could not reach the server. Check your connection and try again.');
+            throw e;
+        }).then(function (j) { clearTimeout(timer); return j; }, function (e) { clearTimeout(timer); throw e; });
+    }
+
+    /* ---------- file selection ---------- */
+    function setFile(f) {
+        if (!f) return;
+        var okType = /^image\/(jpeg|png|webp)$/i.test(f.type) || (!f.type && /\.(jpe?g|png|webp)$/i.test(f.name || ''));
+        if (!okType) { toast('Please choose a JPG, PNG or WebP image.'); return; }
+        file = f;
+        if (previewURL) URL.revokeObjectURL(previewURL);
+        previewURL = URL.createObjectURL(f);
+        $('image-preview').src = previewURL;
+        $('preview-section').classList.remove('hidden');
+        document.querySelector('.hero-grid').classList.add('hidden');
+        show('upload-section');
+    }
+    function clearFile() {
+        file = null;
+        $('file-input').value = ''; $('mobile-camera-input').value = '';
+        $('preview-section').classList.add('hidden');
+        document.querySelector('.hero-grid').classList.remove('hidden');
+    }
+    function extFor(type) { return type === 'image/png' ? 'png' : type === 'image/webp' ? 'webp' : 'jpg'; }
+    /* shrink big phone photos so they stay under the 5MB server limit and upload faster */
+    function prepare(f) {
+        if (f.size <= 1.5 * 1024 * 1024) return Promise.resolve(f);
+        return new Promise(function (resolve) {
+            var img = new Image(), url = URL.createObjectURL(f), done = false;
+            var finish = function (v) { if (!done) { done = true; resolve(v); } };
+            setTimeout(function () { finish(f); }, 8000); /* never hang on a photo the browser can't decode */
+            img.onload = function () {
+                var s = Math.min(1, 1800 / Math.max(img.width, img.height)), c = document.createElement('canvas');
+                c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+                c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+                URL.revokeObjectURL(url);
+                c.toBlob(function (b) { finish(b && b.size < f.size ? b : f); }, 'image/jpeg', 0.85);
+            };
+            img.onerror = function () { URL.revokeObjectURL(url); finish(f); };
+            img.src = url;
+        });
+    }
+
+    /* ---------- camera ---------- */
+    function stopStream() {
+        if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
+        $('camera-video').srcObject = null;
+    }
+    function closeCamera() { stopStream(); $('camera-modal').classList.add('hidden'); }
+    function startStream() {
+        stopStream();
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false })
+            .then(function (s) { stream = s; var v = $('camera-video'); v.srcObject = s; var p = v.play && v.play(); if (p && p.catch) p.catch(function () {}); })
+            .catch(function () { closeCamera(); toast('Camera blocked or unavailable. Allow camera access, or use Upload Photo.'); });
+    }
+    function openCamera() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { $('mobile-camera-input').click(); return; }
+        $('camera-modal').classList.remove('hidden');
+        startStream();
+    }
+    function snap() {
+        var v = $('camera-video'), c = $('camera-canvas');
+        if (!v.videoWidth) { toast('Camera is still starting, try again.'); return; }
+        c.width = v.videoWidth; c.height = v.videoHeight;
+        c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+        c.toBlob(function (b) {
+            if (!b) { toast('Could not capture the photo.'); return; }
+            closeCamera();
+            setFile(new File([b], 'photo.jpg', { type: 'image/jpeg' }));
+        }, 'image/jpeg', 0.9);
+    }
+
+    /* ---------- analysis flow ---------- */
+    function setStep(id, state) {
+        ['step-vision', 'step-health', 'step-news'].forEach(function (s) { $(s).classList.remove('active', 'done'); });
+        if (state) $(id).classList.add(state);
+    }
+    function fail(e) {
+        $('error-message').textContent = (e && e.message) || 'Something went wrong. Please try again.';
+        show('error-section');
+    }
+    function analyze() {
+        if (!file || busy) return;
+        busy = true; var my = ++runId;
+        $('loading-text').textContent = 'Reading the product label...';
+        setStep('step-vision', 'active'); show('loading-section');
+        prepare(file).then(function (blob) {
+            if (blob.size > MAX_BYTES) throw new Error('This image is over 5MB even after resizing. Please use a smaller photo.');
+            var fd = new FormData();
+            fd.append('image', blob, 'photo.' + extFor(blob.type));
+            return api('/analyze/vision', { method: 'POST', body: fd }, 120000);
+        }).then(function (v) {
+            if (my !== runId) return;
+            setStep('step-vision', 'done');
+            renderVision(v);
+            runHealth(v, my);
+            runNews(v.brand, my);
+        }).catch(function (e) { if (my === runId) fail(e); })
+          .then(function () { busy = false; });
+    }
+
+    function renderVision(v) {
+        var src = v.off_match ? 'Matched in Open Food Facts' : 'Read from the photo';
+        fill('product-card',
+            '<h2>' + esc(v.product_name || 'Unknown Product') + '</h2><p class="brand-name">by ' + esc(v.brand || 'Unknown') + '</p>' +
+            '<span class="alt-category-badge">' + src + '</span>', 'product-info');
+        fill('ingredients-card', '<h3>📋 Ingredients</h3><p class="ingredients-text">' + esc(v.ingredients_text || 'Not available') + '</p>');
+
+        var n = v.nutrition_facts || {}, rows = '';
+        NUTRIENTS.forEach(function (p) { var x = num(n[p[0]]); if (n[p[0]] != null && x !== null) rows += '<tr><td>' + p[1] + '</td><td>' + x + '</td></tr>'; });
+        var note = '';
+        if (v.off_match) {
+            note = '<div class="db-match-note">✅ Cross-checked with Open Food Facts database' +
+                (v.off_match.nutriscore_grade ? ' • Nutri-Score: <strong>' + esc(String(v.off_match.nutriscore_grade).toUpperCase()) + '</strong>' : '') +
+                (v.off_match.nova_group ? ' • NOVA Group: <strong>' + esc(v.off_match.nova_group) + '</strong>' : '') + '</div>';
+        } else {
+            note = '<div class="db-match-note warn">ℹ️ No database match found — results are based on AI analysis only</div>';
+        }
+        fill('nutrition-card', '<h3>📊 Nutrition Facts <span class="per-serving">(per 100g)</span></h3>' +
+            (rows ? '<table class="nutrition-table"><thead><tr><th>Nutrient</th><th>Value</th></tr></thead><tbody>' + rows + '</tbody></table>'
+                  : '<p class="muted">No nutrition values were found on the label.</p>') + note);
+
+        fill('health-card', skeleton('Health &amp; Safety Score'));
+        fill('flags-card', ''); fill('alternatives-card', '');
+        fill('news-card', skeleton('📰 Recent Company News'));
+        fill('report-actions-card', '<button type="button" class="btn-primary" id="again-btn">← Analyze Another Product</button>' +
+            '<button type="button" class="btn-secondary" id="print-btn">🖨 Save / Print</button>');
+        $('report-actions-card').className = 'report-actions';
+        show('report-section');
+    }
+
+    function runHealth(v, my) {
+        api('/analyze/health', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ingredients_text: v.ingredients_text || '', nutrition_facts: v.nutrition_facts || {}, product_name: v.product_name || '' })
+        }, 90000).catch(function (e) {
+            return { score: null, verdict: 'unknown', flags: [], alternatives: [], reasoning: 'Health analysis failed: ' + e.message };
+        }).then(function (h) { if (my === runId) renderHealth(h); });
+    }
+
+    function renderHealth(h) {
+        var verdict = String(h.verdict || 'unknown'), cls = verdict === 'safe' ? 'safe' : verdict === 'moderate' ? 'moderate' : 'unsafe';
+        var score = (h.score === null || h.score === undefined)
+            ? '<p class="muted">Score could not be determined</p>'
+            : '<div class="score-display"><div class="score-badge score-' + cls + '">' + esc(h.score) + '</div>' +
+              '<span class="verdict-label text-' + cls + '">' + esc(verdict.toUpperCase()) + '</span></div>';
+        fill('health-card', '<h3>Health &amp; Safety Score</h3>' + score + '<p class="reasoning">' + esc(h.reasoning || '') + '</p>');
+
+        var flags = h.flags || [];
+        fill('flags-card', flags.length ? '<h3>⚠️ Health Flags</h3><div class="flags-list">' + flags.map(function (f) {
+            var sev = String(f.severity || 'medium').toLowerCase();
+            return '<div class="flag-item severity-' + esc(sev.replace(/[^a-z]/g, '')) + '"><span class="flag-type">' + esc(f.type) +
+                '</span><span class="flag-severity">' + esc(sev.toUpperCase()) + '</span><p>' + esc(f.explanation) + '</p></div>';
+        }).join('') + '</div>' : '', 'flags-section');
+
+        var alts = h.alternatives || [];
+        fill('alternatives-card', alts.length ? '<h3>💡 Healthier &amp; Cleaner Alternatives</h3>' +
+            '<p class="section-subtitle">Better choices in the Indian market with cleaner ingredients &amp; superior nutrition:</p>' +
+            '<div class="alternatives-grid">' + alts.map(function (a) {
+                return '<div class="alt-card"><div class="alt-card-header"><h4>' + esc(a.name) + '</h4><span class="alt-category-badge">' +
+                    esc(a.category || 'Healthier Swap') + '</span></div><p class="alt-why"><strong>Why it\'s better:</strong> ' + esc(a.why_better) + '</p></div>';
+            }).join('') + '</div>' : '', 'alternatives-section');
+    }
+
+    function runNews(brand, my) {
+        var none = function () { return { articles: [] }; };
+        var p = (!brand || brand === 'Unknown') ? Promise.resolve(none()) : api('/news?brand=' + encodeURIComponent(brand), {}, 30000).catch(none);
+        p.then(function (r) {
+            if (my !== runId) return;
+            var list = (r && r.articles) || [];
+            fill('news-card', '<h3>📰 ' + (list.length ? 'Recent Company News' : 'Company News') + '</h3>' + (list.length
+                ? '<div class="news-grid">' + list.map(function (a) {
+                    return '<a href="' + esc(safeUrl(a.url)) + '" target="_blank" rel="noopener" class="news-card">' +
+                        (a.image ? '<img src="' + esc(safeUrl(a.image)) + '" alt="" class="news-thumb" loading="lazy">' : '') +
+                        '<div class="news-content"><h4>' + esc(a.title) + '</h4><div class="news-meta"><span>' + esc(a.source) +
+                        '</span><span>' + esc(a.published_at ? String(a.published_at).slice(0, 10) : '') + '</span></div></div></a>';
+                }).join('') + '</div>' : '<p class="muted">No recent news found for this brand.</p>'), 'news-section');
+            document.querySelectorAll('#news-card .news-thumb').forEach(function (im) {
+                im.addEventListener('error', function () { im.remove(); });
+            });
+        });
+    }
+
+    function resetAll() {
+        runId++; busy = false; clearFile();
+        ['product-card', 'ingredients-card', 'nutrition-card', 'health-card', 'flags-card', 'alternatives-card', 'news-card', 'report-actions-card']
+            .forEach(function (id) { fill(id, ''); });
+        show('upload-section');
+    }
+
+    /* ---------- wiring ---------- */
+    var fi = $('file-input'), cam = $('mobile-camera-input'), zone = $('drop-zone');
+    $('browse-btn').addEventListener('click', function (e) { e.stopPropagation(); fi.click(); });
+    zone.addEventListener('click', function () { fi.click(); });
+    $('open-camera-btn').addEventListener('click', function (e) { e.stopPropagation(); openCamera(); });
+    $('camera-card-trigger').addEventListener('click', openCamera);
+    fi.addEventListener('click', function (e) { e.stopPropagation(); });
+    cam.addEventListener('click', function (e) { e.stopPropagation(); });
+    fi.addEventListener('change', function () { setFile(fi.files && fi.files[0]); fi.value = ''; });
+    cam.addEventListener('change', function () { setFile(cam.files && cam.files[0]); cam.value = ''; });
+    ['dragenter', 'dragover'].forEach(function (ev) { zone.addEventListener(ev, function (e) { e.preventDefault(); zone.classList.add('dragover'); }); });
+    ['dragleave', 'drop'].forEach(function (ev) { zone.addEventListener(ev, function (e) { e.preventDefault(); zone.classList.remove('dragover'); }); });
+    zone.addEventListener('drop', function (e) { setFile(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]); });
+    $('change-btn').addEventListener('click', clearFile);
+    $('analyze-btn').addEventListener('click', analyze);
+    $('retry-btn').addEventListener('click', function () { show('upload-section'); });
+    $('close-camera-btn').addEventListener('click', closeCamera);
+    $('camera-modal').addEventListener('click', function (e) { if (e.target === this) closeCamera(); });
+    $('flip-camera-btn').addEventListener('click', function () { facing = facing === 'environment' ? 'user' : 'environment'; startStream(); });
+    $('snap-btn').addEventListener('click', snap);
+    $('fallback-camera-btn').addEventListener('click', function () { closeCamera(); cam.click(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeCamera(); });
+    $('report-actions-card').addEventListener('click', function (e) {
+        if (e.target.id === 'again-btn') resetAll();
+        if (e.target.id === 'print-btn') window.print();
+    });
+    window.addEventListener('pagehide', stopStream);
+})();
+    </script>
 </body>
 </html>
