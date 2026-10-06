@@ -34,7 +34,7 @@ def search(product_name: str, brand: str) -> dict | None:
             "User-Agent": "FoodCheck-India - WebApp - Version 1.0"
         }
         try:
-            resp = requests.get(base_url, params=params, headers=headers, timeout=4)
+            resp = requests.get(base_url, params=params, headers=headers, timeout=2)
             resp.raise_for_status()
             data = resp.json()
             

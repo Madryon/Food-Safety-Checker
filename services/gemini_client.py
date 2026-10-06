@@ -48,19 +48,22 @@ def discover_available_models(api_key: str) -> list[str]:
                     discovered.append(name)
 
         if discovered:
-            # Reorder with fastest models first
+            # Prioritize non-reasoning flash-lite models for instantaneous response (<2s)
             speed_rank = [
-                "gemini-2.0-flash",
-                "gemini-2.5-flash",
                 "gemini-2.5-flash-lite",
-                "gemini-1.5-flash",
-                "gemini-1.5-flash-8b",
-                "gemini-1.5-pro",
+                "gemini-flash-lite-latest",
+                "gemini-flash-latest",
+                "gemini-3.5-flash-lite",
+                "gemini-2.5-flash",
+                "gemini-3.5-flash",
+                "gemini-3.8-flash",
+                "gemini-3.7-flash",
+                "gemini-3.6-flash",
             ]
             ranked = [m for m in speed_rank if m in discovered]
             others = [m for m in discovered if m not in ranked]
             CACHED_AVAILABLE_MODELS = ranked + others
-            logger.info(f"🌟 Discovered {len(CACHED_AVAILABLE_MODELS)} valid models from API: {CACHED_AVAILABLE_MODELS}")
+            logger.info(f"🌟 Discovered {len(CACHED_AVAILABLE_MODELS)} models. Priority order: {ranked[:3]}")
             return CACHED_AVAILABLE_MODELS
     except Exception as e:
         logger.warning(f"Could not query list_models dynamically: {e}")
@@ -107,10 +110,20 @@ def generate_content_with_retry(
                 logger.info(f"⚡ Gemini → {model_name} (attempt {attempt + 1}, timeout {req_timeout}s)")
                 model = genai.GenerativeModel(model_name)
                 kwargs = {"request_options": {"timeout": req_timeout}}
-                if generation_config:
-                    kwargs["generation_config"] = generation_config
+                cfg = dict(generation_config or {})
+                if "thinking_config" not in cfg:
+                    cfg["thinking_config"] = {"thinking_budget": 0}
+                kwargs["generation_config"] = cfg
 
-                response = model.generate_content(contents, **kwargs)
+                try:
+                    response = model.generate_content(contents, **kwargs)
+                except Exception as ex:
+                    if "thinking" in str(ex).lower():
+                        kwargs["generation_config"] = generation_config or {}
+                        response = model.generate_content(contents, **kwargs)
+                    else:
+                        raise ex
+
                 if response and response.text:
                     logger.info(f"✅ Success with {model_name}")
                     return response.text.strip()

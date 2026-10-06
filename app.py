@@ -162,7 +162,7 @@ def news_endpoint():
 
 @app.route("/health")
 def health_check():
-    return jsonify({"status": "ok", "version": "v1.2.2-dynamic-models"})
+    return jsonify({"status": "ok", "version": "v1.2.3-fast-lite"})
 
 
 @app.route("/debug/models")
