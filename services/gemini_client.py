@@ -12,10 +12,10 @@ logger = logging.getLogger(__name__)
 # Production models (gemini-2.5-flash, gemini-2.0-flash, gemini-1.5-flash) offer 15 RPM.
 # Preview/Experimental models (like gemini-3.6-flash) are often capped at only 5 RPM.
 DEFAULT_MODEL_FALLBACK_LIST = [
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
-    "gemini-1.5-flash-8b",
+    "gemini-3.7-flash",
+    "gemini-3.1-pro",
+    "gemini-3.8-flash",
+    "gemini-2.5-flash-8b",
     "gemini-3.6-flash",
 ]
 
