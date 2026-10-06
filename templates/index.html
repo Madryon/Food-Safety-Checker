@@ -479,7 +479,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
         ['saturated_fat_g', 'Saturated Fat (g)'], ['trans_fat_g', 'Trans Fat (g)'], ['carbohydrates_g', 'Carbohydrates (g)'],
         ['total_sugar_g', 'Total Sugar (g)'], ['sodium_mg', 'Sodium (mg)'], ['fiber_g', 'Dietary Fiber (g)']
     ];
-    var file = null, previewURL = null, stream = null, facing = 'environment', busy = false, runId = 0, toastTimer = null;
+    var file = null, previewURL = null, stream = null, facing = 'environment', busy = false, runId = 0, toastTimer = null, lastVision = null;
 
     /* ---------- helpers ---------- */
     function esc(s) {
@@ -619,6 +619,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
     }
 
     function renderVision(v) {
+        lastVision = v;
         var src = v.off_match ? 'Matched in Open Food Facts' : 'Read from the photo';
         fill('product-card',
             '<h2>' + esc(v.product_name || 'Unknown Product') + '</h2><p class="brand-name">by ' + esc(v.brand || 'Unknown') + '</p>' +
@@ -659,11 +660,25 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
 
     function renderHealth(h) {
         var verdict = String(h.verdict || 'unknown'), cls = verdict === 'safe' ? 'safe' : verdict === 'moderate' ? 'moderate' : 'unsafe';
-        var score = (h.score === null || h.score === undefined)
-            ? '<p class="muted">Score could not be determined</p>'
+        var isErr = (h.score === null || h.score === undefined);
+        var score = isErr
+            ? '<div style="background:rgba(239,68,68,0.08);border:1px solid var(--unsafe,#ef4444);border-radius:12px;padding:14px;margin-bottom:10px;">' +
+              '<p style="color:var(--unsafe,#ef4444);font-weight:600;margin-bottom:4px;">⚠️ Health Scoring Temporarily Paused</p>' +
+              '<p class="reasoning" style="font-size:0.9rem;">' + esc(h.reasoning || 'Rate limit reached. Please wait a few moments and retry.') + '</p>' +
+              '<button type="button" class="btn-secondary" id="retry-health-btn" style="margin-top:10px;padding:6px 14px;font-size:0.85rem;">🔄 Retry Health Scoring</button>' +
+              '</div>'
             : '<div class="score-display"><div class="score-badge score-' + cls + '">' + esc(h.score) + '</div>' +
-              '<span class="verdict-label text-' + cls + '">' + esc(verdict.toUpperCase()) + '</span></div>';
-        fill('health-card', '<h3>Health &amp; Safety Score</h3>' + score + '<p class="reasoning">' + esc(h.reasoning || '') + '</p>');
+              '<span class="verdict-label text-' + cls + '">' + esc(verdict.toUpperCase()) + '</span></div><p class="reasoning">' + esc(h.reasoning || '') + '</p>';
+        fill('health-card', '<h3>Health &amp; Safety Score</h3>' + score);
+        var retryBtn = $('retry-health-btn');
+        if (retryBtn) {
+            retryBtn.addEventListener('click', function () {
+                if (lastVision) {
+                    fill('health-card', skeleton('Health &amp; Safety Score'));
+                    runHealth(lastVision, runId);
+                }
+            });
+        }
 
         var flags = h.flags || [];
         fill('flags-card', flags.length ? '<h3>⚠️ Health Flags</h3><div class="flags-list">' + flags.map(function (f) {
