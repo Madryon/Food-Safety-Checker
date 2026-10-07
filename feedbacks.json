@@ -1,0 +1,23 @@
+[
+  {
+    "id": "fb-1",
+    "name": "Aarav Sharma",
+    "rating": 5,
+    "message": "Incredible accuracy! It detected excess sodium and hidden maltodextrin in instant noodles and suggested healthier millet noodles.",
+    "date": "Today, 10:45 AM"
+  },
+  {
+    "id": "fb-2",
+    "name": "Priya Patel",
+    "rating": 5,
+    "message": "As a mother of two, the additive red flags help me check breakfast cereals in seconds. Love the clean design and dark theme!",
+    "date": "Yesterday, 4:20 PM"
+  },
+  {
+    "id": "fb-3",
+    "name": "Rohan Deshmukh",
+    "rating": 4,
+    "message": "Quick and accurate label scanning. The camera option works smoothly on mobile. Super helpful app!",
+    "date": "2 days ago"
+  }
+]

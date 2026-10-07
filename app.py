@@ -1,6 +1,8 @@
 import os
 import uuid
 import shutil
+import json
+from datetime import datetime
 
 from flask import Flask, request, render_template, jsonify, session
 from dotenv import load_dotenv
@@ -192,6 +194,92 @@ def debug_models():
             "error": str(e),
             "error_type": type(e).__name__,
         }), 500
+
+
+FEEDBACK_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "feedbacks.json")
+
+DEFAULT_FEEDBACKS = [
+    {
+        "id": "fb-1",
+        "name": "Aarav Sharma",
+        "rating": 5,
+        "message": "Incredible accuracy! It detected excess sodium and hidden maltodextrin in instant noodles and suggested healthier millet noodles.",
+        "date": "Today, 10:45 AM"
+    },
+    {
+        "id": "fb-2",
+        "name": "Priya Patel",
+        "rating": 5,
+        "message": "As a mother of two, the additive red flags help me check breakfast cereals in seconds. Love the clean design and dark theme!",
+        "date": "Yesterday, 4:20 PM"
+    },
+    {
+        "id": "fb-3",
+        "name": "Rohan Deshmukh",
+        "rating": 4,
+        "message": "Quick and accurate label scanning. The camera option works smoothly on mobile. Super helpful app!",
+        "date": "2 days ago"
+    }
+]
+
+
+def load_feedbacks():
+    if not os.path.exists(FEEDBACK_FILE):
+        try:
+            with open(FEEDBACK_FILE, "w", encoding="utf-8") as f:
+                json.dump(DEFAULT_FEEDBACKS, f, indent=2)
+            return list(DEFAULT_FEEDBACKS)
+        except Exception:
+            return list(DEFAULT_FEEDBACKS)
+    try:
+        with open(FEEDBACK_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, list) else list(DEFAULT_FEEDBACKS)
+    except Exception:
+        return list(DEFAULT_FEEDBACKS)
+
+
+def save_feedbacks(feedbacks):
+    try:
+        with open(FEEDBACK_FILE, "w", encoding="utf-8") as f:
+            json.dump(feedbacks, f, indent=2)
+    except Exception as e:
+        app.logger.error(f"Failed to save feedbacks: {e}")
+
+
+@app.route("/api/feedback", methods=["GET", "POST"])
+def handle_feedback():
+    if request.method == "POST":
+        data = request.get_json(silent=True) or request.form.to_dict()
+        if not data:
+            return jsonify({"error": "No data received."}), 400
+
+        name = (data.get("name") or "").strip()
+        message = (data.get("message") or "").strip()
+        rating = data.get("rating", 5)
+        try:
+            rating = max(1, min(5, int(rating)))
+        except (ValueError, TypeError):
+            rating = 5
+
+        if not name:
+            return jsonify({"error": "Please enter your name."}), 400
+        if not message:
+            return jsonify({"error": "Please write your feedback message."}), 400
+
+        feedbacks = load_feedbacks()
+        new_fb = {
+            "id": f"fb-{str(uuid.uuid4())[:8]}",
+            "name": name,
+            "rating": rating,
+            "message": message,
+            "date": datetime.now().strftime("%b %d, %I:%M %p")
+        }
+        feedbacks.insert(0, new_fb)
+        save_feedbacks(feedbacks)
+        return jsonify({"status": "success", "feedback": new_fb, "feedbacks": feedbacks})
+    else:
+        return jsonify({"feedbacks": load_feedbacks()})
 
 
 @app.errorhandler(413)
