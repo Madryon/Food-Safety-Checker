@@ -325,3 +325,198 @@ def get_fallback_diet_plan(user_name, stats, diet_pref, goal, health_conditions,
         "note": "Connect GROQ_API_KEY to unlock dynamic Meta-Llama-3.1 generation directly from Groq Cloud." if not error_msg else error_msg,
         "calculated_stats": stats,
     }
+
+
+def suggest_quick_meal(user_profile, meal_type="Lunch", target_calories=450, craving=""):
+    """Suggest 3 healthy, tailored meal options based on user's dietary preferences,
+    calorie budget, and optional cravings using Groq Meta-Llama-3.1-8B.
+    """
+    groq_api_key = os.getenv("GROQ_API_KEY", "").strip()
+    model = os.getenv("GROQ_MODEL", DEFAULT_GROQ_MODEL).strip() or "llama-3.1-8b-instant"
+
+    diet_pref = user_profile.get("diet_pref", "Vegetarian")
+    goal = user_profile.get("goal", "Healthy Maintenance")
+    health_conditions = user_profile.get("health_conditions", "None")
+
+    try:
+        target_calories = max(100, min(1500, int(target_calories)))
+    except (ValueError, TypeError):
+        target_calories = 450
+
+    if not groq_api_key:
+        # Fallback suggestions
+        return get_fallback_meal_suggestions(diet_pref, meal_type, target_calories, craving)
+
+    system_prompt = (
+        "You are an expert culinary nutritionist. Given a user's dietary preference, meal type, "
+        "and calorie target, suggest 3 distinct, delicious, healthy meal options suitable for Indian "
+        "and global diets. Always return ONLY valid JSON without markdown fences."
+    )
+
+    user_prompt = f"""Suggest 3 tailored meal choices for:
+- Meal Type: {meal_type}
+- Target Calories: ~{target_calories} kcal
+- Dietary Preference: {diet_pref} (Strictly adhere to this!)
+- Primary Goal: {goal}
+- Health Notes / Preferences: {health_conditions}
+- Specific craving or ingredient focus: {craving if craving else 'None specified'}
+
+Return ONLY a JSON object:
+{{
+  "meal_type": "{meal_type}",
+  "target_calories": {target_calories},
+  "suggestions": [
+    {{
+      "name": "Meal name",
+      "portion": "e.g. 2 Chillas (120g) + 1 cup Mint Chutney",
+      "calories": 380,
+      "protein_g": 16,
+      "carbs_g": 44,
+      "fat_g": 9,
+      "why_good": "Short 1-sentence nutritional benefit",
+      "prep_time": "15 mins"
+    }}
+  ]
+}}"""
+
+    headers = {
+        "Authorization": f"Bearer {groq_api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0.4,
+        "max_tokens": 1024,
+        "response_format": {"type": "json_object"},
+    }
+
+    try:
+        response = requests.post(GROQ_API_URL, headers=headers, json=payload, timeout=20)
+        response.raise_for_status()
+        data = response.json()
+        content = data["choices"][0]["message"]["content"]
+        res = json.loads(content)
+        res["source"] = f"Meta-Llama-3.1-8B ({model})"
+        return res
+    except Exception as e:
+        logger.error(f"Error generating meal suggestion via Groq: {e}")
+        return get_fallback_meal_suggestions(diet_pref, meal_type, target_calories, craving)
+
+
+def get_fallback_meal_suggestions(diet_pref, meal_type, target_calories, craving=""):
+    """High quality rule-based meal suggestions if Groq API is offline."""
+    diet = str(diet_pref).lower()
+    is_non_veg = "non" in diet or "chicken" in diet or "fish" in diet
+    is_vegan = "vegan" in diet
+
+    if is_non_veg:
+        items = [
+            {
+                "name": "Grilled Lemon-Herb Chicken Breast Bowl",
+                "portion": "150g Chicken + 1 cup Brown Rice + Steamed Broccoli",
+                "calories": target_calories,
+                "protein_g": 36,
+                "carbs_g": 42,
+                "fat_g": 9,
+                "why_good": "High-lean protein with complex carbohydrates for steady energy.",
+                "prep_time": "20 mins"
+            },
+            {
+                "name": "Egg Bhurji / Scramble with Multigrain Roti",
+                "portion": "3 Eggs (2 whites, 1 whole) + 2 Phulkas + Cucumber Salad",
+                "calories": round(target_calories * 0.9),
+                "protein_g": 22,
+                "carbs_g": 34,
+                "fat_g": 11,
+                "why_good": "Quick muscle-recovery meal packed with bioavailable choline and B-vitamins.",
+                "prep_time": "12 mins"
+            },
+            {
+                "name": "Pan-Seared Fish Fillet with Stir-Fried Veggies",
+                "portion": "150g Fish + Bell Peppers, Zucchini & Carrots",
+                "calories": round(target_calories * 0.85),
+                "protein_g": 30,
+                "carbs_g": 18,
+                "fat_g": 8,
+                "why_good": "Rich in omega-3 fatty acids for anti-inflammatory health.",
+                "prep_time": "15 mins"
+            }
+        ]
+    elif is_vegan:
+        items = [
+            {
+                "name": "Spiced Tofu & Edamame Quinoa Bowl",
+                "portion": "140g Tofu + 1 cup Quinoa + Stir-fried Spinach",
+                "calories": target_calories,
+                "protein_g": 24,
+                "carbs_g": 50,
+                "fat_g": 10,
+                "why_good": "Complete plant protein with complete amino acid profile.",
+                "prep_time": "18 mins"
+            },
+            {
+                "name": "Rajma / Chickpea Masala with Jeera Brown Rice",
+                "portion": "1.5 bowls Rajma + 1 cup Rice + Onion-Tomato Salad",
+                "calories": target_calories,
+                "protein_g": 18,
+                "carbs_g": 62,
+                "fat_g": 7,
+                "why_good": "High dietary soluble fiber for gut health and long satiety.",
+                "prep_time": "15 mins"
+            },
+            {
+                "name": "Sprouted Moong & Peanut Chaat with Lemon",
+                "portion": "1.5 cups Sprouted Moong + 1 tbsp Roasted Peanuts + Veggies",
+                "calories": round(target_calories * 0.8),
+                "protein_g": 16,
+                "carbs_g": 38,
+                "fat_g": 6,
+                "why_good": "Live enzyme-rich raw sprout meal packed with vitamin C and iron.",
+                "prep_time": "8 mins"
+            }
+        ]
+    else:  # Vegetarian (default)
+        items = [
+            {
+                "name": "Paneer & Moong Dal Chilla Roll",
+                "portion": "2 Chillas stuffed with 60g low-fat Paneer + Mint Chutney",
+                "calories": target_calories,
+                "protein_g": 22,
+                "carbs_g": 40,
+                "fat_g": 12,
+                "why_good": "Protein-rich vegetarian option that keeps hunger hormones low.",
+                "prep_time": "15 mins"
+            },
+            {
+                "name": "Yellow Dal Tadka + 2 Multigrain Phulkas + Curd",
+                "portion": "1 big bowl Dal + 2 Phulkas + 1 cup Fresh Curd + Salad",
+                "calories": target_calories,
+                "protein_g": 20,
+                "carbs_g": 55,
+                "fat_g": 9,
+                "why_good": "Classic comfort Indian meal offering balanced gut-friendly probiotics.",
+                "prep_time": "20 mins"
+            },
+            {
+                "name": "Roasted Paneer Salad with Bell Peppers & Chia",
+                "portion": "100g Grilled Paneer + Mixed Greens + Olive Oil dressing",
+                "calories": round(target_calories * 0.9),
+                "protein_g": 19,
+                "carbs_g": 16,
+                "fat_g": 14,
+                "why_good": "Low carbohydrate, high calcium meal perfect for blood sugar stability.",
+                "prep_time": "10 mins"
+            }
+        ]
+
+    return {
+        "meal_type": meal_type,
+        "target_calories": target_calories,
+        "suggestions": items,
+        "source": "Clinical Nutrition Database (Fallback)"
+    }
+

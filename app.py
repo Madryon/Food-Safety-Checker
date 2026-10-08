@@ -21,9 +21,15 @@ from services.database import (
     get_user_diet_plans,
     log_meal,
     get_daily_calorie_summary,
-    delete_meal_log
+    delete_meal_log,
+    register_account,
+    authenticate_account,
+    get_account,
+    save_feedback_db,
+    get_user_feedbacks,
+    get_developer_feedbacks
 )
-from services.diet_generator import generate_diet_plan, calculate_bmr_and_tdee
+from services.diet_generator import generate_diet_plan, calculate_bmr_and_tdee, suggest_quick_meal
 
 
 load_dotenv()
@@ -265,6 +271,77 @@ def save_feedbacks(feedbacks):
         app.logger.error(f"Failed to save feedbacks: {e}")
 
 
+# ── USER AUTHENTICATION & SESSION ROUTES ───────────────────────────────────
+
+@app.route("/api/auth/register", methods=["POST"])
+def auth_register():
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    username = (data.get("username") or data.get("user_id") or "").strip().lower()
+    password = (data.get("password") or "").strip()
+    name = (data.get("name") or username).strip()
+    is_dev = bool(data.get("is_developer"))
+
+    if not username or not password:
+        return jsonify({"error": "User ID and Password are required."}), 400
+
+    role = "developer" if is_dev else "user"
+    user, err = register_account(username, password, name=name, role=role)
+    if err:
+        return jsonify({"error": err}), 400
+
+    session["user_id"] = user["user_id"]
+    session["name"] = user["name"]
+    session["role"] = user["role"]
+
+    return jsonify({"status": "success", "user": user})
+
+
+@app.route("/api/auth/login", methods=["POST"])
+def auth_login():
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    username = (data.get("username") or data.get("user_id") or "").strip().lower()
+    password = (data.get("password") or "").strip()
+
+    if not username or not password:
+        return jsonify({"error": "Please provide both User ID and Password."}), 400
+
+    user, err = authenticate_account(username, password)
+    if err:
+        return jsonify({"error": err}), 401
+
+    session["user_id"] = user["user_id"]
+    session["name"] = user["name"]
+    session["role"] = user["role"]
+
+    return jsonify({"status": "success", "user": user})
+
+
+@app.route("/api/auth/logout", methods=["POST", "GET"])
+def auth_logout():
+    session.clear()
+    return jsonify({"status": "success", "message": "Logged out successfully."})
+
+
+@app.route("/api/auth/me", methods=["GET"])
+def auth_me():
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"authenticated": False})
+    account = get_account(user_id)
+    if not account:
+        session.clear()
+        return jsonify({"authenticated": False})
+    return jsonify({
+        "authenticated": True,
+        "user_id": account["user_id"],
+        "name": account["name"],
+        "role": account.get("role", "user"),
+        "is_developer": account.get("role") == "developer",
+    })
+
+
+# ── PRIVATE & DEVELOPER FEEDBACK ROUTES ────────────────────────────────────
+
 @app.route("/api/feedback", methods=["GET", "POST"])
 def handle_feedback():
     if request.method == "POST":
@@ -272,46 +349,75 @@ def handle_feedback():
         if not data:
             return jsonify({"error": "No data received."}), 400
 
-        name = (data.get("name") or "").strip()
+        user_id = session.get("user_id") or "anonymous"
+        name = (data.get("name") or session.get("name") or "User").strip()
         message = (data.get("message") or "").strip()
         rating = data.get("rating", 5)
-        try:
-            rating = max(1, min(5, int(rating)))
-        except (ValueError, TypeError):
-            rating = 5
 
-        if not name:
-            return jsonify({"error": "Please enter your name."}), 400
         if not message:
             return jsonify({"error": "Please write your feedback message."}), 400
 
-        feedbacks = load_feedbacks()
-        new_fb = {
-            "id": f"fb-{str(uuid.uuid4())[:8]}",
-            "name": name,
-            "rating": rating,
-            "message": message,
-            "date": datetime.now().strftime("%b %d, %I:%M %p")
-        }
-        feedbacks.insert(0, new_fb)
-        save_feedbacks(feedbacks)
-        return jsonify({"status": "success", "feedback": new_fb, "feedbacks": feedbacks})
+        fb_id = f"fb-{str(uuid.uuid4())[:8]}"
+        saved_fb = save_feedback_db(fb_id, user_id, name, rating, message)
+
+        # Return updated list based on role
+        if session.get("role") == "developer":
+            feedbacks = get_developer_feedbacks()
+        elif user_id != "anonymous":
+            feedbacks = get_user_feedbacks(user_id)
+        else:
+            feedbacks = [saved_fb]
+
+        return jsonify({
+            "status": "success",
+            "feedback": saved_fb,
+            "feedbacks": feedbacks,
+            "is_developer": session.get("role") == "developer"
+        })
+
     else:
-        return jsonify({"feedbacks": load_feedbacks()})
+        role = session.get("role")
+        user_id = session.get("user_id")
+
+        if role == "developer":
+            # Developer sees ALL user responses
+            feedbacks = get_developer_feedbacks()
+            return jsonify({
+                "feedbacks": feedbacks,
+                "is_developer": True,
+                "role": "developer"
+            })
+        elif user_id:
+            # Regular user sees ONLY their own responses
+            feedbacks = get_user_feedbacks(user_id)
+            return jsonify({
+                "feedbacks": feedbacks,
+                "is_developer": False,
+                "role": "user"
+            })
+        else:
+            # Not logged in yet
+            return jsonify({
+                "feedbacks": [],
+                "is_developer": False,
+                "prompt_login": True
+            })
 
 
-# ── DIET PLANNER & CALORIE TRACKER ROUTES ──────────────────────────────────
+# ── PRIVATE DIET PLANNER & CALORIE TRACKER ROUTES ──────────────────────────
 
 @app.route("/api/diet/profile", methods=["GET", "POST"])
 def diet_profile():
     """Retrieve or save user profile for personalized diet planning."""
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"error": "Please log in to access your personal profile.", "auth_required": True}), 401
+
     if request.method == "POST":
         data = request.get_json(silent=True) or request.form.to_dict()
         if not data:
             return jsonify({"error": "No profile data provided."}), 400
 
-        user_id = data.get("user_id") or session.get("user_id") or "guest_user"
-        session["user_id"] = user_id
         data["user_id"] = user_id
 
         # Calculate BMR and TDEE based on inputs
@@ -337,23 +443,11 @@ def diet_profile():
             return jsonify({"error": f"Failed to save profile: {str(e)}"}), 500
 
     else:
-        user_id = request.args.get("user_id") or session.get("user_id") or "guest_user"
         profile = get_user_profile(user_id)
         if not profile:
             profile = {
                 "user_id": user_id,
-                "name": "Guest",
-                "age": 28,
-                "gender": "male",
-                "height_cm": 172.0,
-                "weight_kg": 70.0,
-                "activity_level": "moderate",
-                "goal": "weight_loss",
-                "diet_pref": "vegetarian",
-                "target_calories": 1850,
-                "target_protein_g": 80,
-                "target_carbs_g": 220,
-                "target_fat_g": 50,
+                "name": session.get("name") or user_id,
             }
         stats = calculate_bmr_and_tdee(
             age=profile.get("age"),
@@ -369,11 +463,11 @@ def diet_profile():
 @app.route("/api/diet/plan/generate", methods=["POST"])
 def generate_plan_endpoint():
     """Generate a personalized daily diet plan using Groq Cloud API (Meta-Llama-3.1-8B-Instruct)."""
-    data = request.get_json(silent=True) or request.form.to_dict() or {}
-    user_id = data.get("user_id") or session.get("user_id") or "guest_user"
-    session["user_id"] = user_id
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"error": "Please log in to generate your diet plan.", "auth_required": True}), 401
 
-    # Retrieve or update existing profile
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
     current_profile = get_user_profile(user_id) or {}
     for k, v in data.items():
         if v is not None and v != "":
@@ -381,7 +475,7 @@ def generate_plan_endpoint():
 
     current_profile["user_id"] = user_id
     if not current_profile.get("name"):
-        current_profile["name"] = data.get("name") or "User"
+        current_profile["name"] = session.get("name") or user_id
 
     # Save latest profile preferences
     try:
@@ -417,10 +511,36 @@ def generate_plan_endpoint():
         return jsonify({"error": f"Failed to generate diet plan: {str(e)}"}), 500
 
 
+@app.route("/api/diet/suggest_meal", methods=["POST"])
+def suggest_meal_endpoint():
+    """Suggest 3 meal options using Groq Meta-Llama-3.1-8B based on preferences & remaining calories."""
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"error": "Please log in to get meal suggestions.", "auth_required": True}), 401
+
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    meal_type = data.get("meal_type", "Lunch")
+    craving = data.get("craving", "")
+
+    # Target calories: either explicit or based on remaining calories today
+    target_calories = data.get("target_calories")
+    if not target_calories:
+        today_summary = get_daily_calorie_summary(user_id)
+        remaining = today_summary.get("calories_remaining", 500)
+        target_calories = min(800, max(250, int(remaining)))
+
+    profile = get_user_profile(user_id) or {}
+    res = suggest_quick_meal(profile, meal_type=meal_type, target_calories=target_calories, craving=craving)
+    return jsonify({"status": "success", "result": res})
+
+
 @app.route("/api/diet/plans", methods=["GET"])
 def get_user_plans():
-    """Fetch history of generated diet plans for the user."""
-    user_id = request.args.get("user_id") or session.get("user_id") or "guest_user"
+    """Fetch history of generated diet plans for the logged in user."""
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"error": "Please log in to view your diet history.", "auth_required": True}), 401
+
     try:
         plans = get_user_diet_plans(user_id, limit=10)
         return jsonify({"plans": plans})
@@ -431,11 +551,17 @@ def get_user_plans():
 
 @app.route("/api/diet/plan/<plan_id>", methods=["GET"])
 def get_single_plan(plan_id):
-    """Fetch a specific diet plan by plan_id."""
+    """Fetch a specific diet plan by plan_id ensuring user owns it."""
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"error": "Please log in to view this plan.", "auth_required": True}), 401
+
     try:
         plan = get_diet_plan(plan_id)
         if not plan:
             return jsonify({"error": "Diet plan not found."}), 404
+        if plan.get("user_id") != user_id and session.get("role") != "developer":
+            return jsonify({"error": "Access denied to this diet plan."}), 403
         return jsonify({"plan": plan})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -444,23 +570,26 @@ def get_single_plan(plan_id):
 @app.route("/api/calorie/log", methods=["POST"])
 def log_calorie_meal():
     """Log a meal consumed by the user with calorie and macronutrient breakdown."""
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"error": "Please log in to track calories.", "auth_required": True}), 401
+
     data = request.get_json(silent=True) or request.form.to_dict()
     if not data:
         return jsonify({"error": "No meal data provided."}), 400
 
-    user_id = data.get("user_id") or session.get("user_id") or "guest_user"
     meal_type = data.get("meal_type", "Breakfast").strip()
     food_item = data.get("food_item", "").strip()
 
     if not food_item:
-        return jsonify({"error": "Please specify the food item."}), 400
+        return jsonify({"error": "Please enter the food item name."}), 400
 
     try:
         calories = float(data.get("calories", 0))
     except (ValueError, TypeError):
         calories = 0.0
 
-    portion = data.get("portion", "1 serving").strip()
+    portion = data.get("portion", "").strip() or "1 serving"
     protein_g = float(data.get("protein_g") or 0)
     carbs_g = float(data.get("carbs_g") or 0)
     fat_g = float(data.get("fat_g") or 0)
@@ -494,8 +623,11 @@ def log_calorie_meal():
 
 @app.route("/api/calorie/today", methods=["GET"])
 def get_today_calories():
-    """Retrieve today's calorie and macronutrient progress."""
-    user_id = request.args.get("user_id") or session.get("user_id") or "guest_user"
+    """Retrieve today's calorie and macronutrient progress for the logged in user."""
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"error": "Please log in to view calorie tracking.", "auth_required": True}), 401
+
     target_date = request.args.get("date") or datetime.now().strftime("%Y-%m-%d")
 
     try:
@@ -509,7 +641,10 @@ def get_today_calories():
 @app.route("/api/calorie/log/<log_id>", methods=["DELETE"])
 def delete_calorie_log(log_id):
     """Delete a logged meal item."""
-    user_id = request.args.get("user_id") or session.get("user_id") or "guest_user"
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"error": "Please log in.", "auth_required": True}), 401
+
     try:
         success = delete_meal_log(log_id, user_id)
         summary = get_daily_calorie_summary(user_id)

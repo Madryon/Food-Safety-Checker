@@ -4,6 +4,7 @@ import logging
 import sqlite3
 import urllib.parse
 from datetime import datetime, date
+from werkzeug.security import generate_password_hash, check_password_hash
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,16 @@ def init_db():
         if is_pg:
             # PostgreSQL Schema
             cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users_auth (
+                    user_id VARCHAR(100) PRIMARY KEY,
+                    password_hash VARCHAR(255) NOT NULL,
+                    name VARCHAR(150),
+                    role VARCHAR(20) DEFAULT 'user',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS user_profiles (
                     user_id VARCHAR(100) PRIMARY KEY,
                     name VARCHAR(150) NOT NULL,
@@ -141,11 +152,33 @@ def init_db():
                 );
             """)
 
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS feedbacks (
+                    id VARCHAR(64) PRIMARY KEY,
+                    user_id VARCHAR(100) DEFAULT 'anonymous',
+                    name VARCHAR(150) NOT NULL,
+                    rating INT DEFAULT 5,
+                    message TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_diet_plans_user ON diet_plans(user_id);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_calorie_logs_user_date ON calorie_logs(user_id, log_date);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_feedbacks_user ON feedbacks(user_id);")
 
         else:
             # SQLite Schema
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users_auth (
+                    user_id TEXT PRIMARY KEY,
+                    password_hash TEXT NOT NULL,
+                    name TEXT,
+                    role TEXT DEFAULT 'user',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS user_profiles (
                     user_id TEXT PRIMARY KEY,
@@ -193,6 +226,62 @@ def init_db():
                     logged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS feedbacks (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT DEFAULT 'anonymous',
+                    name TEXT NOT NULL,
+                    rating INTEGER DEFAULT 5,
+                    message TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+
+        # Ensure default developer account exists
+        dev_pass = os.getenv("DEV_PASSWORD", "developer123")
+        dev_hash = generate_password_hash(dev_pass)
+        if is_pg:
+            cursor.execute("""
+                INSERT INTO users_auth (user_id, password_hash, name, role)
+                VALUES ('developer', %s, 'App Developer', 'developer')
+                ON CONFLICT (user_id) DO NOTHING;
+            """, (dev_hash,))
+        else:
+            cursor.execute("""
+                INSERT OR IGNORE INTO users_auth (user_id, password_hash, name, role)
+                VALUES ('developer', ?, 'App Developer', 'developer');
+            """, (dev_hash,))
+
+        # Seed initial feedbacks from feedbacks.json if table is empty
+        cursor.execute("SELECT COUNT(*) FROM feedbacks;")
+        fb_count = cursor.fetchone()[0]
+        if fb_count == 0:
+            fb_json_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "feedbacks.json"
+            )
+            if os.path.exists(fb_json_path):
+                try:
+                    with open(fb_json_path, "r", encoding="utf-8") as f:
+                        seed_items = json.load(f)
+                    for item in seed_items:
+                        fid = item.get("id") or f"fb-{datetime.now().timestamp()}"
+                        fuser = "developer"
+                        fname = item.get("name") or "User"
+                        frating = int(item.get("rating") or 5)
+                        fmsg = item.get("message") or ""
+                        if is_pg:
+                            cursor.execute("""
+                                INSERT INTO feedbacks (id, user_id, name, rating, message)
+                                VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING;
+                            """, (fid, fuser, fname, frating, fmsg))
+                        else:
+                            cursor.execute("""
+                                INSERT OR IGNORE INTO feedbacks (id, user_id, name, rating, message)
+                                VALUES (?, ?, ?, ?, ?);
+                            """, (fid, fuser, fname, frating, fmsg))
+                except Exception as ex:
+                    logger.warning(f"Could not seed feedbacks: {ex}")
 
         cursor.close()
     logger.info("Database initialized successfully.")
@@ -534,3 +623,211 @@ def delete_meal_log(log_id, user_id):
         deleted = cursor.rowcount > 0
         cursor.close()
     return deleted
+
+
+# ─────────────────────────────────────────────────────────────
+# User Account / Authenticator Operations
+# ─────────────────────────────────────────────────────────────
+
+def register_account(user_id, password, name="", role="user"):
+    """Register a new user account with hashed password."""
+    user_id = str(user_id).strip().lower()
+    if not user_id or not password:
+        return None, "User ID and password are required."
+    if len(password) < 4:
+        return None, "Password must be at least 4 characters long."
+
+    pw_hash = generate_password_hash(password)
+    name = str(name).strip() or user_id
+
+    with DatabaseConnection() as (conn, is_pg):
+        cursor = conn.cursor()
+        # Check if username exists
+        if is_pg:
+            cursor.execute("SELECT user_id FROM users_auth WHERE user_id = %s;", (user_id,))
+        else:
+            cursor.execute("SELECT user_id FROM users_auth WHERE user_id = ?;", (user_id,))
+        if cursor.fetchone():
+            cursor.close()
+            return None, "User ID already exists. Please pick another ID or Log In."
+
+        # Insert account
+        if is_pg:
+            cursor.execute("""
+                INSERT INTO users_auth (user_id, password_hash, name, role)
+                VALUES (%s, %s, %s, %s);
+            """, (user_id, pw_hash, name, role))
+        else:
+            cursor.execute("""
+                INSERT INTO users_auth (user_id, password_hash, name, role)
+                VALUES (?, ?, ?, ?);
+            """, (user_id, pw_hash, name, role))
+        cursor.close()
+
+    # Create empty user profile
+    save_user_profile({"user_id": user_id, "name": name})
+
+    return {
+        "user_id": user_id,
+        "name": name,
+        "role": role,
+    }, None
+
+
+def authenticate_account(user_id, password):
+    """Authenticate user with user_id and password."""
+    user_id = str(user_id).strip().lower()
+    with DatabaseConnection() as (conn, is_pg):
+        if is_pg:
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("SELECT user_id, password_hash, name, role FROM users_auth WHERE user_id = %s;", (user_id,))
+            row = cursor.fetchone()
+            cursor.close()
+        else:
+            cursor = conn.cursor()
+            cursor.execute("SELECT user_id, password_hash, name, role FROM users_auth WHERE user_id = ?;", (user_id,))
+            row = cursor.fetchone()
+            cursor.close()
+
+        if not row:
+            return None, "User ID not found. Please register first."
+
+        record = dict(row)
+        if not check_password_hash(record["password_hash"], password):
+            return None, "Incorrect password. Please try again."
+
+        return {
+            "user_id": record["user_id"],
+            "name": record.get("name") or record["user_id"],
+            "role": record.get("role") or "user",
+        }, None
+
+
+def get_account(user_id):
+    """Get account info without password hash."""
+    user_id = str(user_id).strip().lower()
+    with DatabaseConnection() as (conn, is_pg):
+        if is_pg:
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("SELECT user_id, name, role, created_at FROM users_auth WHERE user_id = %s;", (user_id,))
+            row = cursor.fetchone()
+            cursor.close()
+        else:
+            cursor = conn.cursor()
+            cursor.execute("SELECT user_id, name, role, created_at FROM users_auth WHERE user_id = ?;", (user_id,))
+            row = cursor.fetchone()
+            cursor.close()
+
+        if row:
+            return dict(row)
+    return None
+
+
+# ─────────────────────────────────────────────────────────────
+# Feedback Operations (Private & Developer Views)
+# ─────────────────────────────────────────────────────────────
+
+def save_feedback_db(fb_id, user_id, name, rating, message):
+    """Save user feedback in database."""
+    user_id = str(user_id or "anonymous").strip().lower()
+    name = str(name).strip() or "User"
+    message = str(message).strip()
+    try:
+        rating = max(1, min(5, int(rating)))
+    except (ValueError, TypeError):
+        rating = 5
+
+    with DatabaseConnection() as (conn, is_pg):
+        cursor = conn.cursor()
+        if is_pg:
+            cursor.execute("""
+                INSERT INTO feedbacks (id, user_id, name, rating, message, created_at)
+                VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP);
+            """, (fb_id, user_id, name, rating, message))
+        else:
+            cursor.execute("""
+                INSERT INTO feedbacks (id, user_id, name, rating, message, created_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP);
+            """, (fb_id, user_id, name, rating, message))
+        cursor.close()
+
+    return {
+        "id": fb_id,
+        "user_id": user_id,
+        "name": name,
+        "rating": rating,
+        "message": message,
+        "date": "Just now",
+    }
+
+
+def get_user_feedbacks(user_id):
+    """Fetch ONLY feedback submitted by this specific user."""
+    user_id = str(user_id).strip().lower()
+    results = []
+    with DatabaseConnection() as (conn, is_pg):
+        if is_pg:
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                SELECT id, user_id, name, rating, message, created_at
+                FROM feedbacks WHERE user_id = %s
+                ORDER BY created_at DESC;
+            """, (user_id,))
+            rows = cursor.fetchall()
+            cursor.close()
+        else:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, user_id, name, rating, message, created_at
+                FROM feedbacks WHERE user_id = ?
+                ORDER BY created_at DESC;
+            """, (user_id,))
+            rows = cursor.fetchall()
+            cursor.close()
+
+        for r in rows:
+            item = dict(r)
+            if isinstance(item.get("created_at"), datetime):
+                item["date"] = item["created_at"].strftime("%b %d, %I:%M %p")
+            else:
+                item["date"] = "Recently"
+            results.append(item)
+    return results
+
+
+def get_developer_feedbacks():
+    """Fetch ALL feedbacks across all users (Developer view only)."""
+    results = []
+    with DatabaseConnection() as (conn, is_pg):
+        if is_pg:
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                SELECT id, user_id, name, rating, message, created_at
+                FROM feedbacks
+                ORDER BY created_at DESC;
+            """, ())
+            rows = cursor.fetchall()
+            cursor.close()
+        else:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, user_id, name, rating, message, created_at
+                FROM feedbacks
+                ORDER BY created_at DESC;
+            """)
+            rows = cursor.fetchall()
+            cursor.close()
+
+        for r in rows:
+            item = dict(r)
+            if isinstance(item.get("created_at"), datetime):
+                item["date"] = item["created_at"].strftime("%b %d, %I:%M %p")
+            else:
+                item["date"] = "Recently"
+            results.append(item)
+    return results
+

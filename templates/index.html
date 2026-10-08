@@ -512,6 +512,103 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
 
 .plan-history-item { padding: 14px 16px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 10px; }
 .plan-history-item:hover { border-color: var(--accent); }
+
+/* ===== Authenticator Styles ===== */
+.auth-nav-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 16px; border-radius: 999px;
+    font-size: .84rem; font-weight: 700; text-decoration: none;
+    color: var(--on-accent); background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    border: none; cursor: pointer; transition: all .25s ease;
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.auth-nav-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+.user-badge-wrap {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    padding: 4px 12px; border-radius: 999px; font-size: .84rem;
+}
+.role-badge {
+    padding: 2px 8px; border-radius: 999px; font-size: .70rem; font-weight: 800;
+    text-transform: uppercase; letter-spacing: .05em;
+}
+.role-badge.dev { background: #fbbf24; color: #1e1b4b; }
+.role-badge.user { background: var(--accent); color: var(--on-accent); }
+.user-name-txt { font-weight: 700; color: var(--text); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.logout-btn {
+    background: none; border: none; color: var(--bad); cursor: pointer;
+    font-size: .8rem; font-weight: 600; padding: 2px 6px; border-radius: 6px;
+    transition: background .15s;
+}
+.logout-btn:hover { background: color-mix(in srgb, var(--bad) 15%, transparent); }
+
+.auth-modal-card { width: min(450px, 100%); background: var(--surface); padding: 24px; }
+.auth-tabs {
+    display: flex; gap: 6px; background: var(--surface-2); padding: 4px;
+    border-radius: 999px; margin-bottom: 20px; border: 1px solid var(--border);
+}
+.auth-tab-btn {
+    flex: 1; padding: 8px 14px; border: none; border-radius: 999px;
+    background: none; color: var(--muted); font-size: .88rem; font-weight: 700;
+    cursor: pointer; transition: all .2s; text-align: center;
+}
+.auth-tab-btn.active {
+    background: var(--surface); color: var(--text);
+    box-shadow: 0 2px 8px rgba(0,0,0,.2);
+}
+[data-theme="techno"] .auth-tab-btn.active {
+    background: rgba(0,240,255,.18); color: #00f0ff;
+}
+
+.diet-auth-gate {
+    text-align: center; padding: 48px 24px; max-width: 600px;
+    margin: 20px auto 40px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+.diet-gate-icon { font-size: 3.2rem; margin-bottom: 12px; display: inline-block; }
+
+/* ===== AI Meal Suggester Styles ===== */
+.meal-suggester-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 24px; margin-top: 24px;
+    box-shadow: var(--shadow);
+}
+.meal-sug-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px; margin-top: 20px;
+}
+.meal-sug-card {
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 14px; padding: 18px; display: flex;
+    flex-direction: column; justify-content: space-between;
+    transition: transform .2s, border-color .2s;
+}
+.meal-sug-card:hover {
+    border-color: var(--accent); transform: translateY(-2px);
+}
+.meal-sug-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 8px; margin-bottom: 8px;
+}
+.meal-sug-title { font-size: 1.05rem; font-weight: 700; margin: 0; }
+.meal-sug-portion { font-size: .8rem; color: var(--muted); }
+.meal-sug-desc { font-size: .88rem; color: var(--muted); margin: 0 0 14px; line-height: 1.45; }
+.meal-sug-macros {
+    display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; font-size: .78rem;
+}
+.meal-sug-cals { font-weight: 800; color: var(--accent); font-size: 1rem; }
+.meal-sug-action-btn {
+    width: 100%; padding: 9px 14px; border-radius: 8px; font-size: .86rem; font-weight: 700;
+    cursor: pointer; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent);
+    color: var(--accent); transition: all .2s;
+}
+.meal-sug-action-btn:hover {
+    background: var(--accent); color: var(--on-accent);
+}
     </style>
 </head>
 <body>
@@ -533,6 +630,18 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             </button>
         </div>
         <div class="top-bar-right">
+            <!-- Authenticator controls -->
+            <div id="nav-auth-wrap" style="display:flex; align-items:center;">
+                <button type="button" id="nav-open-auth-btn" class="auth-nav-btn">
+                    <span>🔐</span> Sign In
+                </button>
+                <div id="user-badge-wrap" class="user-badge-wrap hidden">
+                    <span id="user-role-badge" class="role-badge user">User</span>
+                    <span id="user-display-name" class="user-name-txt">User</span>
+                    <button type="button" id="btn-nav-logout" class="logout-btn" title="Sign Out">🚪 Logout</button>
+                </div>
+            </div>
+
             <a href="#feedback-section" id="nav-feedback-btn" class="feedback-nav-btn">💬 Feedback</a>
             <div class="theme-toggle-wrap">
                 <label class="theme-label" for="theme-slider">Theme</label>
@@ -620,9 +729,9 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             <!-- FEEDBACK SECTION (PAGE 1) -->
             <div id="feedback-section" class="feedback-section">
                 <div class="feedback-header">
-                    <span class="feedback-badge">💬 Community Reviews</span>
+                    <span class="feedback-badge" id="feedback-privacy-badge">💬 Feedback &amp; Reviews</span>
                     <h2>Your Feedback &amp; Responses</h2>
-                    <p>Help us improve FoodCheck! Share your thoughts or suggestions, and see what other users are saying.</p>
+                    <p id="feedback-desc-text">Help us improve FoodCheck! Share your thoughts or suggestions, and see your submitted feedback.</p>
                 </div>
 
                 <div class="feedback-box">
@@ -630,6 +739,9 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                         <!-- Left: Submit Form -->
                         <div class="feedback-form-col">
                             <h3><span>✍️ Share Your Feedback</span></h3>
+                            <p id="feedback-auth-hint" style="font-size:0.8rem; color:var(--muted); margin-bottom:12px;">
+                                💡 <a href="#" id="feedback-login-link" style="color:var(--accent); font-weight:600;">Sign in to your account</a> to keep your feedback private to your user ID.
+                            </p>
                             <form id="feedback-form" onsubmit="return false;">
                                 <div class="fb-field">
                                     <label for="feedback-name">Your Name <span class="req">*</span></label>
@@ -728,6 +840,68 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             </div>
         </div>
 
+        <!-- AUTHENTICATOR MODAL -->
+        <div id="auth-modal" class="modal hidden">
+            <div class="modal-content auth-modal-card">
+                <div class="modal-header">
+                    <h3 id="auth-modal-title">🔐 FoodCheck Authenticator</h3>
+                    <button type="button" id="close-auth-btn" class="btn-icon" title="Close">✕</button>
+                </div>
+
+                <div class="auth-tabs">
+                    <button type="button" class="auth-tab-btn active" id="tab-auth-login">Sign In</button>
+                    <button type="button" class="auth-tab-btn" id="tab-auth-register">Create Account</button>
+                </div>
+
+                <!-- LOGIN VIEW -->
+                <div id="auth-login-view">
+                    <form id="form-auth-login" onsubmit="return false;">
+                        <div class="fb-field">
+                            <label for="login-username">User ID / Username <span class="req">*</span></label>
+                            <input type="text" id="login-username" class="fb-input" placeholder="e.g. rahul12" autocomplete="username" required>
+                        </div>
+                        <div class="fb-field">
+                            <label for="login-password">Password <span class="req">*</span></label>
+                            <input type="password" id="login-password" class="fb-input" placeholder="Enter your password" autocomplete="current-password" required>
+                        </div>
+                        <p style="font-size:0.78rem; color:var(--muted); margin-bottom:14px;">
+                            💡 Developer account? Enter your developer ID and credentials to access administrative views.
+                        </p>
+                        <button type="submit" id="btn-submit-login" class="fb-submit-btn">
+                            🔓 Sign In to My Account
+                        </button>
+                        <div id="login-status-msg" class="fb-status-msg"></div>
+                    </form>
+                </div>
+
+                <!-- REGISTER VIEW -->
+                <div id="auth-register-view" class="hidden">
+                    <form id="form-auth-register" onsubmit="return false;">
+                        <div class="fb-field">
+                            <label for="reg-name">Your Full Name <span class="req">*</span></label>
+                            <input type="text" id="reg-name" class="fb-input" placeholder="e.g. Rahul Sharma" required>
+                        </div>
+                        <div class="fb-field">
+                            <label for="reg-username">Choose User ID <span class="req">*</span></label>
+                            <input type="text" id="reg-username" class="fb-input" placeholder="e.g. rahul12 (letters and numbers)" autocomplete="username" required>
+                        </div>
+                        <div class="fb-field">
+                            <label for="reg-password">Password <span class="req">*</span></label>
+                            <input type="password" id="reg-password" class="fb-input" placeholder="Create a secure password" autocomplete="new-password" required>
+                        </div>
+                        <div class="fb-field" style="display:flex; align-items:center; gap:8px; margin-top:8px;">
+                            <input type="checkbox" id="reg-is-dev" style="width:16px; height:16px; accent-color:var(--accent); cursor:pointer;">
+                            <label for="reg-is-dev" style="margin:0; font-size:0.84rem; cursor:pointer;">Register as Developer (Admin feedback view)</label>
+                        </div>
+                        <button type="submit" id="btn-submit-register" class="fb-submit-btn" style="margin-top:14px;">
+                            ✨ Create Private Account
+                        </button>
+                        <div id="reg-status-msg" class="fb-status-msg"></div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
         <!-- LOADING -->
         <section id="loading-section" class="hidden full-center">
             <div class="loading-box">
@@ -776,78 +950,101 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                 <p class="hero-sub">Generate customized daily meal plans tailored to your body, health goals, and dietary preferences, and track your daily calorie intake in real-time.</p>
             </div>
 
-            <div class="diet-subtabs">
-                <button type="button" class="diet-subtab active" data-subtab="planner" id="subtab-btn-planner">🥗 Make Diet Plan</button>
-                <button type="button" class="diet-subtab" data-subtab="tracker" id="subtab-btn-tracker">🔥 Calorie &amp; Macro Tracker</button>
-                <button type="button" class="diet-subtab" data-subtab="history" id="subtab-btn-history">📜 Plan History</button>
+            <!-- PRIVACY AUTH GATE (SHOWN WHEN LOGGED OUT) -->
+            <div id="diet-auth-gate" class="diet-auth-gate">
+                <span class="diet-gate-icon">🔒</span>
+                <h3 style="font-size:1.45rem; margin-bottom:8px;">Private Diet &amp; Calorie Vault</h3>
+                <p style="color:var(--muted); font-size:0.95rem; line-height:1.55; margin-bottom:24px;">
+                    Your personalized AI meal plans, daily calorie logs, and nutrition metrics are kept 100% private. Log in with your ID and password so only you can view your data across devices.
+                </p>
+                <div style="display:flex; justify-content:center; gap:12px; flex-wrap:wrap;">
+                    <button type="button" id="gate-login-btn" class="btn-primary" style="padding:12px 26px; font-size:0.96rem;">
+                        🔐 Sign In / Create Account
+                    </button>
+                    <button type="button" id="gate-back-btn" class="btn-secondary" style="padding:12px 20px;">
+                        ← Back to Food Scanner
+                    </button>
+                </div>
             </div>
 
-            <!-- SUBTAB 1: AI DIET PLANNER -->
-            <div id="subtab-planner-view">
-                <div class="diet-card">
-                    <h3><span>👤 Your Body Profile &amp; Goals</span> <span id="bmr-summary-badge" style="font-size:0.8rem; color:var(--accent);">Live BMR &amp; TDEE</span></h3>
-                    
-                    <form id="diet-profile-form" onsubmit="return false;">
-                        <div class="diet-form-grid">
-                            <div class="diet-form-group">
-                                <label for="diet-name">Full Name</label>
-                                <input type="text" id="diet-name" class="diet-input" placeholder="e.g. Rahul Sharma" value="Rahul Sharma">
+            <!-- PRIVATE DIET HUB CONTENT (SHOWN WHEN LOGGED IN) -->
+            <div id="diet-content-wrap" class="hidden">
+                <div class="diet-subtabs">
+                    <button type="button" class="diet-subtab active" data-subtab="planner" id="subtab-btn-planner">🥗 Make Diet Plan</button>
+                    <button type="button" class="diet-subtab" data-subtab="tracker" id="subtab-btn-tracker">🔥 Calorie &amp; Macro Tracker</button>
+                    <button type="button" class="diet-subtab" data-subtab="history" id="subtab-btn-history">📜 Plan History</button>
+                </div>
+
+                <!-- SUBTAB 1: AI DIET PLANNER -->
+                <div id="subtab-planner-view">
+                    <div class="diet-card">
+                        <h3><span>👤 Your Body Profile &amp; Goals</span> <span id="bmr-summary-badge" style="font-size:0.8rem; color:var(--accent);">Live BMR &amp; TDEE</span></h3>
+                        
+                        <form id="diet-profile-form" onsubmit="return false;">
+                            <div class="diet-form-grid">
+                                <div class="diet-form-group">
+                                    <label for="diet-name">Full Name</label>
+                                    <input type="text" id="diet-name" class="diet-input" placeholder="e.g. Rahul Sharma">
+                                </div>
+                                <div class="diet-form-group">
+                                    <label for="diet-age">Age (years)</label>
+                                    <input type="number" id="diet-age" class="diet-input" min="10" max="100" placeholder="e.g. 28">
+                                </div>
+                                <div class="diet-form-group">
+                                    <label for="diet-gender">Gender</label>
+                                    <select id="diet-gender" class="diet-select">
+                                        <option value="" disabled selected>Select Gender</option>
+                                        <option value="male">Male</option>
+                                        <option value="female">Female</option>
+                                        <option value="other">Other</option>
+                                    </select>
+                                </div>
+                                <div class="diet-form-group">
+                                    <label for="diet-height">Height (cm)</label>
+                                    <input type="number" id="diet-height" class="diet-input" min="100" max="240" placeholder="e.g. 175">
+                                </div>
+                                <div class="diet-form-group">
+                                    <label for="diet-weight">Weight (kg)</label>
+                                    <input type="number" id="diet-weight" class="diet-input" min="30" max="250" placeholder="e.g. 72">
+                                </div>
+                                <div class="diet-form-group">
+                                    <label for="diet-activity">Daily Activity Level</label>
+                                    <select id="diet-activity" class="diet-select">
+                                        <option value="" disabled selected>Select Activity Level</option>
+                                        <option value="sedentary">Sedentary (Desk job, little exercise)</option>
+                                        <option value="light">Lightly Active (1-3 days/week exercise)</option>
+                                        <option value="moderate">Moderately Active (3-5 days/week sports)</option>
+                                        <option value="active">Very Active (6-7 days/week hard workout)</option>
+                                        <option value="very_active">Extra Active (Athlete, physical labor)</option>
+                                    </select>
+                                </div>
+                                <div class="diet-form-group">
+                                    <label for="diet-goal">Primary Health Goal</label>
+                                    <select id="diet-goal" class="diet-select">
+                                        <option value="" disabled selected>Select Primary Goal</option>
+                                        <option value="weight_loss">Fat Loss / Weight Loss (-500 kcal)</option>
+                                        <option value="muscle_gain">Lean Muscle Gain / Bulk (+350 kcal)</option>
+                                        <option value="maintain">Weight Maintenance &amp; Vitality</option>
+                                        <option value="diabetic_friendly">Diabetic / Low-Glycemic Friendly</option>
+                                        <option value="keto">Keto / Low-Carb High-Fat</option>
+                                    </select>
+                                </div>
+                                <div class="diet-form-group">
+                                    <label for="diet-pref">Dietary Preference</label>
+                                    <select id="diet-pref" class="diet-select">
+                                        <option value="" disabled selected>Select Dietary Preference</option>
+                                        <option value="vegetarian">Vegetarian (Dairy ok)</option>
+                                        <option value="vegan">100% Plant-Based / Vegan</option>
+                                        <option value="eggetarian">Eggetarian (Vegetarian + Eggs)</option>
+                                        <option value="non_veg">Non-Vegetarian (Chicken, Fish, Eggs)</option>
+                                        <option value="jain">Jain Vegetarian (No onion, garlic, root veg)</option>
+                                    </select>
+                                </div>
+                                <div class="diet-form-group" style="grid-column: 1 / -1;">
+                                    <label for="diet-notes">Health Conditions, Allergies or Food Preferences</label>
+                                    <input type="text" id="diet-notes" class="diet-input" placeholder="e.g. Lactose intolerant, PCOS, high blood pressure, prefer North Indian meals, no peanuts">
+                                </div>
                             </div>
-                            <div class="diet-form-group">
-                                <label for="diet-age">Age (years)</label>
-                                <input type="number" id="diet-age" class="diet-input" min="10" max="100" value="28">
-                            </div>
-                            <div class="diet-form-group">
-                                <label for="diet-gender">Gender</label>
-                                <select id="diet-gender" class="diet-select">
-                                    <option value="male" selected>Male</option>
-                                    <option value="female">Female</option>
-                                    <option value="other">Other</option>
-                                </select>
-                            </div>
-                            <div class="diet-form-group">
-                                <label for="diet-height">Height (cm)</label>
-                                <input type="number" id="diet-height" class="diet-input" min="100" max="240" value="175">
-                            </div>
-                            <div class="diet-form-group">
-                                <label for="diet-weight">Weight (kg)</label>
-                                <input type="number" id="diet-weight" class="diet-input" min="30" max="250" value="72">
-                            </div>
-                            <div class="diet-form-group">
-                                <label for="diet-activity">Daily Activity Level</label>
-                                <select id="diet-activity" class="diet-select">
-                                    <option value="sedentary">Sedentary (Desk job, little exercise)</option>
-                                    <option value="light">Lightly Active (1-3 days/week exercise)</option>
-                                    <option value="moderate" selected>Moderately Active (3-5 days/week sports)</option>
-                                    <option value="active">Very Active (6-7 days/week hard workout)</option>
-                                    <option value="very_active">Extra Active (Athlete, physical labor)</option>
-                                </select>
-                            </div>
-                            <div class="diet-form-group">
-                                <label for="diet-goal">Primary Health Goal</label>
-                                <select id="diet-goal" class="diet-select">
-                                    <option value="weight_loss" selected>Fat Loss / Weight Loss (-500 kcal)</option>
-                                    <option value="muscle_gain">Lean Muscle Gain / Bulk (+350 kcal)</option>
-                                    <option value="maintain">Weight Maintenance &amp; Vitality</option>
-                                    <option value="diabetic_friendly">Diabetic / Low-Glycemic Friendly</option>
-                                    <option value="keto">Keto / Low-Carb High-Fat</option>
-                                </select>
-                            </div>
-                            <div class="diet-form-group">
-                                <label for="diet-pref">Dietary Preference</label>
-                                <select id="diet-pref" class="diet-select">
-                                    <option value="vegetarian" selected>Vegetarian (Dairy ok)</option>
-                                    <option value="vegan">100% Plant-Based / Vegan</option>
-                                    <option value="eggetarian">Eggetarian (Vegetarian + Eggs)</option>
-                                    <option value="non_veg">Non-Vegetarian (Chicken, Fish, Eggs)</option>
-                                    <option value="jain">Jain Vegetarian (No onion, garlic, root veg)</option>
-                                </select>
-                            </div>
-                            <div class="diet-form-group" style="grid-column: 1 / -1;">
-                                <label for="diet-notes">Health Conditions, Allergies or Food Preferences</label>
-                                <input type="text" id="diet-notes" class="diet-input" placeholder="e.g. Lactose intolerant, PCOS, high blood pressure, prefer North Indian meals, no peanuts">
-                            </div>
-                        </div>
 
                         <!-- Live BMR and TDEE Bar -->
                         <div class="bmr-stat-box" id="bmr-stat-display">
@@ -1011,7 +1208,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
 
                             <div class="diet-form-group" style="margin-bottom:12px;">
                                 <label for="log-portion">Portion / Serving Size</label>
-                                <input type="text" id="log-portion" class="diet-input" placeholder="e.g. 1 bowl (150g), 2 slices" value="1 serving">
+                                <input type="text" id="log-portion" class="diet-input" placeholder="e.g. 1 bowl (150g), 2 rotis">
                             </div>
 
                             <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;">
@@ -1021,15 +1218,15 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                                 </div>
                                 <div class="diet-form-group">
                                     <label for="log-protein">Protein (g)</label>
-                                    <input type="number" id="log-protein" class="diet-input" placeholder="e.g. 12" min="0" step="0.5" value="0">
+                                    <input type="number" id="log-protein" class="diet-input" placeholder="e.g. 12" min="0" step="0.5">
                                 </div>
                                 <div class="diet-form-group">
                                     <label for="log-carbs">Carbs (g)</label>
-                                    <input type="number" id="log-carbs" class="diet-input" placeholder="e.g. 45" min="0" step="0.5" value="0">
+                                    <input type="number" id="log-carbs" class="diet-input" placeholder="e.g. 45" min="0" step="0.5">
                                 </div>
                                 <div class="diet-form-group">
                                     <label for="log-fat">Fat (g)</label>
-                                    <input type="number" id="log-fat" class="diet-input" placeholder="e.g. 8" min="0" step="0.5" value="0">
+                                    <input type="number" id="log-fat" class="diet-input" placeholder="e.g. 8" min="0" step="0.5">
                                 </div>
                             </div>
 
@@ -1039,6 +1236,51 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                             <div id="log-status-msg" style="margin-top:10px; font-size:0.88rem; text-align:center; display:none;"></div>
                         </form>
                     </div>
+                </div>
+
+                <!-- AI Meal Suggester Component -->
+                <div class="meal-suggester-box" id="meal-suggester-box">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+                        <div>
+                            <h3 style="margin:0 0 4px; font-size:1.18rem; display:flex; align-items:center; gap:8px;">
+                                <span>💡 AI Meal Suggester</span>
+                                <span class="meal-badge" style="font-size:0.72rem;">Meta-Llama-3.1-8B</span>
+                            </h3>
+                            <p style="color:var(--muted); font-size:0.88rem; margin:0;">
+                                Wondering what to eat next? Ask AI for 3 personalized meal recommendations tailored to your diet goals and remaining calories, with 1-click logging!
+                            </p>
+                        </div>
+                    </div>
+
+                    <form id="meal-suggester-form" onsubmit="return false;">
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:14px;">
+                            <div class="diet-form-group">
+                                <label for="sug-meal-type">Meal Time</label>
+                                <select id="sug-meal-type" class="diet-select">
+                                    <option value="Breakfast">Breakfast</option>
+                                    <option value="Mid-Morning Snack">Mid-Morning Snack</option>
+                                    <option value="Lunch" selected>Lunch</option>
+                                    <option value="Evening Snack">Evening Snack</option>
+                                    <option value="Dinner">Dinner</option>
+                                </select>
+                            </div>
+                            <div class="diet-form-group">
+                                <label for="sug-calories">Calorie Budget (kcal)</label>
+                                <input type="number" id="sug-calories" class="diet-input" placeholder="e.g. 450 (or leave empty for remaining calories)" min="50" max="2500">
+                            </div>
+                            <div class="diet-form-group" style="grid-column: 1 / -1;">
+                                <label for="sug-craving">Craving / Specific Food Request (Optional)</label>
+                                <input type="text" id="sug-craving" class="diet-input" placeholder="e.g. High protein paneer, light South Indian, comforting soup, quick under 10 min...">
+                            </div>
+                        </div>
+
+                        <button type="button" id="btn-suggest-meals" class="btn-primary" style="padding:12px 22px; font-size:0.92rem;">
+                            ✨ Suggest 3 Meals with Llama-3.1
+                        </button>
+                        <div id="sug-status-msg" style="margin-top:10px; font-size:0.88rem; display:none;"></div>
+                    </form>
+
+                    <div id="sug-results-container" class="meal-sug-grid" style="display:none;"></div>
                 </div>
             </div>
 
@@ -1055,6 +1297,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                     </div>
                 </div>
             </div>
+            </div> <!-- End diet-content-wrap -->
         </section>
     </main>
 
@@ -1400,23 +1643,32 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
         var badge = $('feedback-count-badge');
         if (!container) return;
         if (!items || !items.length) {
-            container.innerHTML = '<p class="muted" style="text-align:center;padding:20px 0;">No feedbacks yet. Be the first to share!</p>';
+            if (currentUser && currentUser.authenticated) {
+                container.innerHTML = '<p class="muted" style="text-align:center;padding:24px 0;">You haven\'t submitted any feedback yet. Share your experience using the form on the left!</p>';
+            } else {
+                container.innerHTML = '<p class="muted" style="text-align:center;padding:24px 0;">No private feedback loaded. <a href="#" id="fb-empty-log-btn" style="color:var(--accent); font-weight:600;">Sign in</a> to view your private responses or submit a review!</p>';
+                var lk = $('fb-empty-log-btn');
+                if (lk) lk.addEventListener('click', function (e) { e.preventDefault(); openAuthModal('login'); });
+            }
             if (badge) badge.textContent = '0 Reviews';
             return;
         }
         if (badge) badge.textContent = items.length + ' Review' + (items.length > 1 ? 's' : '');
         container.innerHTML = items.map(function (item) {
-            var name = esc(item.name || 'Anonymous');
+            var name = esc(item.name || 'User');
             var initials = (name.charAt(0) || 'U').toUpperCase();
             var rating = Math.max(1, Math.min(5, parseInt(item.rating, 10) || 5));
             var stars = '⭐'.repeat(rating);
             var date = esc(item.date || 'Recently');
             var msg = esc(item.message || '');
+            var devInfo = (currentUser && currentUser.is_developer && item.user_id)
+                ? '<span style="font-size:0.7rem; color:var(--muted); margin-left:6px;">[@' + esc(item.user_id) + ']</span>'
+                : '';
             return '<div class="feedback-card-item">' +
                 '<div class="feedback-item-header">' +
                     '<div class="feedback-user-info">' +
                         '<div class="feedback-user-avatar">' + initials + '</div>' +
-                        '<span>' + name + '</span>' +
+                        '<span>' + name + devInfo + '</span>' +
                     '</div>' +
                     '<div class="feedback-item-meta">' +
                         '<span class="feedback-item-stars">' + stars + '</span>' +
@@ -1432,22 +1684,14 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
         fetch('/api/feedback')
             .then(function (res) { return res.json(); })
             .then(function (data) {
-                if (data && data.feedbacks) {
+                if (data && Array.isArray(data.feedbacks)) {
                     renderFeedbacks(data.feedbacks);
+                } else {
+                    renderFeedbacks([]);
                 }
             })
             .catch(function () {
-                var stored = null;
-                try { stored = JSON.parse(localStorage.getItem('foodcheck_feedbacks')); } catch (e) {}
-                if (stored && stored.length) {
-                    renderFeedbacks(stored);
-                } else {
-                    renderFeedbacks([
-                        { name: 'Aarav Sharma', rating: 5, message: 'Incredible accuracy! It detected excess sodium and hidden maltodextrin in instant noodles and suggested healthier millet noodles.', date: 'Today, 10:45 AM' },
-                        { name: 'Priya Patel', rating: 5, message: 'As a mother of two, the additive red flags help me check breakfast cereals in seconds. Love the clean design and dark theme!', date: 'Yesterday, 4:20 PM' },
-                        { name: 'Rohan Deshmukh', rating: 4, message: 'Quick and accurate label scanning. The camera option works smoothly on mobile. Super helpful app!', date: '2 days ago' }
-                    ]);
-                }
+                renderFeedbacks([]);
             });
     }
 
@@ -1516,10 +1760,9 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                 submitFb.textContent = '🚀 Submit Feedback';
                 if (data.status === 'success' && data.feedbacks) {
                     renderFeedbacks(data.feedbacks);
-                    try { localStorage.setItem('foodcheck_feedbacks', JSON.stringify(data.feedbacks)); } catch (e) {}
                     if (statusDiv) {
                         statusDiv.className = 'fb-status-msg success';
-                        statusDiv.textContent = '🎉 Thank you, ' + name + '! Your feedback has been published.';
+                        statusDiv.textContent = '🎉 Thank you, ' + name + '! Your feedback has been recorded securely.';
                     }
                     if (textInp) textInp.value = '';
                     toast('🎉 Feedback submitted successfully!');
@@ -1527,22 +1770,251 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                     throw new Error(data.error || 'Submission failed');
                 }
             })
-            .catch(function () {
+            .catch(function (err) {
                 submitFb.disabled = false;
                 submitFb.textContent = '🚀 Submit Feedback';
-                var stored = [];
-                try { stored = JSON.parse(localStorage.getItem('foodcheck_feedbacks') || '[]'); } catch (e) {}
-                var newItem = { name: name, message: message, rating: fbRating, date: 'Just now' };
-                stored.unshift(newItem);
-                try { localStorage.setItem('foodcheck_feedbacks', JSON.stringify(stored)); } catch (e) {}
-                renderFeedbacks(stored);
                 if (statusDiv) {
-                    statusDiv.className = 'fb-status-msg success';
-                    statusDiv.textContent = '🎉 Thank you, ' + name + '! Your feedback has been published.';
+                    statusDiv.className = 'fb-status-msg error';
+                    statusDiv.textContent = '⚠️ ' + (err.message || 'Submission failed');
                 }
-                if (textInp) textInp.value = '';
-                toast('🎉 Feedback submitted!');
             });
+        });
+    }
+
+    /* ---------- Authenticator & Privacy Logic ---------- */
+    var currentUser = null;
+
+    function updateAuthUI(user) {
+        currentUser = user;
+        var openBtn = $('nav-open-auth-btn');
+        var badgeWrap = $('user-badge-wrap');
+        var roleBadge = $('user-role-badge');
+        var nameTxt = $('user-display-name');
+        var gate = $('diet-auth-gate');
+        var content = $('diet-content-wrap');
+        var fbBadge = $('feedback-privacy-badge');
+        var fbDesc = $('feedback-desc-text');
+        var fbHint = $('feedback-auth-hint');
+        var fbNameInp = $('feedback-name');
+        var dietNameInp = $('diet-name');
+
+        if (user && user.authenticated) {
+            if (openBtn) openBtn.classList.add('hidden');
+            if (badgeWrap) badgeWrap.classList.remove('hidden');
+            if (nameTxt) nameTxt.textContent = user.name || user.user_id;
+
+            if (roleBadge) {
+                if (user.is_developer) {
+                    roleBadge.className = 'role-badge dev';
+                    roleBadge.textContent = '🛠️ Developer';
+                } else {
+                    roleBadge.className = 'role-badge user';
+                    roleBadge.textContent = '👤 User';
+                }
+            }
+
+            if (gate) gate.classList.add('hidden');
+            if (content) content.classList.remove('hidden');
+
+            if (fbBadge) {
+                if (user.is_developer) {
+                    fbBadge.textContent = '🛠️ Developer Mode (All Community Feedback)';
+                } else {
+                    fbBadge.textContent = '🔒 Your Private Feedback';
+                }
+            }
+            if (fbDesc) {
+                if (user.is_developer) {
+                    fbDesc.textContent = 'Viewing all user reviews and feedback submissions across all devices.';
+                } else {
+                    fbDesc.textContent = 'Your feedback is private — only you and verified developers can view your submitted reviews.';
+                }
+            }
+            if (fbHint) fbHint.style.display = 'none';
+            if (fbNameInp && !fbNameInp.value) fbNameInp.value = user.name || '';
+            if (dietNameInp && !dietNameInp.value) dietNameInp.value = user.name || '';
+        } else {
+            if (openBtn) openBtn.classList.remove('hidden');
+            if (badgeWrap) badgeWrap.classList.add('hidden');
+
+            if (gate) gate.classList.remove('hidden');
+            if (content) content.classList.add('hidden');
+
+            if (fbBadge) fbBadge.textContent = '💬 Feedback & Reviews';
+            if (fbDesc) fbDesc.textContent = 'Help us improve FoodCheck! Share your thoughts or suggestions, and see your submitted feedback.';
+            if (fbHint) fbHint.style.display = 'block';
+        }
+    }
+
+    function checkAuthStatus(callback) {
+        fetch('/api/auth/me')
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                updateAuthUI(data);
+                if (callback) callback(data);
+            })
+            .catch(function () {
+                updateAuthUI({ authenticated: false });
+                if (callback) callback({ authenticated: false });
+            });
+    }
+
+    function openAuthModal(mode) {
+        var modal = $('auth-modal');
+        if (!modal) return;
+        modal.classList.remove('hidden');
+        switchAuthTab(mode || 'login');
+        var logStat = $('login-status-msg');
+        if (logStat) logStat.style.display = 'none';
+        var regStat = $('reg-status-msg');
+        if (regStat) regStat.style.display = 'none';
+    }
+
+    function closeAuthModal() {
+        var modal = $('auth-modal');
+        if (modal) modal.classList.add('hidden');
+    }
+
+    function switchAuthTab(tab) {
+        var loginTab = $('tab-auth-login');
+        var regTab = $('tab-auth-register');
+        var loginView = $('auth-login-view');
+        var regView = $('auth-register-view');
+
+        if (tab === 'login') {
+            if (loginTab) loginTab.classList.add('active');
+            if (regTab) regTab.classList.remove('active');
+            if (loginView) loginView.classList.remove('hidden');
+            if (regView) regView.classList.add('hidden');
+            var u = $('login-username');
+            if (u) setTimeout(function () { u.focus(); }, 100);
+        } else {
+            if (regTab) regTab.classList.add('active');
+            if (loginTab) loginTab.classList.remove('active');
+            if (regView) regView.classList.remove('hidden');
+            if (loginView) loginView.classList.add('hidden');
+            var n = $('reg-name');
+            if (n) setTimeout(function () { n.focus(); }, 100);
+        }
+    }
+
+    var navOpenAuth = $('nav-open-auth-btn');
+    if (navOpenAuth) navOpenAuth.addEventListener('click', function () { openAuthModal('login'); });
+    var closeAuthBtn = $('close-auth-btn');
+    if (closeAuthBtn) closeAuthBtn.addEventListener('click', closeAuthModal);
+    var authModal = $('auth-modal');
+    if (authModal) authModal.addEventListener('click', function (e) { if (e.target === this) closeAuthModal(); });
+
+    var tabAuthLog = $('tab-auth-login');
+    if (tabAuthLog) tabAuthLog.addEventListener('click', function () { switchAuthTab('login'); });
+    var tabAuthReg = $('tab-auth-register');
+    if (tabAuthReg) tabAuthReg.addEventListener('click', function () { switchAuthTab('register'); });
+
+    var gateLogBtn = $('gate-login-btn');
+    if (gateLogBtn) gateLogBtn.addEventListener('click', function () { openAuthModal('login'); });
+    var gateBackBtn = $('gate-back-btn');
+    if (gateBackBtn) gateBackBtn.addEventListener('click', function () { switchMode('scan'); });
+
+    var fbLoginLink = $('feedback-login-link');
+    if (fbLoginLink) fbLoginLink.addEventListener('click', function (e) { e.preventDefault(); openAuthModal('login'); });
+
+    var formLogin = $('form-auth-login');
+    if (formLogin) {
+        formLogin.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var uInp = $('login-username'), pInp = $('login-password'), stat = $('login-status-msg'), btn = $('btn-submit-login');
+            var username = uInp ? uInp.value.trim() : '';
+            var password = pInp ? pInp.value.trim() : '';
+
+            if (!username || !password) {
+                if (stat) { stat.className = 'fb-status-msg error'; stat.textContent = '⚠️ Please enter both User ID and password.'; }
+                return;
+            }
+
+            if (btn) { btn.disabled = true; btn.textContent = 'Signing in...'; }
+            if (stat) stat.style.display = 'none';
+
+            fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: username, password: password })
+            })
+            .then(function (res) { return res.json().then(function (d) { return { ok: res.ok, data: d }; }); })
+            .then(function (res) {
+                if (btn) { btn.disabled = false; btn.textContent = '🔓 Sign In to My Account'; }
+                if (!res.ok) {
+                    if (stat) { stat.className = 'fb-status-msg error'; stat.textContent = '⚠️ ' + (res.data.error || 'Authentication failed'); }
+                    return;
+                }
+                closeAuthModal();
+                checkAuthStatus(function () {
+                    initDietHub();
+                    loadFeedbacks();
+                    toast('🎉 Welcome back, ' + (res.data.user.name || res.data.user.user_id) + '!');
+                });
+            })
+            .catch(function (err) {
+                if (btn) { btn.disabled = false; btn.textContent = '🔓 Sign In to My Account'; }
+                if (stat) { stat.className = 'fb-status-msg error'; stat.textContent = '⚠️ Network error: ' + err.message; }
+            });
+        });
+    }
+
+    var formReg = $('form-auth-register');
+    if (formReg) {
+        formReg.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var nInp = $('reg-name'), uInp = $('reg-username'), pInp = $('reg-password'), devInp = $('reg-is-dev'), stat = $('reg-status-msg'), btn = $('btn-submit-register');
+            var name = nInp ? nInp.value.trim() : '';
+            var username = uInp ? uInp.value.trim() : '';
+            var password = pInp ? pInp.value.trim() : '';
+            var isDev = devInp ? devInp.checked : false;
+
+            if (!name || !username || !password) {
+                if (stat) { stat.className = 'fb-status-msg error'; stat.textContent = '⚠️ Please fill all fields.'; }
+                return;
+            }
+
+            if (btn) { btn.disabled = true; btn.textContent = 'Creating account...'; }
+            if (stat) stat.style.display = 'none';
+
+            fetch('/api/auth/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name, username: username, password: password, is_developer: isDev })
+            })
+            .then(function (res) { return res.json().then(function (d) { return { ok: res.ok, data: d }; }); })
+            .then(function (res) {
+                if (btn) { btn.disabled = false; btn.textContent = '✨ Create Private Account'; }
+                if (!res.ok) {
+                    if (stat) { stat.className = 'fb-status-msg error'; stat.textContent = '⚠️ ' + (res.data.error || 'Registration failed'); }
+                    return;
+                }
+                closeAuthModal();
+                checkAuthStatus(function () {
+                    initDietHub();
+                    loadFeedbacks();
+                    toast('🎉 Account created! Welcome, ' + (res.data.user.name || res.data.user.user_id) + '!');
+                });
+            })
+            .catch(function (err) {
+                if (btn) { btn.disabled = false; btn.textContent = '✨ Create Private Account'; }
+                if (stat) { stat.className = 'fb-status-msg error'; stat.textContent = '⚠️ Network error: ' + err.message; }
+            });
+        });
+    }
+
+    var btnNavLogout = $('btn-nav-logout');
+    if (btnNavLogout) {
+        btnNavLogout.addEventListener('click', function () {
+            fetch('/api/auth/logout', { method: 'POST' })
+                .then(function () {
+                    checkAuthStatus(function () {
+                        userDietProfile = null;
+                        loadFeedbacks();
+                        toast('👋 You have been logged out.');
+                    });
+                });
         });
     }
 
@@ -1560,7 +2032,14 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             if (navScanBtn) navScanBtn.classList.remove('active');
             if (navDietBtn) navDietBtn.classList.add('active');
             show('diet-section');
-            initDietHub();
+            if (currentUser && currentUser.authenticated) {
+                if ($('diet-auth-gate')) $('diet-auth-gate').classList.add('hidden');
+                if ($('diet-content-wrap')) $('diet-content-wrap').classList.remove('hidden');
+                initDietHub();
+            } else {
+                if ($('diet-auth-gate')) $('diet-auth-gate').classList.remove('hidden');
+                if ($('diet-content-wrap')) $('diet-content-wrap').classList.add('hidden');
+            }
         } else {
             if (navDietBtn) navDietBtn.classList.remove('active');
             if (navScanBtn) navScanBtn.classList.add('active');
@@ -1594,14 +2073,24 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
         });
     });
 
-    // Dynamic Live BMR & TDEE calculation
+    // Dynamic Live BMR & TDEE calculation (No default fallback values - clean state)
     function updateLiveBMR() {
-        var age = parseFloat($('diet-age').value) || 28;
-        var gender = $('diet-gender').value;
-        var height = parseFloat($('diet-height').value) || 175;
-        var weight = parseFloat($('diet-weight').value) || 72;
-        var act = $('diet-activity').value;
-        var goal = $('diet-goal').value;
+        var ageEl = $('diet-age'), hEl = $('diet-height'), wEl = $('diet-weight');
+        var age = ageEl ? parseFloat(ageEl.value) : null;
+        var height = hEl ? parseFloat(hEl.value) : null;
+        var weight = wEl ? parseFloat(wEl.value) : null;
+
+        if (!age || !height || !weight || isNaN(age) || isNaN(height) || isNaN(weight) || age <= 0 || height <= 0 || weight <= 0) {
+            if ($('disp-bmr')) $('disp-bmr').textContent = '-- kcal';
+            if ($('disp-tdee')) $('disp-tdee').textContent = '-- kcal';
+            if ($('disp-target-cals')) $('disp-target-cals').textContent = '-- kcal';
+            if ($('disp-target-prot')) $('disp-target-prot').textContent = '-- g';
+            return;
+        }
+
+        var gender = ($('diet-gender') && $('diet-gender').value) || 'male';
+        var act = ($('diet-activity') && $('diet-activity').value) || 'moderate';
+        var goal = ($('diet-goal') && $('diet-goal').value) || 'maintain';
 
         var bmr = (gender === 'male') ? (10 * weight + 6.25 * height - 5 * age + 5) : (10 * weight + 6.25 * height - 5 * age - 161);
         var actMultipliers = { 'sedentary': 1.2, 'light': 1.375, 'moderate': 1.55, 'active': 1.725, 'very_active': 1.9 };
@@ -1632,12 +2121,13 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
 
     // Fetch and populate profile from backend
     function loadProfile() {
+        if (!currentUser || !currentUser.authenticated) return;
         fetch('/api/diet/profile')
             .then(function (res) { return res.json(); })
             .then(function (data) {
                 if (data && data.profile) {
                     userDietProfile = data.profile;
-                    if ($('diet-name')) $('diet-name').value = data.profile.name || '';
+                    if ($('diet-name') && data.profile.name) $('diet-name').value = data.profile.name;
                     if ($('diet-age') && data.profile.age) $('diet-age').value = data.profile.age;
                     if ($('diet-gender') && data.profile.gender) $('diet-gender').value = data.profile.gender;
                     if ($('diet-height') && data.profile.height_cm) $('diet-height').value = data.profile.height_cm;
@@ -1993,10 +2483,11 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                 submitMealBtn.textContent = '➕ Add to Calorie Log';
                 if (data.status === 'success') {
                     $('log-food-item').value = '';
+                    $('log-portion').value = '';
                     $('log-calories').value = '';
-                    $('log-protein').value = '0';
-                    $('log-carbs').value = '0';
-                    $('log-fat').value = '0';
+                    $('log-protein').value = '';
+                    $('log-carbs').value = '';
+                    $('log-fat').value = '';
                     renderCalorieSummary(data.daily_summary);
                     toast('🎉 Logged ' + payload.food_item + ' successfully!');
                 } else {
@@ -2009,6 +2500,124 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                 toast('⚠️ ' + err.message);
             });
         });
+    }
+
+    // AI Meal Suggester logic
+    var btnSugMeals = $('btn-suggest-meals');
+    if (btnSugMeals) {
+        btnSugMeals.addEventListener('click', function () {
+            if (!currentUser || !currentUser.authenticated) {
+                toast('🔒 Please sign in to generate personalized meal suggestions.');
+                openAuthModal('login');
+                return;
+            }
+
+            var mType = $('sug-meal-type') ? $('sug-meal-type').value : 'Lunch';
+            var calInp = $('sug-calories');
+            var cals = (calInp && calInp.value) ? parseFloat(calInp.value) : null;
+            var cravingInp = $('sug-craving');
+            var craving = cravingInp ? cravingInp.value.trim() : '';
+
+            btnSugMeals.disabled = true;
+            btnSugMeals.textContent = '🧠 Asking Meta-Llama-3.1 on Groq Cloud...';
+            var stat = $('sug-status-msg');
+            if (stat) {
+                stat.style.display = 'block';
+                stat.style.color = 'var(--accent)';
+                stat.textContent = '⚡ Groq LLaMA-3.1 is analyzing your macros & generating 3 personalized meal options...';
+            }
+
+            var payload = { meal_type: mType, craving: craving };
+            if (cals && !isNaN(cals)) payload.target_calories = cals;
+
+            fetch('/api/diet/suggest_meal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                btnSugMeals.disabled = false;
+                btnSugMeals.textContent = '✨ Suggest 3 Meals with Llama-3.1';
+                if (stat) stat.style.display = 'none';
+
+                if (data.status === 'success' && data.result && data.result.suggestions) {
+                    renderMealSuggestions(data.result.suggestions, mType);
+                    toast('🎉 3 meal ideas tailored for you!');
+                } else {
+                    throw new Error(data.error || 'Failed to generate suggestions');
+                }
+            })
+            .catch(function (err) {
+                btnSugMeals.disabled = false;
+                btnSugMeals.textContent = '✨ Suggest 3 Meals with Llama-3.1';
+                if (stat) {
+                    stat.style.color = 'var(--bad)';
+                    stat.textContent = '⚠️ ' + err.message;
+                }
+                toast('⚠️ Error: ' + err.message);
+            });
+        });
+    }
+
+    function renderMealSuggestions(suggestions, mealType) {
+        var container = $('sug-results-container');
+        if (!container) return;
+        container.style.display = 'grid';
+
+        container.innerHTML = suggestions.map(function (s, idx) {
+            var title = esc(s.title || s.name || 'Suggested Meal ' + (idx + 1));
+            var desc = esc(s.description || s.why || '');
+            var cals = (s.calories || 0);
+            var p = (s.protein_g || 0);
+            var c = (s.carbs_g || 0);
+            var f = (s.fat_g || 0);
+
+            var itemData = JSON.stringify({
+                meal_type: mealType,
+                food_item: s.title || s.name,
+                portion: s.portion || '1 serving',
+                calories: cals,
+                protein_g: p,
+                carbs_g: c,
+                fat_g: f
+            }).replace(/"/g, '&quot;');
+
+            return '<div class="meal-sug-card">' +
+                '<div>' +
+                    '<div class="meal-sug-header">' +
+                        '<h4 class="meal-sug-title">' + title + '</h4>' +
+                        '<span class="meal-sug-cals">' + cals + ' kcal</span>' +
+                    '</div>' +
+                    '<div class="meal-sug-portion">Portion: ' + (s.portion ? esc(s.portion) : 'Standard serving') + '</div>' +
+                    '<p class="meal-sug-desc">' + desc + '</p>' +
+                    '<div class="meal-sug-macros">' +
+                        '<span class="macro-pill p">Protein: ' + p + 'g</span>' +
+                        '<span class="macro-pill c">Carbs: ' + c + 'g</span>' +
+                        '<span class="macro-pill f">Fat: ' + f + 'g</span>' +
+                    '</div>' +
+                '</div>' +
+                '<button type="button" class="meal-sug-action-btn sug-quick-log-btn" data-item="' + itemData + '">' +
+                    '➕ 1-Click Log to Tracker' +
+                '</button>' +
+            '</div>';
+        }).join('');
+
+        container.querySelectorAll('.sug-quick-log-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                try {
+                    var item = JSON.parse(btn.getAttribute('data-item'));
+                    quickLogFromDietPlan(item);
+                    btn.textContent = '✅ Logged to Tracker!';
+                    btn.disabled = true;
+                    setTimeout(function () { loadTodayCalorieSummary(); }, 300);
+                } catch (e) {
+                    console.error(e);
+                }
+            });
+        });
+
+        container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
     // Delete meal entry
@@ -2080,14 +2689,17 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
     if (refreshHistBtn) refreshHistBtn.addEventListener('click', loadDietPlanHistory);
 
     function initDietHub() {
-        loadProfile();
-        loadTodayCalorieSummary();
+        if (currentUser && currentUser.authenticated) {
+            loadProfile();
+            loadTodayCalorieSummary();
+        }
     }
 
     // Initialize all modules on page load
-    loadFeedbacks();
+    checkAuthStatus(function () {
+        loadFeedbacks();
+    });
     updateLiveBMR();
-    initDietHub();
 
     window.addEventListener('pagehide', stopStream);
 })();
