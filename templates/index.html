@@ -1913,7 +1913,6 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             var initials = (name.charAt(0) || 'U').toUpperCase();
             var rating = Math.max(1, Math.min(5, parseInt(item.rating, 10) || 5));
             var stars = '⭐'.repeat(rating);
-            var date = esc(item.date || 'Recently');
             var msg = esc(item.message || '');
             var devInfo = (currentUser && currentUser.is_developer && item.user_id)
                 ? '<span style="font-size:0.7rem; color:var(--muted); margin-left:6px;">[@' + esc(item.user_id) + ']</span>'
@@ -1930,7 +1929,6 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                     '</div>' +
                     '<div class="feedback-item-meta">' +
                         '<span class="feedback-item-stars">' + stars + '</span>' +
-                        '<span class="feedback-item-date">' + date + '</span>' +
                         editBtn +
                     '</div>' +
                 '</div>' +
