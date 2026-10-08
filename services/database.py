@@ -831,3 +831,76 @@ def get_developer_feedbacks():
             results.append(item)
     return results
 
+
+def get_all_feedbacks():
+    """Fetch ALL feedbacks across all users."""
+    return get_developer_feedbacks()
+
+
+def update_feedback_db(fb_id, user_id, rating, message, is_dev=False):
+    """Update an existing feedback entry if owned by user_id or if developer."""
+    fb_id = str(fb_id).strip()
+    user_id = str(user_id).strip().lower()
+    message = str(message).strip()
+    if not message:
+        return None, "Feedback message cannot be empty."
+    try:
+        rating = max(1, min(5, int(rating)))
+    except (ValueError, TypeError):
+        rating = 5
+
+    with DatabaseConnection() as (conn, is_pg):
+        cursor = conn.cursor()
+        if is_pg:
+            if is_dev:
+                cursor.execute("""
+                    UPDATE feedbacks
+                    SET rating = %s, message = %s
+                    WHERE id = %s
+                    RETURNING id, user_id, name, rating, message, created_at;
+                """, (rating, message, fb_id))
+            else:
+                cursor.execute("""
+                    UPDATE feedbacks
+                    SET rating = %s, message = %s
+                    WHERE id = %s AND user_id = %s
+                    RETURNING id, user_id, name, rating, message, created_at;
+                """, (rating, message, fb_id, user_id))
+            row = cursor.fetchone()
+        else:
+            if is_dev:
+                cursor.execute("""
+                    SELECT id, user_id, name, rating, message, created_at
+                    FROM feedbacks WHERE id = ?;
+                """, (fb_id,))
+            else:
+                cursor.execute("""
+                    SELECT id, user_id, name, rating, message, created_at
+                    FROM feedbacks WHERE id = ? AND user_id = ?;
+                """, (fb_id, user_id))
+            existing = cursor.fetchone()
+            if existing:
+                cursor.execute("""
+                    UPDATE feedbacks
+                    SET rating = ?, message = ?
+                    WHERE id = ?;
+                """, (rating, message, fb_id))
+                row = (existing[0], existing[1], existing[2], rating, message, existing[5])
+            else:
+                row = None
+        cursor.close()
+
+    if not row:
+        return None, "Feedback entry not found or permission denied."
+
+    item = {
+        "id": row[0],
+        "user_id": row[1],
+        "name": row[2],
+        "rating": row[3],
+        "message": row[4],
+        "date": "Edited recently"
+    }
+    return item, None
+
+

@@ -433,6 +433,24 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
 .feedback-item-stars { letter-spacing: .5px; }
 .feedback-item-date { color: var(--muted); }
 .feedback-text-content { margin: 0; font-size: .86rem; color: var(--text); opacity: .92; line-height: 1.45; word-break: break-word; }
+.fb-edit-btn {
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: .72rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all .15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.fb-edit-btn:hover {
+    background: var(--accent);
+    color: var(--on-accent);
+}
 
 /* ===== Navigation Modes (Food Scanner vs Diet Planner) ===== */
 .nav-modes { display: flex; align-items: center; gap: 6px; background: var(--surface-2); padding: 4px; border-radius: 999px; border: 1px solid var(--border); }
@@ -729,9 +747,9 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             <!-- FEEDBACK SECTION (PAGE 1) -->
             <div id="feedback-section" class="feedback-section">
                 <div class="feedback-header">
-                    <span class="feedback-badge" id="feedback-privacy-badge">💬 Feedback &amp; Reviews</span>
-                    <h2>Your Feedback &amp; Responses</h2>
-                    <p id="feedback-desc-text">Help us improve FoodCheck! Share your thoughts or suggestions, and see your submitted feedback.</p>
+                    <span class="feedback-badge" id="feedback-privacy-badge">💬 Community Reviews</span>
+                    <h2>Community Feedback &amp; Reviews</h2>
+                    <p id="feedback-desc-text">Read what users say about FoodCheck, share your own review, and edit your feedback anytime.</p>
                 </div>
 
                 <div class="feedback-box">
@@ -740,7 +758,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                         <div class="feedback-form-col">
                             <h3><span>✍️ Share Your Feedback</span></h3>
                             <p id="feedback-auth-hint" style="font-size:0.8rem; color:var(--muted); margin-bottom:12px;">
-                                💡 <a href="#" id="feedback-login-link" style="color:var(--accent); font-weight:600;">Sign in to your account</a> to keep your feedback private to your user ID.
+                                💡 <a href="#" id="feedback-login-link" style="color:var(--accent); font-weight:600;">Sign in to your account</a> to join the community discussion and edit your feedback anytime.
                             </p>
                             <form id="feedback-form" onsubmit="return false;">
                                 <div class="fb-field">
@@ -774,8 +792,8 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                         <!-- Right: Responses Display -->
                         <div class="feedback-list-col">
                             <h3>
-                                <span>📋 Recent Responses</span>
-                                <span id="feedback-count-badge" class="feedback-count-badge">3 Reviews</span>
+                                <span>💬 Community Reviews</span>
+                                <span id="feedback-count-badge" class="feedback-count-badge">0 Reviews</span>
                             </h3>
                             <div id="feedback-items" class="feedback-items-container">
                                 <!-- Dynamic feedback items loaded from API/local -->
@@ -894,6 +912,42 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                         <div id="reg-status-msg" class="fb-status-msg"></div>
                     </form>
                 </div>
+            </div>
+        </div>
+
+        <!-- EDIT FEEDBACK MODAL -->
+        <div id="edit-feedback-modal" class="modal hidden">
+            <div class="modal-content auth-modal-card">
+                <div class="modal-header">
+                    <h3>✏️ Edit Your Feedback</h3>
+                    <button type="button" id="close-edit-fb-btn" class="btn-icon" title="Close">✕</button>
+                </div>
+                <form id="edit-feedback-form" onsubmit="return false;" style="margin-top:14px;">
+                    <input type="hidden" id="edit-fb-id">
+                    <div class="fb-field" style="margin-bottom:12px;">
+                        <label for="edit-fb-name">Your Name</label>
+                        <input type="text" id="edit-fb-name" class="fb-input" disabled style="opacity:0.75; cursor:not-allowed;">
+                    </div>
+                    <div class="fb-field" style="margin-bottom:12px;">
+                        <label>Rate Your Experience</label>
+                        <div class="fb-stars" id="edit-star-rating" role="radiogroup" aria-label="Edit Rating">
+                            <button type="button" class="star-btn active" data-val="1" title="1 star">⭐</button>
+                            <button type="button" class="star-btn active" data-val="2" title="2 stars">⭐</button>
+                            <button type="button" class="star-btn active" data-val="3" title="3 stars">⭐</button>
+                            <button type="button" class="star-btn active" data-val="4" title="4 stars">⭐</button>
+                            <button type="button" class="star-btn active" data-val="5" title="5 stars">⭐</button>
+                        </div>
+                    </div>
+                    <div class="fb-field" style="margin-bottom:16px;">
+                        <label for="edit-fb-text">Your Feedback / Review <span class="req">*</span></label>
+                        <textarea id="edit-fb-text" class="fb-input fb-textarea" rows="4" placeholder="Update your review..." required></textarea>
+                    </div>
+                    <div style="display:flex; gap:10px; justify-content:flex-end;">
+                        <button type="button" id="cancel-edit-fb-btn" class="btn-secondary" style="padding:10px 18px; border-radius:10px;">Cancel</button>
+                        <button type="button" id="save-edit-fb-btn" class="fb-submit-btn" style="width:auto; padding:10px 22px;">💾 Save Changes</button>
+                    </div>
+                    <div id="edit-fb-status" class="fb-status-msg"></div>
+                </form>
             </div>
         </div>
 
@@ -1608,7 +1662,12 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
     if ($('flip-camera-btn')) $('flip-camera-btn').addEventListener('click', function () { facing = facing === 'environment' ? 'user' : 'environment'; startStream(); });
     if ($('snap-btn')) $('snap-btn').addEventListener('click', snap);
     if ($('fallback-camera-btn')) $('fallback-camera-btn').addEventListener('click', function () { closeCamera(); cam.click(); });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeCamera(); });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+            closeCamera();
+            if (typeof closeEditFeedbackModal === 'function') closeEditFeedbackModal();
+        }
+    });
     var reportActCard = $('report-actions-card');
     if (reportActCard) {
         reportActCard.addEventListener('click', function (e) {
@@ -1639,9 +1698,9 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
         if (!container) return;
         if (!items || !items.length) {
             if (currentUser && currentUser.authenticated) {
-                container.innerHTML = '<p class="muted" style="text-align:center;padding:24px 0;">You haven\'t submitted any feedback yet. Share your experience using the form on the left!</p>';
+                container.innerHTML = '<p class="muted" style="text-align:center;padding:24px 0;">No community reviews yet. Be the first to share your experience using the form on the left!</p>';
             } else {
-                container.innerHTML = '<p class="muted" style="text-align:center;padding:24px 0;">No private feedback loaded. <a href="#" id="fb-empty-log-btn" style="color:var(--accent); font-weight:600;">Sign in</a> to view your private responses or submit a review!</p>';
+                container.innerHTML = '<p class="muted" style="text-align:center;padding:24px 0;">Sign in to view all community reviews and submit or edit your feedback! <a href="#" id="fb-empty-log-btn" style="color:var(--accent); font-weight:600;">Sign in</a></p>';
                 var lk = $('fb-empty-log-btn');
                 if (lk) lk.addEventListener('click', function (e) { e.preventDefault(); openAuthModal('login'); });
             }
@@ -1659,7 +1718,11 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             var devInfo = (currentUser && currentUser.is_developer && item.user_id)
                 ? '<span style="font-size:0.7rem; color:var(--muted); margin-left:6px;">[@' + esc(item.user_id) + ']</span>'
                 : '';
-            return '<div class="feedback-card-item">' +
+            var editBtn = item.can_edit
+                ? '<button type="button" class="fb-edit-btn" data-id="' + esc(item.id) + '" data-name="' + name + '" data-rating="' + rating + '" data-msg="' + esc(item.message) + '">✏️ Edit</button>'
+                : '';
+
+            return '<div class="feedback-card-item" id="fb-card-' + esc(item.id) + '">' +
                 '<div class="feedback-item-header">' +
                     '<div class="feedback-user-info">' +
                         '<div class="feedback-user-avatar">' + initials + '</div>' +
@@ -1668,11 +1731,124 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                     '<div class="feedback-item-meta">' +
                         '<span class="feedback-item-stars">' + stars + '</span>' +
                         '<span class="feedback-item-date">' + date + '</span>' +
+                        editBtn +
                     '</div>' +
                 '</div>' +
                 '<p class="feedback-text-content">' + msg + '</p>' +
             '</div>';
         }).join('');
+
+        // Attach listeners for edit buttons
+        container.querySelectorAll('.fb-edit-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var fid = btn.getAttribute('data-id');
+                var fname = btn.getAttribute('data-name');
+                var frating = parseInt(btn.getAttribute('data-rating'), 10) || 5;
+                var fmsg = btn.getAttribute('data-msg') || '';
+                openEditFeedbackModal(fid, fname, frating, fmsg);
+            });
+        });
+    }
+
+    /* ---------- Edit Feedback Modal Controller ---------- */
+    var editModal = $('edit-feedback-modal');
+    var editFbId = $('edit-fb-id');
+    var editFbName = $('edit-fb-name');
+    var editFbText = $('edit-fb-text');
+    var editFbRating = 5;
+    var editStarBtns = document.querySelectorAll('#edit-star-rating .star-btn');
+    var editFbStatus = $('edit-fb-status');
+    var saveEditFbBtn = $('save-edit-fb-btn');
+
+    function setEditRating(val) {
+        editFbRating = Math.max(1, Math.min(5, val || 5));
+        editStarBtns.forEach(function (b) {
+            var v = parseInt(b.getAttribute('data-val'), 10);
+            if (v <= editFbRating) {
+                b.classList.add('active');
+            } else {
+                b.classList.remove('active');
+            }
+        });
+    }
+
+    editStarBtns.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var val = parseInt(btn.getAttribute('data-val'), 10) || 5;
+            setEditRating(val);
+        });
+    });
+
+    function openEditFeedbackModal(id, name, rating, message) {
+        if (!editModal) return;
+        if (editFbId) editFbId.value = id;
+        if (editFbName) editFbName.value = name;
+        if (editFbText) editFbText.value = message;
+        setEditRating(rating);
+        if (editFbStatus) { editFbStatus.style.display = 'none'; editFbStatus.textContent = ''; }
+        editModal.classList.remove('hidden');
+        if (editFbText) setTimeout(function () { editFbText.focus(); }, 120);
+    }
+
+    function closeEditFeedbackModal() {
+        if (editModal) editModal.classList.add('hidden');
+    }
+
+    if ($('close-edit-fb-btn')) $('close-edit-fb-btn').addEventListener('click', closeEditFeedbackModal);
+    if ($('cancel-edit-fb-btn')) $('cancel-edit-fb-btn').addEventListener('click', closeEditFeedbackModal);
+    if (editModal) {
+        editModal.addEventListener('click', function (e) {
+            if (e.target === editModal) closeEditFeedbackModal();
+        });
+    }
+
+    if (saveEditFbBtn) {
+        saveEditFbBtn.addEventListener('click', function () {
+            var id = editFbId ? editFbId.value.trim() : '';
+            var msg = editFbText ? editFbText.value.trim() : '';
+            if (!id) return;
+            if (!msg) {
+                if (editFbStatus) {
+                    editFbStatus.className = 'fb-status-msg error';
+                    editFbStatus.textContent = '⚠️ Feedback message cannot be empty.';
+                }
+                if (editFbText) editFbText.focus();
+                return;
+            }
+
+            saveEditFbBtn.disabled = true;
+            saveEditFbBtn.textContent = 'Saving...';
+            if (editFbStatus) editFbStatus.style.display = 'none';
+
+            fetch('/api/feedback/' + encodeURIComponent(id) + '/edit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ rating: editFbRating, message: msg })
+            })
+            .then(function (res) { return res.json().then(function (d) { return { ok: res.ok, data: d }; }); })
+            .then(function (res) {
+                saveEditFbBtn.disabled = false;
+                saveEditFbBtn.textContent = '💾 Save Changes';
+                if (!res.ok) {
+                    throw new Error(res.data.error || 'Failed to update feedback');
+                }
+                closeEditFeedbackModal();
+                if (res.data.feedbacks) {
+                    renderFeedbacks(res.data.feedbacks);
+                } else {
+                    loadFeedbacks();
+                }
+                toast('✅ Feedback updated successfully!');
+            })
+            .catch(function (err) {
+                saveEditFbBtn.disabled = false;
+                saveEditFbBtn.textContent = '💾 Save Changes';
+                if (editFbStatus) {
+                    editFbStatus.className = 'fb-status-msg error';
+                    editFbStatus.textContent = '⚠️ ' + err.message;
+                }
+            });
+        });
     }
 
     function loadFeedbacks() {
@@ -1815,14 +1991,14 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                 if (user.is_developer) {
                     fbBadge.textContent = '🛠️ Developer Mode (All Community Feedback)';
                 } else {
-                    fbBadge.textContent = '🔒 Your Private Feedback';
+                    fbBadge.textContent = '🌟 Community Feedback & Reviews';
                 }
             }
             if (fbDesc) {
                 if (user.is_developer) {
-                    fbDesc.textContent = 'Viewing all user reviews and feedback submissions across all devices.';
+                    fbDesc.textContent = 'Viewing all community reviews across all accounts. Developers can edit any feedback.';
                 } else {
-                    fbDesc.textContent = 'Your feedback is private — only you and verified developers can view your submitted reviews.';
+                    fbDesc.textContent = 'Browse reviews from the FoodCheck community. You can also edit your own submitted reviews anytime.';
                 }
             }
             if (fbHint) fbHint.style.display = 'none';
@@ -1835,8 +2011,8 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             if (gate) gate.classList.remove('hidden');
             if (content) content.classList.add('hidden');
 
-            if (fbBadge) fbBadge.textContent = '💬 Feedback & Reviews';
-            if (fbDesc) fbDesc.textContent = 'Help us improve FoodCheck! Share your thoughts or suggestions, and see your submitted feedback.';
+            if (fbBadge) fbBadge.textContent = '💬 Community Reviews';
+            if (fbDesc) fbDesc.textContent = 'Sign in to your account to view all community reviews, share your experience, and manage your feedback.';
             if (fbHint) fbHint.style.display = 'block';
         }
     }

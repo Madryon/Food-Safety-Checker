@@ -27,7 +27,9 @@ from services.database import (
     get_account,
     save_feedback_db,
     get_user_feedbacks,
-    get_developer_feedbacks
+    get_developer_feedbacks,
+    get_all_feedbacks,
+    update_feedback_db
 )
 from services.diet_generator import generate_diet_plan, calculate_bmr_and_tdee, suggest_quick_meal
 
@@ -340,16 +342,19 @@ def auth_me():
     })
 
 
-# ── PRIVATE & DEVELOPER FEEDBACK ROUTES ────────────────────────────────────
+# ── COMMUNITY FEEDBACK & EDIT ROUTES ────────────────────────────────────────
 
 @app.route("/api/feedback", methods=["GET", "POST"])
 def handle_feedback():
+    user_id = session.get("user_id")
+    is_dev = session.get("role") == "developer"
+
     if request.method == "POST":
         data = request.get_json(silent=True) or request.form.to_dict()
         if not data:
             return jsonify({"error": "No data received."}), 400
 
-        user_id = session.get("user_id") or "anonymous"
+        user_id_val = user_id or "anonymous"
         name = (data.get("name") or session.get("name") or "User").strip()
         message = (data.get("message") or "").strip()
         rating = data.get("rating", 5)
@@ -358,50 +363,79 @@ def handle_feedback():
             return jsonify({"error": "Please write your feedback message."}), 400
 
         fb_id = f"fb-{str(uuid.uuid4())[:8]}"
-        saved_fb = save_feedback_db(fb_id, user_id, name, rating, message)
+        saved_fb = save_feedback_db(fb_id, user_id_val, name, rating, message)
 
-        # Return updated list based on role
-        if session.get("role") == "developer":
-            feedbacks = get_developer_feedbacks()
-        elif user_id != "anonymous":
-            feedbacks = get_user_feedbacks(user_id)
+        # All signed-in users can see all feedbacks
+        if user_id:
+            feedbacks = get_all_feedbacks()
+            for f in feedbacks:
+                f["can_edit"] = is_dev or (f.get("user_id") == user_id)
         else:
+            saved_fb["can_edit"] = False
             feedbacks = [saved_fb]
 
         return jsonify({
             "status": "success",
             "feedback": saved_fb,
             "feedbacks": feedbacks,
-            "is_developer": session.get("role") == "developer"
+            "is_developer": is_dev,
+            "is_signed_in": bool(user_id)
         })
 
     else:
-        role = session.get("role")
-        user_id = session.get("user_id")
+        if user_id:
+            # All signed-in users see all feedback from everyone
+            feedbacks = get_all_feedbacks()
+            for f in feedbacks:
+                f["can_edit"] = is_dev or (f.get("user_id") == user_id)
 
-        if role == "developer":
-            # Developer sees ALL user responses
-            feedbacks = get_developer_feedbacks()
             return jsonify({
                 "feedbacks": feedbacks,
-                "is_developer": True,
-                "role": "developer"
-            })
-        elif user_id:
-            # Regular user sees ONLY their own responses
-            feedbacks = get_user_feedbacks(user_id)
-            return jsonify({
-                "feedbacks": feedbacks,
-                "is_developer": False,
-                "role": "user"
+                "is_developer": is_dev,
+                "is_signed_in": True,
+                "role": session.get("role", "user")
             })
         else:
-            # Not logged in yet
+            # Not logged in yet - prompt to sign in to see community feedback
             return jsonify({
                 "feedbacks": [],
                 "is_developer": False,
+                "is_signed_in": False,
                 "prompt_login": True
             })
+
+
+@app.route("/api/feedback/<fb_id>/edit", methods=["POST", "PUT"])
+@app.route("/api/feedback/<fb_id>", methods=["PUT"])
+def edit_feedback_endpoint(fb_id):
+    """Allow signed-in users to edit their own feedback (or developers to edit any feedback)."""
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"error": "Please sign in to edit your feedback.", "auth_required": True}), 401
+
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    message = (data.get("message") or "").strip()
+    if not message:
+        return jsonify({"error": "Feedback message cannot be empty."}), 400
+
+    rating = data.get("rating", 5)
+    is_dev = session.get("role") == "developer"
+
+    updated_fb, err = update_feedback_db(fb_id, user_id, rating, message, is_dev=is_dev)
+    if err:
+        return jsonify({"error": err}), 403
+
+    # Return updated community feedback list
+    feedbacks = get_all_feedbacks()
+    for f in feedbacks:
+        f["can_edit"] = is_dev or (f.get("user_id") == user_id)
+
+    return jsonify({
+        "status": "success",
+        "message": "Feedback updated successfully!",
+        "feedback": updated_fb,
+        "feedbacks": feedbacks
+    })
 
 
 # ── PRIVATE DIET PLANNER & CALORIE TRACKER ROUTES ──────────────────────────
