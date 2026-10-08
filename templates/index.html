@@ -266,22 +266,172 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
 
 /* ===== Feedback Component Styles ===== */
 .top-bar-right { display: flex; align-items: center; gap: 12px; }
-.feedback-nav-btn {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 7px 16px; border-radius: 999px;
-    font-size: .84rem; font-weight: 700; text-decoration: none;
-    color: var(--text); background: var(--surface-2);
-    border: 1px solid var(--border);
-    cursor: pointer; transition: all .25s ease;
+
+/* ===== 3-Dot Account Menu Styles ===== */
+.account-menu-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
 }
-.feedback-nav-btn:hover {
-    border-color: var(--accent); color: var(--accent);
+.three-dots-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: inherit;
+    font-size: .86rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all .2s ease;
+    box-shadow: var(--shadow);
+}
+.three-dots-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
     background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
     transform: translateY(-1px);
 }
-[data-theme="techno"] .feedback-nav-btn, [data-theme="tech"] .feedback-nav-btn {
-    border-color: rgba(0,240,255,.45);
-    box-shadow: 0 0 12px rgba(0,240,255,.2);
+.three-dots-icon {
+    font-size: 1.3rem;
+    line-height: 1;
+    font-weight: 900;
+    color: var(--muted);
+    transition: color .2s;
+}
+.three-dots-btn:hover .three-dots-icon {
+    color: var(--accent);
+}
+.nav-user-preview {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+.user-avatar-mini {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: var(--on-accent);
+    display: grid;
+    place-items: center;
+    font-size: .72rem;
+    font-weight: 800;
+    flex-shrink: 0;
+}
+.nav-user-shortname {
+    max-width: 110px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 700;
+    font-size: .84rem;
+}
+.account-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    width: 260px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: 0 14px 36px rgba(0, 0, 0, .45);
+    padding: 12px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    animation: fbFadeIn .2s ease-out;
+}
+[data-theme="techno"] .account-dropdown-menu,
+[data-theme="tech"] .account-dropdown-menu {
+    box-shadow: 0 0 24px rgba(0, 240, 255, .3);
+    border-color: rgba(0, 240, 255, .4);
+}
+.dropdown-user-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+}
+.dropdown-user-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: var(--on-accent);
+    display: grid;
+    place-items: center;
+    font-size: 1.1rem;
+    font-weight: 800;
+    flex-shrink: 0;
+}
+.dropdown-user-info {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+}
+.dropdown-user-name {
+    font-weight: 800;
+    font-size: .94rem;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dropdown-user-sub {
+    font-size: .75rem;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 3px;
+    overflow: hidden;
+}
+.dropdown-user-sub span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dropdown-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 4px 0;
+}
+.dropdown-item-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 12px;
+    border-radius: 10px;
+    border: none;
+    background: none;
+    color: var(--text);
+    font-family: inherit;
+    font-size: .88rem;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    transition: background .15s ease, color .15s ease;
+}
+.dropdown-item-btn:hover {
+    background: var(--surface-2);
+    color: var(--accent);
+}
+.dropdown-item-btn.logout-item {
+    color: var(--bad);
+}
+.dropdown-item-btn.logout-item:hover {
+    background: color-mix(in srgb, var(--bad) 15%, transparent);
+    color: var(--bad);
 }
 
 .floating-feedback-btn {
@@ -648,19 +798,68 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             </button>
         </div>
         <div class="top-bar-right">
-            <!-- Authenticator controls -->
-            <div id="nav-auth-wrap" style="display:flex; align-items:center;">
-                <button type="button" id="nav-open-auth-btn" class="auth-nav-btn">
-                    <span>🔐</span> Sign In
+            <!-- 3-Dot Account Menu (User Details, Login & Logout) -->
+            <div class="account-menu-wrap" id="account-menu-wrap">
+                <button type="button" id="btn-three-dots" class="three-dots-btn" aria-label="Account Menu" title="Account Menu">
+                    <span id="nav-user-preview" class="nav-user-preview hidden">
+                        <span class="user-avatar-mini" id="nav-avatar-mini">👤</span>
+                        <span class="nav-user-shortname" id="nav-shortname">User</span>
+                    </span>
+                    <span id="nav-guest-preview" class="nav-user-preview">
+                        <span class="user-avatar-mini" style="background:var(--surface); border:1px solid var(--border); color:var(--text);">👤</span>
+                        <span class="nav-user-shortname">Sign In</span>
+                    </span>
+                    <span class="three-dots-icon" aria-hidden="true">⋮</span>
                 </button>
-                <div id="user-badge-wrap" class="user-badge-wrap hidden">
-                    <span id="user-role-badge" class="role-badge user">User</span>
-                    <span id="user-display-name" class="user-name-txt">User</span>
-                    <button type="button" id="btn-nav-logout" class="logout-btn" title="Sign Out">🚪 Logout</button>
+
+                <div id="three-dots-dropdown" class="account-dropdown-menu hidden" role="menu">
+                    <!-- Signed-in View -->
+                    <div id="menu-logged-in-view" class="hidden">
+                        <div class="dropdown-user-header">
+                            <div class="dropdown-user-avatar" id="menu-avatar">👤</div>
+                            <div class="dropdown-user-info">
+                                <span class="dropdown-user-name" id="menu-user-fullname">User</span>
+                                <span class="dropdown-user-sub">
+                                    <span id="menu-user-id">@user</span>
+                                    <span id="menu-role-badge" class="role-badge user">User</span>
+                                </span>
+                            </div>
+                        </div>
+                        <div class="dropdown-divider"></div>
+                        <button type="button" id="menu-diet-btn" class="dropdown-item-btn">
+                            <span>🥗</span> Diet &amp; Calorie Plan
+                        </button>
+                        <button type="button" id="menu-feedback-link" class="dropdown-item-btn">
+                            <span>💬</span> Community Reviews
+                        </button>
+                        <div class="dropdown-divider"></div>
+                        <button type="button" id="btn-menu-logout" class="dropdown-item-btn logout-item">
+                            <span>🚪</span> Logout
+                        </button>
+                    </div>
+
+                    <!-- Guest / Logged-out View -->
+                    <div id="menu-guest-view">
+                        <div class="dropdown-user-header">
+                            <div class="dropdown-user-avatar" style="background:var(--surface); color:var(--text); border:1px solid var(--border);">👤</div>
+                            <div class="dropdown-user-info">
+                                <span class="dropdown-user-name">Guest</span>
+                                <span class="dropdown-user-sub">Not logged in</span>
+                            </div>
+                        </div>
+                        <div class="dropdown-divider"></div>
+                        <button type="button" id="btn-menu-login" class="dropdown-item-btn">
+                            <span>🔐</span> Sign In
+                        </button>
+                        <button type="button" id="btn-menu-register" class="dropdown-item-btn">
+                            <span>✨</span> Create Account
+                        </button>
+                        <button type="button" id="menu-guest-feedback-link" class="dropdown-item-btn">
+                            <span>💬</span> Community Reviews
+                        </button>
+                    </div>
                 </div>
             </div>
-
-            <a href="#feedback-section" id="nav-feedback-btn" class="feedback-nav-btn">💬 Feedback</a>
             <div class="theme-toggle-wrap">
                 <label class="theme-label" for="theme-slider">Theme</label>
                 <div class="slider-track">
@@ -1666,6 +1865,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
         if (e.key === 'Escape') {
             closeCamera();
             if (typeof closeEditFeedbackModal === 'function') closeEditFeedbackModal();
+            if (typeof closeThreeDotsMenu === 'function') closeThreeDotsMenu();
         }
     });
     var reportActCard = $('report-actions-card');
@@ -1957,10 +2157,6 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
 
     function updateAuthUI(user) {
         currentUser = user;
-        var openBtn = $('nav-open-auth-btn');
-        var badgeWrap = $('user-badge-wrap');
-        var roleBadge = $('user-role-badge');
-        var nameTxt = $('user-display-name');
         var gate = $('diet-auth-gate');
         var content = $('diet-content-wrap');
         var fbBadge = $('feedback-privacy-badge');
@@ -1969,18 +2165,45 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
         var fbNameInp = $('feedback-name');
         var dietNameInp = $('diet-name');
 
-        if (user && user.authenticated) {
-            if (openBtn) openBtn.classList.add('hidden');
-            if (badgeWrap) badgeWrap.classList.remove('hidden');
-            if (nameTxt) nameTxt.textContent = user.name || user.user_id;
+        // 3-dot navbar preview
+        var navUserPrev = $('nav-user-preview');
+        var navGuestPrev = $('nav-guest-preview');
+        var navShortName = $('nav-shortname');
+        var navAvatarMini = $('nav-avatar-mini');
 
-            if (roleBadge) {
+        // 3-dot dropdown content
+        var menuLoggedInView = $('menu-logged-in-view');
+        var menuGuestView = $('menu-guest-view');
+        var menuAvatar = $('menu-avatar');
+        var menuUserFullName = $('menu-user-fullname');
+        var menuUserId = $('menu-user-id');
+        var menuRoleBadge = $('menu-role-badge');
+
+        if (user && user.authenticated) {
+            var fullName = user.name || user.user_id || 'User';
+            var firstName = fullName.split(' ')[0] || fullName;
+            var initials = (fullName.charAt(0) || 'U').toUpperCase();
+
+            // Navbar 3-dot trigger preview
+            if (navUserPrev) navUserPrev.classList.remove('hidden');
+            if (navGuestPrev) navGuestPrev.classList.add('hidden');
+            if (navShortName) navShortName.textContent = firstName;
+            if (navAvatarMini) navAvatarMini.textContent = initials;
+
+            // Dropdown content
+            if (menuLoggedInView) menuLoggedInView.classList.remove('hidden');
+            if (menuGuestView) menuGuestView.classList.add('hidden');
+            if (menuAvatar) menuAvatar.textContent = initials;
+            if (menuUserFullName) menuUserFullName.textContent = fullName;
+            if (menuUserId) menuUserId.textContent = '@' + (user.user_id || 'user');
+
+            if (menuRoleBadge) {
                 if (user.is_developer) {
-                    roleBadge.className = 'role-badge dev';
-                    roleBadge.textContent = '🛠️ Developer';
+                    menuRoleBadge.className = 'role-badge dev';
+                    menuRoleBadge.textContent = '🛠️ Developer';
                 } else {
-                    roleBadge.className = 'role-badge user';
-                    roleBadge.textContent = '👤 User';
+                    menuRoleBadge.className = 'role-badge user';
+                    menuRoleBadge.textContent = '👤 User';
                 }
             }
 
@@ -2002,11 +2225,16 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                 }
             }
             if (fbHint) fbHint.style.display = 'none';
-            if (fbNameInp && !fbNameInp.value) fbNameInp.value = user.name || '';
-            if (dietNameInp && !dietNameInp.value) dietNameInp.value = user.name || '';
+            if (fbNameInp && !fbNameInp.value) fbNameInp.value = fullName;
+            if (dietNameInp && !dietNameInp.value) dietNameInp.value = fullName;
         } else {
-            if (openBtn) openBtn.classList.remove('hidden');
-            if (badgeWrap) badgeWrap.classList.add('hidden');
+            // Navbar 3-dot trigger preview
+            if (navUserPrev) navUserPrev.classList.add('hidden');
+            if (navGuestPrev) navGuestPrev.classList.remove('hidden');
+
+            // Dropdown content
+            if (menuLoggedInView) menuLoggedInView.classList.add('hidden');
+            if (menuGuestView) menuGuestView.classList.remove('hidden');
 
             if (gate) gate.classList.remove('hidden');
             if (content) content.classList.add('hidden');
@@ -2175,17 +2403,87 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
         });
     }
 
-    var btnNavLogout = $('btn-nav-logout');
-    if (btnNavLogout) {
-        btnNavLogout.addEventListener('click', function () {
-            fetch('/api/auth/logout', { method: 'POST' })
-                .then(function () {
-                    checkAuthStatus(function () {
-                        userDietProfile = null;
-                        loadFeedbacks();
-                        toast('👋 You have been logged out.');
-                    });
+    /* ---------- 3-Dot Account Menu Controller ---------- */
+    var btnThreeDots = $('btn-three-dots');
+    var dropdownThreeDots = $('three-dots-dropdown');
+
+    function toggleThreeDotsMenu() {
+        if (!dropdownThreeDots) return;
+        dropdownThreeDots.classList.toggle('hidden');
+    }
+
+    function closeThreeDotsMenu() {
+        if (dropdownThreeDots) dropdownThreeDots.classList.add('hidden');
+    }
+
+    if (btnThreeDots) {
+        btnThreeDots.addEventListener('click', function (e) {
+            e.stopPropagation();
+            toggleThreeDotsMenu();
+        });
+    }
+
+    document.addEventListener('click', function (e) {
+        var wrap = $('account-menu-wrap');
+        if (wrap && !wrap.contains(e.target)) {
+            closeThreeDotsMenu();
+        }
+    });
+
+    function performLogout() {
+        closeThreeDotsMenu();
+        fetch('/api/auth/logout', { method: 'POST' })
+            .then(function () {
+                checkAuthStatus(function () {
+                    userDietProfile = null;
+                    loadFeedbacks();
+                    toast('👋 You have been logged out.');
                 });
+            });
+    }
+
+    var btnMenuLogout = $('btn-menu-logout');
+    if (btnMenuLogout) btnMenuLogout.addEventListener('click', performLogout);
+    var btnNavLogout = $('btn-nav-logout');
+    if (btnNavLogout) btnNavLogout.addEventListener('click', performLogout);
+
+    var btnMenuLogin = $('btn-menu-login');
+    if (btnMenuLogin) {
+        btnMenuLogin.addEventListener('click', function () {
+            closeThreeDotsMenu();
+            openAuthModal('login');
+        });
+    }
+
+    var btnMenuRegister = $('btn-menu-register');
+    if (btnMenuRegister) {
+        btnMenuRegister.addEventListener('click', function () {
+            closeThreeDotsMenu();
+            openAuthModal('register');
+        });
+    }
+
+    var menuDietBtn = $('menu-diet-btn');
+    if (menuDietBtn) {
+        menuDietBtn.addEventListener('click', function () {
+            closeThreeDotsMenu();
+            switchMode('diet');
+        });
+    }
+
+    var menuFbLink = $('menu-feedback-link');
+    if (menuFbLink) {
+        menuFbLink.addEventListener('click', function (e) {
+            closeThreeDotsMenu();
+            scrollToFeedback(e);
+        });
+    }
+
+    var menuGuestFbLink = $('menu-guest-feedback-link');
+    if (menuGuestFbLink) {
+        menuGuestFbLink.addEventListener('click', function (e) {
+            closeThreeDotsMenu();
+            scrollToFeedback(e);
         });
     }
 
