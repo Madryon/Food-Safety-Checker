@@ -600,6 +600,23 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                 <div class="how-card"><span class="how-num">3</span><h3>Get your report</h3><p>Health verdict, red flags, swaps and company news.</p></div>
             </div>
 
+            <!-- DIET PLANNER PROMO BANNER (PAGE 1) -->
+            <div class="diet-promo-banner" id="promo-diet-card" style="margin: 32px 0 16px; padding: 22px 26px; border-radius: 16px; background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 15%, transparent), var(--surface)); border: 1px solid var(--border); box-shadow: var(--shadow); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
+                <div style="display: flex; align-items: center; gap: 16px; max-width: 650px;">
+                    <div style="width: 52px; height: 52px; border-radius: 14px; background: color-mix(in srgb, var(--accent) 20%, transparent); display: grid; place-items: center; font-size: 1.8rem; flex-shrink: 0;">🥗</div>
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                            <span class="meal-badge" style="font-size: 0.72rem; padding: 2px 8px;">✨ NEW FEATURE</span>
+                            <h3 style="margin: 0; font-size: 1.15rem; font-weight: 800;">Make Your Diet Plan &amp; Track Calories</h3>
+                        </div>
+                        <p style="margin: 0; font-size: 0.88rem; color: var(--muted); line-height: 1.45;">Get customized Indian &amp; Global meal plans powered by Meta-Llama-3.1 on Groq Cloud and log your daily calorie &amp; macro targets with Aiven PostgreSQL.</p>
+                    </div>
+                </div>
+                <button type="button" id="promo-open-diet-btn" class="btn-primary" style="padding: 12px 24px; font-size: 0.92rem; font-weight: 700; border-radius: 999px; white-space: nowrap;">
+                    🥗 Open Diet Planner &amp; Tracker →
+                </button>
+            </div>
+
             <!-- FEEDBACK SECTION (PAGE 1) -->
             <div id="feedback-section" class="feedback-section">
                 <div class="feedback-header">
@@ -747,6 +764,8 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                     <div id="alternatives-card"></div>
                 </div>
             </div>
+            <div id="news-card"></div>
+            <div id="report-actions-card"></div>
         </section>
 
         <!-- DIET PLANNER & CALORIE TRACKER SECTION -->
@@ -1343,19 +1362,22 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
     ['dragenter', 'dragover'].forEach(function (ev) { zone.addEventListener(ev, function (e) { e.preventDefault(); zone.classList.add('dragover'); }); });
     ['dragleave', 'drop'].forEach(function (ev) { zone.addEventListener(ev, function (e) { e.preventDefault(); zone.classList.remove('dragover'); }); });
     zone.addEventListener('drop', function (e) { setFile(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]); });
-    $('change-btn').addEventListener('click', clearFile);
-    $('analyze-btn').addEventListener('click', analyze);
-    $('retry-btn').addEventListener('click', function () { show('upload-section'); });
-    $('close-camera-btn').addEventListener('click', closeCamera);
-    $('camera-modal').addEventListener('click', function (e) { if (e.target === this) closeCamera(); });
-    $('flip-camera-btn').addEventListener('click', function () { facing = facing === 'environment' ? 'user' : 'environment'; startStream(); });
-    $('snap-btn').addEventListener('click', snap);
-    $('fallback-camera-btn').addEventListener('click', function () { closeCamera(); cam.click(); });
+    if ($('change-btn')) $('change-btn').addEventListener('click', clearFile);
+    if ($('analyze-btn')) $('analyze-btn').addEventListener('click', analyze);
+    if ($('retry-btn')) $('retry-btn').addEventListener('click', function () { show('upload-section'); });
+    if ($('close-camera-btn')) $('close-camera-btn').addEventListener('click', closeCamera);
+    if ($('camera-modal')) $('camera-modal').addEventListener('click', function (e) { if (e.target === this) closeCamera(); });
+    if ($('flip-camera-btn')) $('flip-camera-btn').addEventListener('click', function () { facing = facing === 'environment' ? 'user' : 'environment'; startStream(); });
+    if ($('snap-btn')) $('snap-btn').addEventListener('click', snap);
+    if ($('fallback-camera-btn')) $('fallback-camera-btn').addEventListener('click', function () { closeCamera(); cam.click(); });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeCamera(); });
-    $('report-actions-card').addEventListener('click', function (e) {
-        if (e.target.id === 'again-btn') resetAll();
-        if (e.target.id === 'print-btn') window.print();
-    });
+    var reportActCard = $('report-actions-card');
+    if (reportActCard) {
+        reportActCard.addEventListener('click', function (e) {
+            if (e.target.id === 'again-btn') resetAll();
+            if (e.target.id === 'print-btn') window.print();
+        });
+    }
     /* ---------- Feedback logic ---------- */
     var fbRating = 5;
     var starBtns = document.querySelectorAll('#star-rating .star-btn');
@@ -1548,6 +1570,8 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
 
     if (navScanBtn) navScanBtn.addEventListener('click', function () { switchMode('scan'); });
     if (navDietBtn) navDietBtn.addEventListener('click', function () { switchMode('diet'); });
+    var promoDietBtn = $('promo-open-diet-btn');
+    if (promoDietBtn) promoDietBtn.addEventListener('click', function () { switchMode('diet'); });
 
     // Subtab switching inside Diet Hub
     document.querySelectorAll('.diet-subtab').forEach(function (btn) {
@@ -2060,7 +2084,10 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
         loadTodayCalorieSummary();
     }
 
+    // Initialize all modules on page load
     loadFeedbacks();
+    updateLiveBMR();
+    initDietHub();
 
     window.addEventListener('pagehide', stopStream);
 })();
