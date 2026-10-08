@@ -2285,7 +2285,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             };
 
             genDietBtn.disabled = true;
-            genDietBtn.textContent = '🧠 Generating with Llama-3.1 (Groq Cloud)...';
+            genDietBtn.textContent = '🧠 Generating ...';
             var statusDiv = $('diet-gen-status');
             if (statusDiv) {
                 statusDiv.style.display = 'block';
@@ -2301,7 +2301,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             .then(function (res) { return res.json(); })
             .then(function (data) {
                 genDietBtn.disabled = false;
-                genDietBtn.textContent = '🤖 Generate Diet Plan with Llama-3.1';
+                genDietBtn.textContent = '🤖 Generate Diet Plan ';
                 if (statusDiv) statusDiv.style.display = 'none';
 
                 if (data.plan) {
@@ -2313,7 +2313,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             })
             .catch(function (err) {
                 genDietBtn.disabled = false;
-                genDietBtn.textContent = '🤖 Generate Diet Plan with Llama-3.1';
+                genDietBtn.textContent = '🤖 Generate Diet Plan ';
                 if (statusDiv) {
                     statusDiv.style.color = 'var(--bad)';
                     statusDiv.textContent = '⚠️ ' + err.message;
@@ -2519,12 +2519,12 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             var craving = cravingInp ? cravingInp.value.trim() : '';
 
             btnSugMeals.disabled = true;
-            btnSugMeals.textContent = '🧠 Asking Meta-Llama-3.1 on Groq Cloud...';
+            btnSugMeals.textContent = '🧠 Asking LLM...';
             var stat = $('sug-status-msg');
             if (stat) {
                 stat.style.display = 'block';
                 stat.style.color = 'var(--accent)';
-                stat.textContent = '⚡ Groq LLaMA-3.1 is analyzing your macros & generating 3 personalized meal options...';
+                stat.textContent = 'LLaMA is analyzing your macros & generating 3 personalized meal options...';
             }
 
             var payload = { meal_type: mType, craving: craving };
@@ -2538,7 +2538,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             .then(function (res) { return res.json(); })
             .then(function (data) {
                 btnSugMeals.disabled = false;
-                btnSugMeals.textContent = '✨ Suggest 3 Meals with Llama-3.1';
+                btnSugMeals.textContent = ' Suggest 3 Meals ';
                 if (stat) stat.style.display = 'none';
 
                 if (data.status === 'success' && data.result && data.result.suggestions) {
@@ -2550,7 +2550,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             })
             .catch(function (err) {
                 btnSugMeals.disabled = false;
-                btnSugMeals.textContent = '✨ Suggest 3 Meals with Llama-3.1';
+                btnSugMeals.textContent = ' Suggest 3 Meals';
                 if (stat) {
                     stat.style.color = 'var(--bad)';
                     stat.textContent = '⚠️ ' + err.message;
