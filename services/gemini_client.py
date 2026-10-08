@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 # • gemini-1.5-flash-8b    — 15 RPM, lightweight & fast
 # • gemini-1.5-pro         — 2 RPM, heavy fallback
 DEFAULT_MODEL_FALLBACK_LIST = [
+    "gemini-3.5-flash",
     "gemini-2.0-flash",
     "gemini-2.5-flash",
     "gemini-2.5-flash-lite",
