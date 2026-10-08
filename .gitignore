@@ -7,3 +7,4 @@ uploads/*
 .idea/
 venv/
 .venv/
+*.db

@@ -9,3 +9,9 @@ services:
         sync: false
       - key: GNEWS_API_KEY
         sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: AIVEN_DATABASE_URL
+        sync: false
+      - key: DATABASE_URL
+        sync: false

@@ -433,6 +433,85 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
 .feedback-item-stars { letter-spacing: .5px; }
 .feedback-item-date { color: var(--muted); }
 .feedback-text-content { margin: 0; font-size: .86rem; color: var(--text); opacity: .92; line-height: 1.45; word-break: break-word; }
+
+/* ===== Navigation Modes (Food Scanner vs Diet Planner) ===== */
+.nav-modes { display: flex; align-items: center; gap: 6px; background: var(--surface-2); padding: 4px; border-radius: 999px; border: 1px solid var(--border); }
+.nav-tab-btn { background: none; border: none; padding: 7px 16px; border-radius: 999px; color: var(--muted); font-size: .84rem; font-weight: 700; cursor: pointer; transition: all .25s ease; display: inline-flex; align-items: center; gap: 6px; }
+.nav-tab-btn:hover { color: var(--text); }
+.nav-tab-btn.active { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--on-accent); box-shadow: 0 4px 14px rgba(0,0,0,.25); }
+[data-theme="techno"] .nav-tab-btn.active, [data-theme="tech"] .nav-tab-btn.active { box-shadow: 0 0 16px rgba(0,240,255,.35); }
+@media (max-width: 768px) {
+    .nav-modes { order: 3; width: 100%; justify-content: center; margin-top: 6px; }
+    .top-bar { flex-wrap: wrap; }
+}
+
+/* ===== Diet Planner & Calorie Tracker Styles ===== */
+.diet-layout { max-width: 1080px; margin: 0 auto; animation: fbFadeIn .3s ease-out; }
+.diet-hero { text-align: center; margin: 12px auto 26px; max-width: 760px; }
+.diet-hero h2 { font-size: clamp(1.8rem, 4vw, 2.4rem); font-weight: 800; }
+
+.diet-subtabs { display: flex; justify-content: center; gap: 10px; margin-bottom: 24px; flex-wrap: wrap; }
+.diet-subtab { background: var(--surface); border: 1px solid var(--border); color: var(--muted); padding: 9px 20px; border-radius: 999px; font-weight: 700; font-size: .88rem; cursor: pointer; transition: all .2s; }
+.diet-subtab:hover { color: var(--text); border-color: var(--accent); }
+.diet-subtab.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+[data-theme="techno"] .diet-subtab.active, [data-theme="tech"] .diet-subtab.active { background: linear-gradient(135deg, #00f0ff, #ff2bd6); color: #001418; box-shadow: 0 0 16px rgba(0,240,255,.3); }
+
+.diet-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 26px; box-shadow: var(--shadow); margin-bottom: 24px; }
+.diet-card h3 { font-size: 1.25rem; font-weight: 700; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+
+.diet-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 18px; }
+.diet-form-group { display: flex; flex-direction: column; gap: 6px; }
+.diet-form-group label { font-size: .84rem; font-weight: 600; color: var(--text); }
+.diet-input, .diet-select { width: 100%; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); font-family: inherit; font-size: .9rem; transition: border-color .2s, box-shadow .2s; }
+.diet-input:focus, .diet-select:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+
+.bmr-stat-box { display: flex; flex-wrap: wrap; gap: 14px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 14px; padding: 14px 18px; margin-bottom: 20px; align-items: center; justify-content: space-around; }
+.bmr-pill { display: flex; flex-direction: column; text-align: center; }
+.bmr-pill-label { font-size: .74rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.bmr-pill-val { font-size: 1.35rem; font-weight: 800; color: var(--accent); }
+
+.macro-cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 18px 0; }
+.macro-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 14px; text-align: center; }
+.macro-card-val { font-size: 1.3rem; font-weight: 800; color: var(--text); }
+.macro-card-lbl { font-size: .75rem; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
+
+.meal-plan-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 14px; padding: 18px; margin-bottom: 12px; transition: transform .2s, border-color .2s; }
+.meal-plan-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.meal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px; }
+.meal-badge { padding: 4px 12px; border-radius: 999px; font-size: .76rem; font-weight: 700; background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
+.macro-pill { display: inline-flex; align-items: center; gap: 3px; font-size: .74rem; padding: 2px 8px; border-radius: 6px; background: var(--surface); color: var(--muted); margin-left: 6px; font-weight: 600; }
+.macro-pill.p { color: #38bdf8; }
+.macro-pill.c { color: #fbbf24; }
+.macro-pill.f { color: #f87171; }
+.meal-items-list { list-style: none; padding: 0; margin: 0 0 10px; }
+.meal-item-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px dashed var(--border); font-size: .9rem; flex-wrap: wrap; gap: 6px; }
+.meal-item-name { font-weight: 600; }
+.meal-tip { font-size: .82rem; color: var(--muted); font-style: italic; margin-top: 6px; }
+
+.calorie-tracker-grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 24px; }
+@media (max-width: 860px) { .calorie-tracker-grid { grid-template-columns: 1fr; } }
+.cal-meter-wrap { margin: 18px 0; }
+.cal-stats-row { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 8px; }
+.cal-big-num { font-size: 2rem; font-weight: 800; color: var(--text); }
+.cal-rem-lbl { font-size: .9rem; color: var(--muted); }
+.cal-progress-bar { height: 16px; border-radius: 8px; background: var(--surface-2); overflow: hidden; position: relative; border: 1px solid var(--border); }
+.cal-progress-fill { height: 100%; border-radius: 8px; background: linear-gradient(90deg, var(--good), var(--accent)); transition: width .4s ease; }
+.cal-progress-fill.over { background: var(--bad); }
+
+.macro-bar-row { display: grid; grid-template-columns: 75px 1fr 70px; align-items: center; gap: 10px; margin-bottom: 10px; font-size: .84rem; }
+.macro-bar-track { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; border: 1px solid var(--border); }
+.macro-bar-fill { height: 100%; border-radius: 4px; transition: width .4s ease; }
+.macro-fill-p { background: #38bdf8; }
+.macro-fill-c { background: #fbbf24; }
+.macro-fill-f { background: #f87171; }
+
+.logged-meals-list { display: flex; flex-direction: column; gap: 10px; max-height: 420px; overflow-y: auto; margin-top: 14px; }
+.logged-meal-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); gap: 12px; }
+.del-meal-btn { background: none; border: none; cursor: pointer; color: var(--bad); font-size: 1.1rem; padding: 4px 8px; border-radius: 6px; transition: background .15s; }
+.del-meal-btn:hover { background: color-mix(in srgb, var(--bad) 20%, transparent); }
+
+.plan-history-item { padding: 14px 16px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 10px; }
+.plan-history-item:hover { border-color: var(--accent); }
     </style>
 </head>
 <body>
@@ -445,6 +524,14 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
 
     <nav class="top-bar">
         <a href="/" class="logo"><span class="logo-mark">🍽️</span><span>FoodCheck</span></a>
+        <div class="nav-modes">
+            <button type="button" class="nav-tab-btn active" id="nav-scan-mode">
+                <span>🔍</span> Food Scanner
+            </button>
+            <button type="button" class="nav-tab-btn" id="nav-diet-mode">
+                <span>🥗</span> Diet &amp; Calorie Plan
+            </button>
+        </div>
         <div class="top-bar-right">
             <a href="#feedback-section" id="nav-feedback-btn" class="feedback-nav-btn">💬 Feedback</a>
             <div class="theme-toggle-wrap">
@@ -660,8 +747,295 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                     <div id="alternatives-card"></div>
                 </div>
             </div>
-            <div id="news-card"></div>
-            <div id="report-actions-card"></div>
+        </section>
+
+        <!-- DIET PLANNER & CALORIE TRACKER SECTION -->
+        <section id="diet-section" class="hidden diet-layout">
+            <div class="diet-hero">
+                <span class="hero-badge">⚡ Meta-Llama-3.1-8B-Instruct on Groq Cloud • Aiven PostgreSQL Storage</span>
+                <h2>Make Your Diet Plan &amp; Track Your Calories</h2>
+                <p class="hero-sub">Generate customized daily meal plans tailored to your body, health goals, and dietary preferences, and track your daily calorie intake in real-time.</p>
+            </div>
+
+            <div class="diet-subtabs">
+                <button type="button" class="diet-subtab active" data-subtab="planner" id="subtab-btn-planner">🥗 Make Diet Plan</button>
+                <button type="button" class="diet-subtab" data-subtab="tracker" id="subtab-btn-tracker">🔥 Calorie &amp; Macro Tracker</button>
+                <button type="button" class="diet-subtab" data-subtab="history" id="subtab-btn-history">📜 Plan History</button>
+            </div>
+
+            <!-- SUBTAB 1: AI DIET PLANNER -->
+            <div id="subtab-planner-view">
+                <div class="diet-card">
+                    <h3><span>👤 Your Body Profile &amp; Goals</span> <span id="bmr-summary-badge" style="font-size:0.8rem; color:var(--accent);">Live BMR &amp; TDEE</span></h3>
+                    
+                    <form id="diet-profile-form" onsubmit="return false;">
+                        <div class="diet-form-grid">
+                            <div class="diet-form-group">
+                                <label for="diet-name">Full Name</label>
+                                <input type="text" id="diet-name" class="diet-input" placeholder="e.g. Rahul Sharma" value="Rahul Sharma">
+                            </div>
+                            <div class="diet-form-group">
+                                <label for="diet-age">Age (years)</label>
+                                <input type="number" id="diet-age" class="diet-input" min="10" max="100" value="28">
+                            </div>
+                            <div class="diet-form-group">
+                                <label for="diet-gender">Gender</label>
+                                <select id="diet-gender" class="diet-select">
+                                    <option value="male" selected>Male</option>
+                                    <option value="female">Female</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </div>
+                            <div class="diet-form-group">
+                                <label for="diet-height">Height (cm)</label>
+                                <input type="number" id="diet-height" class="diet-input" min="100" max="240" value="175">
+                            </div>
+                            <div class="diet-form-group">
+                                <label for="diet-weight">Weight (kg)</label>
+                                <input type="number" id="diet-weight" class="diet-input" min="30" max="250" value="72">
+                            </div>
+                            <div class="diet-form-group">
+                                <label for="diet-activity">Daily Activity Level</label>
+                                <select id="diet-activity" class="diet-select">
+                                    <option value="sedentary">Sedentary (Desk job, little exercise)</option>
+                                    <option value="light">Lightly Active (1-3 days/week exercise)</option>
+                                    <option value="moderate" selected>Moderately Active (3-5 days/week sports)</option>
+                                    <option value="active">Very Active (6-7 days/week hard workout)</option>
+                                    <option value="very_active">Extra Active (Athlete, physical labor)</option>
+                                </select>
+                            </div>
+                            <div class="diet-form-group">
+                                <label for="diet-goal">Primary Health Goal</label>
+                                <select id="diet-goal" class="diet-select">
+                                    <option value="weight_loss" selected>Fat Loss / Weight Loss (-500 kcal)</option>
+                                    <option value="muscle_gain">Lean Muscle Gain / Bulk (+350 kcal)</option>
+                                    <option value="maintain">Weight Maintenance &amp; Vitality</option>
+                                    <option value="diabetic_friendly">Diabetic / Low-Glycemic Friendly</option>
+                                    <option value="keto">Keto / Low-Carb High-Fat</option>
+                                </select>
+                            </div>
+                            <div class="diet-form-group">
+                                <label for="diet-pref">Dietary Preference</label>
+                                <select id="diet-pref" class="diet-select">
+                                    <option value="vegetarian" selected>Vegetarian (Dairy ok)</option>
+                                    <option value="vegan">100% Plant-Based / Vegan</option>
+                                    <option value="eggetarian">Eggetarian (Vegetarian + Eggs)</option>
+                                    <option value="non_veg">Non-Vegetarian (Chicken, Fish, Eggs)</option>
+                                    <option value="jain">Jain Vegetarian (No onion, garlic, root veg)</option>
+                                </select>
+                            </div>
+                            <div class="diet-form-group" style="grid-column: 1 / -1;">
+                                <label for="diet-notes">Health Conditions, Allergies or Food Preferences</label>
+                                <input type="text" id="diet-notes" class="diet-input" placeholder="e.g. Lactose intolerant, PCOS, high blood pressure, prefer North Indian meals, no peanuts">
+                            </div>
+                        </div>
+
+                        <!-- Live BMR and TDEE Bar -->
+                        <div class="bmr-stat-box" id="bmr-stat-display">
+                            <div class="bmr-pill">
+                                <span class="bmr-pill-label">Basal Metabolism (BMR)</span>
+                                <span class="bmr-pill-val" id="disp-bmr">-- kcal</span>
+                            </div>
+                            <div class="bmr-pill">
+                                <span class="bmr-pill-label">Maintenance Calories (TDEE)</span>
+                                <span class="bmr-pill-val" id="disp-tdee">-- kcal</span>
+                            </div>
+                            <div class="bmr-pill">
+                                <span class="bmr-pill-label">Target Daily Calories</span>
+                                <span class="bmr-pill-val" id="disp-target-cals">-- kcal</span>
+                            </div>
+                            <div class="bmr-pill">
+                                <span class="bmr-pill-label">Target Protein</span>
+                                <span class="bmr-pill-val" id="disp-target-prot" style="color:#38bdf8;">-- g</span>
+                            </div>
+                        </div>
+
+                        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+                            <button type="button" id="generate-diet-btn" class="btn-primary" style="flex:1; min-width:240px; padding:14px 20px; font-size:1rem;">
+                                🤖 Generate Diet Plan with Llama-3.1
+                            </button>
+                            <button type="button" id="save-profile-btn" class="btn-secondary" style="padding:14px 20px;">
+                                💾 Save Profile
+                            </button>
+                        </div>
+                        <div id="diet-gen-status" style="margin-top:10px; font-size:0.9rem; text-align:center; display:none;"></div>
+                    </form>
+                </div>
+
+                <!-- Generated Plan Output Card -->
+                <div id="diet-plan-result" class="hidden">
+                    <div class="diet-card">
+                        <div class="meal-header">
+                            <div>
+                                <h3 id="plan-title-disp" style="margin:0 0 6px;">Personalized Diet Plan</h3>
+                                <p id="plan-summary-disp" style="color:var(--muted); margin:0; font-size:0.94rem;"></p>
+                            </div>
+                            <span class="meal-badge" id="plan-model-badge">Meta-Llama-3.1-8B</span>
+                        </div>
+
+                        <div class="macro-cards-grid">
+                            <div class="macro-card">
+                                <div class="macro-card-val" id="disp-plan-cals">0</div>
+                                <div class="macro-card-lbl">Total Calories (kcal)</div>
+                            </div>
+                            <div class="macro-card">
+                                <div class="macro-card-val" style="color:#38bdf8;" id="disp-plan-prot">0g</div>
+                                <div class="macro-card-lbl">Protein Target</div>
+                            </div>
+                            <div class="macro-card">
+                                <div class="macro-card-val" style="color:#fbbf24;" id="disp-plan-carbs">0g</div>
+                                <div class="macro-card-lbl">Carbs Target</div>
+                            </div>
+                            <div class="macro-card">
+                                <div class="macro-card-val" style="color:#f87171;" id="disp-plan-fat">0g</div>
+                                <div class="macro-card-lbl">Healthy Fats</div>
+                            </div>
+                        </div>
+
+                        <div id="disp-hydration-box" style="margin:14px 0; padding:12px 16px; border-radius:12px; background:color-mix(in srgb, var(--accent) 12%, transparent); border:1px solid var(--border); font-size:0.9rem; color:var(--text);">
+                            💧 <strong>Hydration Strategy:</strong> <span id="disp-hydration-text">Drink 3.0 Liters/day</span>
+                        </div>
+
+                        <h4 style="margin:24px 0 12px; font-size:1.1rem;">🍽️ Daily Meal Schedule</h4>
+                        <div id="plan-meals-container">
+                            <!-- Dynamic meal plan cards rendered here -->
+                        </div>
+
+                        <div style="margin-top:20px; padding:16px; border-radius:12px; background:var(--surface-2); border:1px solid var(--border);">
+                            <h4 style="margin:0 0 8px; font-size:0.95rem;">💡 Clinical Nutritionist Notes</h4>
+                            <ul id="plan-notes-list" style="margin:0; padding-left:20px; font-size:0.88rem; color:var(--muted);"></ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SUBTAB 2: CALORIE TRACKER -->
+            <div id="subtab-tracker-view" class="hidden">
+                <div class="calorie-tracker-grid">
+                    <!-- Left: Daily Dashboard -->
+                    <div class="calorie-overview-box">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                            <h3 style="margin:0;">🔥 Today's Calories</h3>
+                            <input type="date" id="tracker-date-picker" class="diet-input" style="width:auto; padding:6px 10px; font-size:0.85rem;">
+                        </div>
+
+                        <div class="cal-meter-wrap">
+                            <div class="cal-stats-row">
+                                <div>
+                                    <span class="cal-big-num" id="cal-consumed-num">0</span>
+                                    <span style="color:var(--muted); font-size:1.1rem;"> / <span id="cal-target-num">2000</span> kcal</span>
+                                </div>
+                                <span class="cal-rem-lbl"><strong id="cal-remaining-num" style="color:var(--accent);">2000</strong> kcal remaining</span>
+                            </div>
+                            <div class="cal-progress-bar">
+                                <div id="cal-progress-fill" class="cal-progress-fill" style="width:0%;"></div>
+                            </div>
+                        </div>
+
+                        <!-- Macro Progress Bars -->
+                        <div style="margin-top:18px;">
+                            <h4 style="font-size:0.88rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--muted); margin-bottom:12px;">Macronutrient Breakdown</h4>
+                            
+                            <div class="macro-bar-row">
+                                <span style="font-weight:600; color:#38bdf8;">Protein</span>
+                                <div class="macro-bar-track">
+                                    <div id="bar-prot-fill" class="macro-bar-fill macro-fill-p" style="width:0%;"></div>
+                                </div>
+                                <span id="txt-prot-split" style="text-align:right;">0 / 75g</span>
+                            </div>
+
+                            <div class="macro-bar-row">
+                                <span style="font-weight:600; color:#fbbf24;">Carbs</span>
+                                <div class="macro-bar-track">
+                                    <div id="bar-carb-fill" class="macro-bar-fill macro-fill-c" style="width:0%;"></div>
+                                </div>
+                                <span id="txt-carb-split" style="text-align:right;">0 / 250g</span>
+                            </div>
+
+                            <div class="macro-bar-row">
+                                <span style="font-weight:600; color:#f87171;">Fats</span>
+                                <div class="macro-bar-track">
+                                    <div id="bar-fat-fill" class="macro-bar-fill macro-fill-f" style="width:0%;"></div>
+                                </div>
+                                <span id="txt-fat-split" style="text-align:right;">0 / 55g</span>
+                            </div>
+                        </div>
+
+                        <!-- Logged Meals List -->
+                        <div style="margin-top:24px;">
+                            <h4 style="font-size:0.95rem; margin-bottom:8px;">📋 Meals Consumed Today</h4>
+                            <div id="logged-meals-container" class="logged-meals-list">
+                                <p class="muted" style="text-align:center; padding:16px 0;">No meals logged yet today. Add your first meal!</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Quick Log Form -->
+                    <div class="calorie-overview-box">
+                        <h3 style="margin-bottom:14px;">➕ Log a Meal / Food Item</h3>
+                        <form id="calorie-log-form" onsubmit="return false;">
+                            <div class="diet-form-group" style="margin-bottom:12px;">
+                                <label for="log-meal-type">Meal Category</label>
+                                <select id="log-meal-type" class="diet-select">
+                                    <option value="Breakfast">Breakfast</option>
+                                    <option value="Mid-Morning Snack">Mid-Morning Snack</option>
+                                    <option value="Lunch">Lunch</option>
+                                    <option value="Evening Snack">Evening Snack</option>
+                                    <option value="Dinner">Dinner</option>
+                                </select>
+                            </div>
+
+                            <div class="diet-form-group" style="margin-bottom:12px;">
+                                <label for="log-food-item">Food Item Name <span style="color:var(--bad);">*</span></label>
+                                <input type="text" id="log-food-item" class="diet-input" placeholder="e.g. 2 Rotis + Dal + Curd" required>
+                            </div>
+
+                            <div class="diet-form-group" style="margin-bottom:12px;">
+                                <label for="log-portion">Portion / Serving Size</label>
+                                <input type="text" id="log-portion" class="diet-input" placeholder="e.g. 1 bowl (150g), 2 slices" value="1 serving">
+                            </div>
+
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;">
+                                <div class="diet-form-group">
+                                    <label for="log-calories">Calories (kcal) <span style="color:var(--bad);">*</span></label>
+                                    <input type="number" id="log-calories" class="diet-input" placeholder="e.g. 320" required min="0" step="1">
+                                </div>
+                                <div class="diet-form-group">
+                                    <label for="log-protein">Protein (g)</label>
+                                    <input type="number" id="log-protein" class="diet-input" placeholder="e.g. 12" min="0" step="0.5" value="0">
+                                </div>
+                                <div class="diet-form-group">
+                                    <label for="log-carbs">Carbs (g)</label>
+                                    <input type="number" id="log-carbs" class="diet-input" placeholder="e.g. 45" min="0" step="0.5" value="0">
+                                </div>
+                                <div class="diet-form-group">
+                                    <label for="log-fat">Fat (g)</label>
+                                    <input type="number" id="log-fat" class="diet-input" placeholder="e.g. 8" min="0" step="0.5" value="0">
+                                </div>
+                            </div>
+
+                            <button type="button" id="submit-meal-log-btn" class="btn-primary" style="width:100%; padding:12px;">
+                                ➕ Add to Calorie Log
+                            </button>
+                            <div id="log-status-msg" style="margin-top:10px; font-size:0.88rem; text-align:center; display:none;"></div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SUBTAB 3: PLAN HISTORY -->
+            <div id="subtab-history-view" class="hidden">
+                <div class="diet-card">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+                        <h3 style="margin:0;">📜 Your Saved Diet Plans</h3>
+                        <button type="button" id="refresh-history-btn" class="btn-secondary" style="padding:6px 14px; font-size:0.84rem;">🔄 Refresh</button>
+                    </div>
+                    <p style="color:var(--muted); font-size:0.9rem; margin-bottom:16px;">Past diet plans generated and archived in your Aiven PostgreSQL cloud database.</p>
+                    <div id="history-plans-container">
+                        <p class="muted" style="text-align:center; padding:24px 0;">Loading history...</p>
+                    </div>
+                </div>
+            </div>
         </section>
     </main>
 
@@ -707,7 +1081,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
     'use strict';
     var $ = function (id) { return document.getElementById(id); };
     var MAX_BYTES = 5 * 1024 * 1024;
-    var VIEWS = ['upload-section', 'loading-section', 'error-section', 'report-section'];
+    var VIEWS = ['upload-section', 'loading-section', 'error-section', 'report-section', 'diet-section'];
     var NUTRIENTS = [
         ['energy_kcal', 'Energy (kcal)'], ['protein_g', 'Protein (g)'], ['total_fat_g', 'Total Fat (g)'],
         ['saturated_fat_g', 'Saturated Fat (g)'], ['trans_fat_g', 'Trans Fat (g)'], ['carbohydrates_g', 'Carbohydrates (g)'],
@@ -1148,6 +1522,542 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                 toast('🎉 Feedback submitted!');
             });
         });
+    }
+
+    /* ---------- Diet Planner & Calorie Tracker Logic ---------- */
+    var userDietProfile = null;
+    var currentGeneratedPlan = null;
+    var activeSubtab = 'planner';
+
+    // Navigation mode switcher (Scanner vs Diet)
+    var navScanBtn = $('nav-scan-mode');
+    var navDietBtn = $('nav-diet-mode');
+
+    function switchMode(mode) {
+        if (mode === 'diet') {
+            if (navScanBtn) navScanBtn.classList.remove('active');
+            if (navDietBtn) navDietBtn.classList.add('active');
+            show('diet-section');
+            initDietHub();
+        } else {
+            if (navDietBtn) navDietBtn.classList.remove('active');
+            if (navScanBtn) navScanBtn.classList.add('active');
+            show('upload-section');
+        }
+    }
+
+    if (navScanBtn) navScanBtn.addEventListener('click', function () { switchMode('scan'); });
+    if (navDietBtn) navDietBtn.addEventListener('click', function () { switchMode('diet'); });
+
+    // Subtab switching inside Diet Hub
+    document.querySelectorAll('.diet-subtab').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var target = btn.getAttribute('data-subtab');
+            activeSubtab = target;
+            document.querySelectorAll('.diet-subtab').forEach(function (b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+
+            ['planner', 'tracker', 'history'].forEach(function (t) {
+                var v = $('subtab-' + t + '-view');
+                if (v) v.classList.toggle('hidden', t !== target);
+            });
+
+            if (target === 'tracker') {
+                loadTodayCalorieSummary();
+            } else if (target === 'history') {
+                loadDietPlanHistory();
+            }
+        });
+    });
+
+    // Dynamic Live BMR & TDEE calculation
+    function updateLiveBMR() {
+        var age = parseFloat($('diet-age').value) || 28;
+        var gender = $('diet-gender').value;
+        var height = parseFloat($('diet-height').value) || 175;
+        var weight = parseFloat($('diet-weight').value) || 72;
+        var act = $('diet-activity').value;
+        var goal = $('diet-goal').value;
+
+        var bmr = (gender === 'male') ? (10 * weight + 6.25 * height - 5 * age + 5) : (10 * weight + 6.25 * height - 5 * age - 161);
+        var actMultipliers = { 'sedentary': 1.2, 'light': 1.375, 'moderate': 1.55, 'active': 1.725, 'very_active': 1.9 };
+        var tdee = Math.round(bmr * (actMultipliers[act] || 1.55));
+
+        var targetCals = tdee;
+        var protRatio = 0.25;
+        if (goal === 'weight_loss') { targetCals = Math.max(1200, tdee - 500); protRatio = 0.30; }
+        else if (goal === 'muscle_gain') { targetCals = tdee + 350; protRatio = 0.30; }
+        else if (goal === 'keto') { targetCals = tdee - 300; protRatio = 0.25; }
+        else if (goal === 'diabetic_friendly') { targetCals = tdee - 200; protRatio = 0.25; }
+
+        var targetProt = Math.round((targetCals * protRatio) / 4);
+
+        if ($('disp-bmr')) $('disp-bmr').textContent = Math.round(bmr) + ' kcal';
+        if ($('disp-tdee')) $('disp-tdee').textContent = tdee + ' kcal';
+        if ($('disp-target-cals')) $('disp-target-cals').textContent = targetCals + ' kcal';
+        if ($('disp-target-prot')) $('disp-target-prot').textContent = targetProt + ' g';
+    }
+
+    ['diet-age', 'diet-gender', 'diet-height', 'diet-weight', 'diet-activity', 'diet-goal'].forEach(function (id) {
+        var el = $(id);
+        if (el) {
+            el.addEventListener('input', updateLiveBMR);
+            el.addEventListener('change', updateLiveBMR);
+        }
+    });
+
+    // Fetch and populate profile from backend
+    function loadProfile() {
+        fetch('/api/diet/profile')
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data && data.profile) {
+                    userDietProfile = data.profile;
+                    if ($('diet-name')) $('diet-name').value = data.profile.name || '';
+                    if ($('diet-age') && data.profile.age) $('diet-age').value = data.profile.age;
+                    if ($('diet-gender') && data.profile.gender) $('diet-gender').value = data.profile.gender;
+                    if ($('diet-height') && data.profile.height_cm) $('diet-height').value = data.profile.height_cm;
+                    if ($('diet-weight') && data.profile.weight_kg) $('diet-weight').value = data.profile.weight_kg;
+                    if ($('diet-activity') && data.profile.activity_level) $('diet-activity').value = data.profile.activity_level;
+                    if ($('diet-goal') && data.profile.goal) $('diet-goal').value = data.profile.goal;
+                    if ($('diet-pref') && data.profile.diet_pref) $('diet-pref').value = data.profile.diet_pref;
+                    if ($('diet-notes') && data.profile.health_conditions) $('diet-notes').value = data.profile.health_conditions;
+                }
+                updateLiveBMR();
+            })
+            .catch(function () { updateLiveBMR(); });
+    }
+
+    // Save profile handler
+    var saveProfileBtn = $('save-profile-btn');
+    if (saveProfileBtn) {
+        saveProfileBtn.addEventListener('click', function () {
+            var payload = {
+                name: $('diet-name').value.trim() || 'User',
+                age: parseInt($('diet-age').value, 10) || 28,
+                gender: $('diet-gender').value,
+                height_cm: parseFloat($('diet-height').value) || 175,
+                weight_kg: parseFloat($('diet-weight').value) || 72,
+                activity_level: $('diet-activity').value,
+                goal: $('diet-goal').value,
+                diet_pref: $('diet-pref').value,
+                health_conditions: $('diet-notes').value.trim()
+            };
+            saveProfileBtn.disabled = true;
+            saveProfileBtn.textContent = 'Saving...';
+            fetch('/api/diet/profile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                saveProfileBtn.disabled = false;
+                saveProfileBtn.textContent = '💾 Save Profile';
+                toast('✅ Profile saved to database!');
+            })
+            .catch(function () {
+                saveProfileBtn.disabled = false;
+                saveProfileBtn.textContent = '💾 Save Profile';
+                toast('⚠️ Profile saved locally');
+            });
+        });
+    }
+
+    // Render generated diet plan
+    function renderDietPlan(plan) {
+        currentGeneratedPlan = plan;
+        var resWrap = $('diet-plan-result');
+        if (!resWrap) return;
+        resWrap.classList.remove('hidden');
+
+        if ($('plan-title-disp')) $('plan-title-disp').textContent = plan.plan_title || 'Personalized Diet Plan';
+        if ($('plan-summary-disp')) $('plan-summary-disp').textContent = plan.daily_summary || '';
+        if ($('plan-model-badge')) $('plan-model-badge').textContent = plan.generated_by || 'Meta-Llama-3.1-8B (Groq)';
+
+        var cals = plan.target_calories || (plan.calculated_stats && plan.calculated_stats.target_calories) || 2000;
+        var macros = plan.target_macros || (plan.calculated_stats || {});
+        if ($('disp-plan-cals')) $('disp-plan-cals').textContent = cals + ' kcal';
+        if ($('disp-plan-prot')) $('disp-plan-prot').textContent = (macros.protein_g || '--') + 'g';
+        if ($('disp-plan-carbs')) $('disp-plan-carbs').textContent = (macros.carbs_g || '--') + 'g';
+        if ($('disp-plan-fat')) $('disp-plan-fat').textContent = (macros.fat_g || '--') + 'g';
+
+        if ($('disp-hydration-text')) $('disp-hydration-text').textContent = plan.hydration_plan || 'Drink 2.5 - 3.5 Liters of water daily.';
+
+        // Render Meals
+        var mealsContainer = $('plan-meals-container');
+        if (mealsContainer && plan.meals && plan.meals.length) {
+            mealsContainer.innerHTML = plan.meals.map(function (m) {
+                var mealName = esc(m.meal_name);
+                var time = esc(m.time || '');
+                var totalCal = m.total_calories ? m.total_calories + ' kcal' : '';
+                var tips = m.tips ? '<div class="meal-tip">💡 ' + esc(m.tips) + '</div>' : '';
+
+                var itemsHtml = (m.items || []).map(function (it) {
+                    var itName = esc(it.name);
+                    var itCal = it.calories ? it.calories + ' kcal' : '';
+                    var p = it.protein_g ? '<span class="macro-pill p">P: ' + it.protein_g + 'g</span>' : '';
+                    var c = it.carbs_g ? '<span class="macro-pill c">C: ' + it.carbs_g + 'g</span>' : '';
+                    var f = it.fat_g ? '<span class="macro-pill f">F: ' + it.fat_g + 'g</span>' : '';
+                    
+                    var logAttr = 'data-meal="' + esc(mealName) + '" data-name="' + esc(it.name) + '" data-cal="' + (it.calories || 0) + '" data-p="' + (it.protein_g || 0) + '" data-c="' + (it.carbs_g || 0) + '" data-f="' + (it.fat_g || 0) + '"';
+
+                    return '<li class="meal-item-row">' +
+                        '<div><span class="meal-item-name">' + itName + '</span>' + p + c + f + '</div>' +
+                        '<div style="display:flex; align-items:center; gap:8px;">' +
+                            '<strong style="color:var(--text);">' + itCal + '</strong>' +
+                            '<button type="button" class="btn-secondary quick-log-meal-btn" ' + logAttr + ' style="padding:3px 8px; font-size:0.75rem;">➕ Log</button>' +
+                        '</div>' +
+                    '</li>';
+                }).join('');
+
+                return '<div class="meal-plan-card">' +
+                    '<div class="meal-header">' +
+                        '<div style="display:flex; align-items:center; gap:8px;">' +
+                            '<span class="meal-badge">' + mealName + '</span>' +
+                            (time ? '<span style="color:var(--muted); font-size:0.8rem;">⏰ ' + time + '</span>' : '') +
+                        '</div>' +
+                        '<strong style="color:var(--accent);">' + totalCal + '</strong>' +
+                    '</div>' +
+                    '<ul class="meal-items-list">' + itemsHtml + '</ul>' +
+                    tips +
+                '</div>';
+            }).join('');
+
+            // Add click listeners to "Quick Log" buttons
+            document.querySelectorAll('.quick-log-meal-btn').forEach(function (b) {
+                b.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    quickLogFromDietPlan({
+                        meal_type: b.getAttribute('data-meal'),
+                        food_item: b.getAttribute('data-name'),
+                        calories: parseFloat(b.getAttribute('data-cal')) || 0,
+                        protein_g: parseFloat(b.getAttribute('data-p')) || 0,
+                        carbs_g: parseFloat(b.getAttribute('data-c')) || 0,
+                        fat_g: parseFloat(b.getAttribute('data-f')) || 0
+                    });
+                });
+            });
+        }
+
+        // Render notes
+        var notesContainer = $('plan-notes-list');
+        if (notesContainer) {
+            var notes = plan.dietitian_notes || [];
+            if (notes.length) {
+                notesContainer.innerHTML = notes.map(function (n) { return '<li>' + esc(n) + '</li>'; }).join('');
+            } else {
+                notesContainer.innerHTML = '<li>Stay consistent and hydrate regularly for optimal metabolism.</li>';
+            }
+        }
+
+        resWrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // Generate diet plan button click
+    var genDietBtn = $('generate-diet-btn');
+    if (genDietBtn) {
+        genDietBtn.addEventListener('click', function () {
+            var payload = {
+                name: $('diet-name').value.trim() || 'User',
+                age: parseInt($('diet-age').value, 10) || 28,
+                gender: $('diet-gender').value,
+                height_cm: parseFloat($('diet-height').value) || 175,
+                weight_kg: parseFloat($('diet-weight').value) || 72,
+                activity_level: $('diet-activity').value,
+                goal: $('diet-goal').value,
+                diet_pref: $('diet-pref').value,
+                health_conditions: $('diet-notes').value.trim()
+            };
+
+            genDietBtn.disabled = true;
+            genDietBtn.textContent = '🧠 Generating with Llama-3.1 (Groq Cloud)...';
+            var statusDiv = $('diet-gen-status');
+            if (statusDiv) {
+                statusDiv.style.display = 'block';
+                statusDiv.style.color = 'var(--accent)';
+                statusDiv.textContent = '⚡ Calculating macros and generating customized meals via Meta-Llama-3.1-8B...';
+            }
+
+            fetch('/api/diet/plan/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                genDietBtn.disabled = false;
+                genDietBtn.textContent = '🤖 Generate Diet Plan with Llama-3.1';
+                if (statusDiv) statusDiv.style.display = 'none';
+
+                if (data.plan) {
+                    renderDietPlan(data.plan);
+                    toast('🎉 Personalized diet plan ready and saved to database!');
+                } else {
+                    throw new Error(data.error || 'Plan generation failed');
+                }
+            })
+            .catch(function (err) {
+                genDietBtn.disabled = false;
+                genDietBtn.textContent = '🤖 Generate Diet Plan with Llama-3.1';
+                if (statusDiv) {
+                    statusDiv.style.color = 'var(--bad)';
+                    statusDiv.textContent = '⚠️ ' + err.message;
+                }
+                toast('⚠️ Error generating plan: ' + err.message);
+            });
+        });
+    }
+
+    // Quick Log a meal directly from the generated diet plan
+    function quickLogFromDietPlan(item) {
+        fetch('/api/calorie/log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(item)
+        })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+            toast('✅ Logged ' + item.food_item + ' (' + item.calories + ' kcal) to tracker!');
+        })
+        .catch(function () {
+            toast('✅ Added to tracker!');
+        });
+    }
+
+    // Calorie Tracker Date Picker
+    var datePicker = $('tracker-date-picker');
+    if (datePicker) {
+        datePicker.value = new Date().toISOString().slice(0, 10);
+        datePicker.addEventListener('change', function () { loadTodayCalorieSummary(); });
+    }
+
+    // Load Calorie Tracker daily summary
+    function loadTodayCalorieSummary() {
+        var d = (datePicker && datePicker.value) ? datePicker.value : new Date().toISOString().slice(0, 10);
+        fetch('/api/calorie/today?date=' + encodeURIComponent(d))
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                renderCalorieSummary(data);
+            })
+            .catch(function (err) {
+                console.error('Calorie fetch error:', err);
+            });
+    }
+
+    // Render Calorie Summary & Progress
+    function renderCalorieSummary(data) {
+        if (!data) return;
+        var consumed = data.total_calories || 0;
+        var target = data.target_calories || 2000;
+        var remaining = Math.max(0, target - consumed);
+        var percent = Math.min(100, Math.round((consumed / target) * 100));
+
+        if ($('cal-consumed-num')) $('cal-consumed-num').textContent = consumed;
+        if ($('cal-target-num')) $('cal-target-num').textContent = target;
+        if ($('cal-remaining-num')) $('cal-remaining-num').textContent = remaining;
+
+        var bar = $('cal-progress-fill');
+        if (bar) {
+            bar.style.width = percent + '%';
+            if (consumed > target) {
+                bar.classList.add('over');
+            } else {
+                bar.classList.remove('over');
+            }
+        }
+
+        // Macros
+        var pAct = data.total_protein_g || 0, pTar = data.target_protein_g || 75;
+        var cAct = data.total_carbs_g || 0, cTar = data.target_carbs_g || 250;
+        var fAct = data.total_fat_g || 0, fTar = data.target_fat_g || 55;
+
+        if ($('txt-prot-split')) $('txt-prot-split').textContent = pAct + ' / ' + pTar + 'g';
+        if ($('txt-carb-split')) $('txt-carb-split').textContent = cAct + ' / ' + cTar + 'g';
+        if ($('txt-fat-split')) $('txt-fat-split').textContent = fAct + ' / ' + fTar + 'g';
+
+        if ($('bar-prot-fill')) $('bar-prot-fill').style.width = Math.min(100, Math.round((pAct / (pTar || 1)) * 100)) + '%';
+        if ($('bar-carb-fill')) $('bar-carb-fill').style.width = Math.min(100, Math.round((cAct / (cTar || 1)) * 100)) + '%';
+        if ($('bar-fat-fill')) $('bar-fat-fill').style.width = Math.min(100, Math.round((fAct / (fTar || 1)) * 100)) + '%';
+
+        // Render meals list
+        var listContainer = $('logged-meals-container');
+        if (listContainer) {
+            var meals = data.meals || [];
+            if (!meals.length) {
+                listContainer.innerHTML = '<p class="muted" style="text-align:center; padding:16px 0;">No meals logged yet today. Add your first meal above!</p>';
+                return;
+            }
+
+            listContainer.innerHTML = meals.map(function (m) {
+                var mealId = esc(m.id);
+                var mType = esc(m.meal_type);
+                var fName = esc(m.food_item);
+                var portion = m.portion ? ' (' + esc(m.portion) + ')' : '';
+                var cal = m.calories + ' kcal';
+                var p = m.protein_g ? '<span class="macro-pill p">P: ' + m.protein_g + 'g</span>' : '';
+                var c = m.carbs_g ? '<span class="macro-pill c">C: ' + m.carbs_g + 'g</span>' : '';
+                var f = m.fat_g ? '<span class="macro-pill f">F: ' + m.fat_g + 'g</span>' : '';
+                var time = m.logged_at ? '<span style="font-size:0.75rem; color:var(--muted); margin-left:6px;">' + esc(m.logged_at) + '</span>' : '';
+
+                return '<div class="logged-meal-item">' +
+                    '<div>' +
+                        '<div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">' +
+                            '<span class="meal-badge" style="font-size:0.72rem; padding:2px 8px;">' + mType + '</span>' +
+                            '<strong style="font-size:0.92rem;">' + fName + '</strong>' +
+                            portion + time +
+                        '</div>' +
+                        '<div>' + p + c + f + '</div>' +
+                    '</div>' +
+                    '<div style="display:flex; align-items:center; gap:10px;">' +
+                        '<strong style="color:var(--accent);">' + cal + '</strong>' +
+                        '<button type="button" class="del-meal-btn" data-id="' + mealId + '" title="Delete this entry">🗑️</button>' +
+                    '</div>' +
+                '</div>';
+            }).join('');
+
+            // Wire delete buttons
+            listContainer.querySelectorAll('.del-meal-btn').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var id = btn.getAttribute('data-id');
+                    deleteMealLogEntry(id);
+                });
+            });
+        }
+    }
+
+    // Submit meal log
+    var submitMealBtn = $('submit-meal-log-btn');
+    if (submitMealBtn) {
+        submitMealBtn.addEventListener('click', function () {
+            var foodItem = $('log-food-item').value.trim();
+            var calories = parseFloat($('log-calories').value);
+
+            if (!foodItem) {
+                toast('⚠️ Please enter the food item name.');
+                $('log-food-item').focus();
+                return;
+            }
+            if (isNaN(calories) || calories < 0) {
+                toast('⚠️ Please enter valid calories (kcal).');
+                $('log-calories').focus();
+                return;
+            }
+
+            var payload = {
+                meal_type: $('log-meal-type').value,
+                food_item: foodItem,
+                portion: $('log-portion').value.trim() || '1 serving',
+                calories: calories,
+                protein_g: parseFloat($('log-protein').value) || 0,
+                carbs_g: parseFloat($('log-carbs').value) || 0,
+                fat_g: parseFloat($('log-fat').value) || 0,
+                log_date: (datePicker && datePicker.value) ? datePicker.value : new Date().toISOString().slice(0, 10)
+            };
+
+            submitMealBtn.disabled = true;
+            submitMealBtn.textContent = 'Logging...';
+
+            fetch('/api/calorie/log', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                submitMealBtn.disabled = false;
+                submitMealBtn.textContent = '➕ Add to Calorie Log';
+                if (data.status === 'success') {
+                    $('log-food-item').value = '';
+                    $('log-calories').value = '';
+                    $('log-protein').value = '0';
+                    $('log-carbs').value = '0';
+                    $('log-fat').value = '0';
+                    renderCalorieSummary(data.daily_summary);
+                    toast('🎉 Logged ' + payload.food_item + ' successfully!');
+                } else {
+                    throw new Error(data.error || 'Failed to log meal');
+                }
+            })
+            .catch(function (err) {
+                submitMealBtn.disabled = false;
+                submitMealBtn.textContent = '➕ Add to Calorie Log';
+                toast('⚠️ ' + err.message);
+            });
+        });
+    }
+
+    // Delete meal entry
+    function deleteMealLogEntry(id) {
+        fetch('/api/calorie/log/' + encodeURIComponent(id), { method: 'DELETE' })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data.daily_summary) renderCalorieSummary(data.daily_summary);
+                toast('🗑️ Meal entry removed.');
+            })
+            .catch(function () {
+                toast('⚠️ Could not remove entry.');
+            });
+    }
+
+    // Load diet plan history
+    function loadDietPlanHistory() {
+        var container = $('history-plans-container');
+        if (!container) return;
+        container.innerHTML = '<p class="muted" style="text-align:center; padding:20px 0;">Loading history from database...</p>';
+
+        fetch('/api/diet/plans')
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                var plans = data.plans || [];
+                if (!plans.length) {
+                    container.innerHTML = '<p class="muted" style="text-align:center; padding:20px 0;">No diet plans archived yet. Generate your first plan in the Planner tab!</p>';
+                    return;
+                }
+                container.innerHTML = plans.map(function (p) {
+                    var title = esc(p.plan_name || 'Personalized Diet Plan');
+                    var date = esc(p.created_at || '');
+                    var cals = p.target_calories ? p.target_calories + ' kcal' : '';
+                    var planId = esc(p.id);
+
+                    return '<div class="plan-history-item">' +
+                        '<div>' +
+                            '<strong style="font-size:0.95rem;">' + title + '</strong>' +
+                            '<div style="font-size:0.8rem; color:var(--muted); margin-top:2px;">' +
+                                'Target: ' + cals + ' • Created: ' + date +
+                            '</div>' +
+                        '</div>' +
+                        '<button type="button" class="btn-primary view-hist-plan-btn" data-id="' + planId + '" style="padding:6px 14px; font-size:0.84rem;">View Plan</button>' +
+                    '</div>';
+                }).join('');
+
+                container.querySelectorAll('.view-hist-plan-btn').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        var id = btn.getAttribute('data-id');
+                        fetch('/api/diet/plan/' + encodeURIComponent(id))
+                            .then(function (r) { return r.json(); })
+                            .then(function (d) {
+                                if (d.plan && d.plan.plan_data) {
+                                    var plannerBtn = $('subtab-btn-planner');
+                                    if (plannerBtn) plannerBtn.click();
+                                    renderDietPlan(d.plan.plan_data);
+                                    toast('📂 Loaded archived plan!');
+                                }
+                            });
+                    });
+                });
+            })
+            .catch(function () {
+                container.innerHTML = '<p class="muted" style="text-align:center; padding:20px 0;">Could not load plan history.</p>';
+            });
+    }
+
+    var refreshHistBtn = $('refresh-history-btn');
+    if (refreshHistBtn) refreshHistBtn.addEventListener('click', loadDietPlanHistory);
+
+    function initDietHub() {
+        loadProfile();
+        loadTodayCalorieSummary();
     }
 
     loadFeedbacks();

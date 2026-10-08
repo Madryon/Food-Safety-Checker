@@ -11,6 +11,7 @@ WORKDIR /app
 # Install system dependencies if required (e.g. for Pillow/curl)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy dependencies first for efficient Docker layer caching

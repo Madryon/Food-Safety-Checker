@@ -1,0 +1,536 @@
+import os
+import json
+import logging
+import sqlite3
+import urllib.parse
+from datetime import datetime, date
+
+logger = logging.getLogger(__name__)
+
+# Database URL from environment: AIVEN_DATABASE_URL, DATABASE_URL, or POSTGRES_URL
+DB_URL = (
+    os.getenv("AIVEN_DATABASE_URL")
+    or os.getenv("DATABASE_URL")
+    or os.getenv("POSTGRES_URL")
+    or ""
+).strip()
+
+USE_POSTGRES = False
+pg_pool = None
+
+# Normalize postgres:// to postgresql:// if needed for psycopg2
+if DB_URL.startswith("postgres://"):
+    DB_URL = DB_URL.replace("postgres://", "postgresql://", 1)
+
+if DB_URL.startswith("postgresql://"):
+    try:
+        import psycopg2
+        from psycopg2 import pool, extras
+
+        # Ensure sslmode is present if connecting to cloud PG like Aiven
+        if "sslmode=" not in DB_URL:
+            separator = "&" if "?" in DB_URL else "?"
+            DB_URL += f"{separator}sslmode=require"
+
+        # Initialize connection pool
+        pg_pool = psycopg2.pool.SimpleConnectionPool(
+            minconn=1,
+            maxconn=10,
+            dsn=DB_URL,
+        )
+        USE_POSTGRES = True
+        logger.info("Connected to Aiven PostgreSQL database successfully.")
+    except Exception as e:
+        logger.warning(
+            f"Could not connect to PostgreSQL ({e}). Falling back to local SQLite for diet data."
+        )
+        USE_POSTGRES = False
+        pg_pool = None
+else:
+    logger.info("No PostgreSQL URL configured. Using local SQLite database for diet tracking.")
+
+# Local SQLite fallback path
+SQLITE_DB_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "diet_tracker.db"
+)
+
+
+class DatabaseConnection:
+    """Context manager to yield a DB connection and handle commits/rollbacks."""
+
+    def __init__(self):
+        self.conn = None
+        self.is_pg = USE_POSTGRES and pg_pool is not None
+
+    def __enter__(self):
+        if self.is_pg:
+            self.conn = pg_pool.getconn()
+            return self.conn, True
+        else:
+            self.conn = sqlite3.connect(SQLITE_DB_PATH)
+            self.conn.row_factory = sqlite3.Row
+            return self.conn, False
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.conn:
+            if exc_type is None:
+                self.conn.commit()
+            else:
+                self.conn.rollback()
+
+            if self.is_pg:
+                pg_pool.putconn(self.conn)
+            else:
+                self.conn.close()
+
+
+def init_db():
+    """Create necessary tables if they don't already exist."""
+    with DatabaseConnection() as (conn, is_pg):
+        cursor = conn.cursor()
+
+        if is_pg:
+            # PostgreSQL Schema
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_profiles (
+                    user_id VARCHAR(100) PRIMARY KEY,
+                    name VARCHAR(150) NOT NULL,
+                    age INT,
+                    gender VARCHAR(20),
+                    height_cm FLOAT,
+                    weight_kg FLOAT,
+                    activity_level VARCHAR(50),
+                    goal VARCHAR(50),
+                    diet_pref VARCHAR(50),
+                    health_conditions TEXT,
+                    target_calories INT,
+                    target_protein_g INT,
+                    target_carbs_g INT,
+                    target_fat_g INT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS diet_plans (
+                    id VARCHAR(64) PRIMARY KEY,
+                    user_id VARCHAR(100) NOT NULL,
+                    plan_name VARCHAR(200),
+                    target_calories INT,
+                    plan_data JSONB,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT fk_user_diet FOREIGN KEY (user_id) REFERENCES user_profiles(user_id) ON DELETE CASCADE
+                );
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS calorie_logs (
+                    id VARCHAR(64) PRIMARY KEY,
+                    user_id VARCHAR(100) NOT NULL,
+                    log_date DATE NOT NULL,
+                    meal_type VARCHAR(50) NOT NULL,
+                    food_item VARCHAR(255) NOT NULL,
+                    portion VARCHAR(100),
+                    calories FLOAT NOT NULL,
+                    protein_g FLOAT DEFAULT 0,
+                    carbs_g FLOAT DEFAULT 0,
+                    fat_g FLOAT DEFAULT 0,
+                    logged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT fk_user_log FOREIGN KEY (user_id) REFERENCES user_profiles(user_id) ON DELETE CASCADE
+                );
+            """)
+
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_diet_plans_user ON diet_plans(user_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_calorie_logs_user_date ON calorie_logs(user_id, log_date);")
+
+        else:
+            # SQLite Schema
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_profiles (
+                    user_id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    age INTEGER,
+                    gender TEXT,
+                    height_cm REAL,
+                    weight_kg REAL,
+                    activity_level TEXT,
+                    goal TEXT,
+                    diet_pref TEXT,
+                    health_conditions TEXT,
+                    target_calories INTEGER,
+                    target_protein_g INTEGER,
+                    target_carbs_g INTEGER,
+                    target_fat_g INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS diet_plans (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    plan_name TEXT,
+                    target_calories INTEGER,
+                    plan_data TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS calorie_logs (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    log_date TEXT NOT NULL,
+                    meal_type TEXT NOT NULL,
+                    food_item TEXT NOT NULL,
+                    portion TEXT,
+                    calories REAL NOT NULL,
+                    protein_g REAL DEFAULT 0,
+                    carbs_g REAL DEFAULT 0,
+                    fat_g REAL DEFAULT 0,
+                    logged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+
+        cursor.close()
+    logger.info("Database initialized successfully.")
+
+
+# ─────────────────────────────────────────────────────────────
+# User Profile Operations
+# ─────────────────────────────────────────────────────────────
+
+def save_user_profile(profile_data):
+    """Insert or update user profile."""
+    user_id = profile_data.get("user_id") or "default_user"
+    name = profile_data.get("name") or "User"
+    age = profile_data.get("age")
+    gender = profile_data.get("gender")
+    height_cm = profile_data.get("height_cm")
+    weight_kg = profile_data.get("weight_kg")
+    activity_level = profile_data.get("activity_level", "moderate")
+    goal = profile_data.get("goal", "maintain")
+    diet_pref = profile_data.get("diet_pref", "vegetarian")
+    health_conditions = profile_data.get("health_conditions", "")
+    target_calories = profile_data.get("target_calories", 2000)
+    target_protein_g = profile_data.get("target_protein_g", 75)
+    target_carbs_g = profile_data.get("target_carbs_g", 250)
+    target_fat_g = profile_data.get("target_fat_g", 55)
+
+    with DatabaseConnection() as (conn, is_pg):
+        cursor = conn.cursor()
+        if is_pg:
+            query = """
+                INSERT INTO user_profiles (
+                    user_id, name, age, gender, height_cm, weight_kg,
+                    activity_level, goal, diet_pref, health_conditions,
+                    target_calories, target_protein_g, target_carbs_g, target_fat_g,
+                    updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    age = EXCLUDED.age,
+                    gender = EXCLUDED.gender,
+                    height_cm = EXCLUDED.height_cm,
+                    weight_kg = EXCLUDED.weight_kg,
+                    activity_level = EXCLUDED.activity_level,
+                    goal = EXCLUDED.goal,
+                    diet_pref = EXCLUDED.diet_pref,
+                    health_conditions = EXCLUDED.health_conditions,
+                    target_calories = EXCLUDED.target_calories,
+                    target_protein_g = EXCLUDED.target_protein_g,
+                    target_carbs_g = EXCLUDED.target_carbs_g,
+                    target_fat_g = EXCLUDED.target_fat_g,
+                    updated_at = CURRENT_TIMESTAMP;
+            """
+            cursor.execute(query, (
+                user_id, name, age, gender, height_cm, weight_kg,
+                activity_level, goal, diet_pref, health_conditions,
+                target_calories, target_protein_g, target_carbs_g, target_fat_g
+            ))
+        else:
+            query = """
+                INSERT INTO user_profiles (
+                    user_id, name, age, gender, height_cm, weight_kg,
+                    activity_level, goal, diet_pref, health_conditions,
+                    target_calories, target_protein_g, target_carbs_g, target_fat_g,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    name = excluded.name,
+                    age = excluded.age,
+                    gender = excluded.gender,
+                    height_cm = excluded.height_cm,
+                    weight_kg = excluded.weight_kg,
+                    activity_level = excluded.activity_level,
+                    goal = excluded.goal,
+                    diet_pref = excluded.diet_pref,
+                    health_conditions = excluded.health_conditions,
+                    target_calories = excluded.target_calories,
+                    target_protein_g = excluded.target_protein_g,
+                    target_carbs_g = excluded.target_carbs_g,
+                    target_fat_g = excluded.target_fat_g,
+                    updated_at = CURRENT_TIMESTAMP;
+            """
+            cursor.execute(query, (
+                user_id, name, age, gender, height_cm, weight_kg,
+                activity_level, goal, diet_pref, health_conditions,
+                target_calories, target_protein_g, target_carbs_g, target_fat_g
+            ))
+        cursor.close()
+
+    return get_user_profile(user_id)
+
+
+def get_user_profile(user_id):
+    """Retrieve user profile by user_id."""
+    with DatabaseConnection() as (conn, is_pg):
+        cursor = conn.cursor()
+        if is_pg:
+            from psycopg2.extras import RealDictCursor
+            dict_cursor = conn.cursor(cursor_factory=RealDictCursor)
+            dict_cursor.execute("SELECT * FROM user_profiles WHERE user_id = %s;", (user_id,))
+            row = dict_cursor.fetchone()
+            dict_cursor.close()
+            if row:
+                return dict(row)
+        else:
+            cursor.execute("SELECT * FROM user_profiles WHERE user_id = ?;", (user_id,))
+            row = cursor.fetchone()
+            cursor.close()
+            if row:
+                return dict(row)
+    return None
+
+
+# ─────────────────────────────────────────────────────────────
+# Diet Plans Operations
+# ─────────────────────────────────────────────────────────────
+
+def save_diet_plan(plan_id, user_id, plan_name, target_calories, plan_data):
+    """Store generated diet plan in database."""
+    # Ensure profile exists for foreign key constraint in Postgres
+    profile = get_user_profile(user_id)
+    if not profile:
+        save_user_profile({"user_id": user_id, "name": "User"})
+
+    plan_data_str = json.dumps(plan_data) if isinstance(plan_data, dict) else str(plan_data)
+
+    with DatabaseConnection() as (conn, is_pg):
+        cursor = conn.cursor()
+        if is_pg:
+            query = """
+                INSERT INTO diet_plans (id, user_id, plan_name, target_calories, plan_data)
+                VALUES (%s, %s, %s, %s, %s);
+            """
+            cursor.execute(query, (plan_id, user_id, plan_name, target_calories, plan_data_str))
+        else:
+            query = """
+                INSERT INTO diet_plans (id, user_id, plan_name, target_calories, plan_data)
+                VALUES (?, ?, ?, ?, ?);
+            """
+            cursor.execute(query, (plan_id, user_id, plan_name, target_calories, plan_data_str))
+        cursor.close()
+
+    return get_diet_plan(plan_id)
+
+
+def get_diet_plan(plan_id):
+    """Get diet plan by ID."""
+    with DatabaseConnection() as (conn, is_pg):
+        if is_pg:
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("SELECT * FROM diet_plans WHERE id = %s;", (plan_id,))
+            row = cursor.fetchone()
+            cursor.close()
+        else:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM diet_plans WHERE id = ?;", (plan_id,))
+            row = cursor.fetchone()
+            cursor.close()
+
+        if row:
+            res = dict(row)
+            if isinstance(res.get("plan_data"), str):
+                try:
+                    res["plan_data"] = json.loads(res["plan_data"])
+                except Exception:
+                    pass
+            return res
+    return None
+
+
+def get_user_diet_plans(user_id, limit=10):
+    """Get history of diet plans generated for a user."""
+    plans = []
+    with DatabaseConnection() as (conn, is_pg):
+        if is_pg:
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute(
+                "SELECT id, user_id, plan_name, target_calories, plan_data, created_at FROM diet_plans WHERE user_id = %s ORDER BY created_at DESC LIMIT %s;",
+                (user_id, limit)
+            )
+            rows = cursor.fetchall()
+            cursor.close()
+        else:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, user_id, plan_name, target_calories, plan_data, created_at FROM diet_plans WHERE user_id = ? ORDER BY created_at DESC LIMIT ?;",
+                (user_id, limit)
+            )
+            rows = cursor.fetchall()
+            cursor.close()
+
+        for r in rows:
+            item = dict(r)
+            if isinstance(item.get("plan_data"), str):
+                try:
+                    item["plan_data"] = json.loads(item["plan_data"])
+                except Exception:
+                    pass
+            # Format timestamp string if object
+            if isinstance(item.get("created_at"), datetime):
+                item["created_at"] = item["created_at"].strftime("%Y-%m-%d %H:%M")
+            plans.append(item)
+    return plans
+
+
+# ─────────────────────────────────────────────────────────────
+# Calorie Logs Operations
+# ─────────────────────────────────────────────────────────────
+
+def log_meal(log_id, user_id, log_date, meal_type, food_item, portion, calories, protein_g=0, carbs_g=0, fat_g=0):
+    """Log a consumed food item."""
+    profile = get_user_profile(user_id)
+    if not profile:
+        save_user_profile({"user_id": user_id, "name": "User"})
+
+    with DatabaseConnection() as (conn, is_pg):
+        cursor = conn.cursor()
+        if is_pg:
+            query = """
+                INSERT INTO calorie_logs (
+                    id, user_id, log_date, meal_type, food_item, portion,
+                    calories, protein_g, carbs_g, fat_g
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+            """
+            cursor.execute(query, (
+                log_id, user_id, log_date, meal_type, food_item, portion,
+                float(calories), float(protein_g), float(carbs_g), float(fat_g)
+            ))
+        else:
+            query = """
+                INSERT INTO calorie_logs (
+                    id, user_id, log_date, meal_type, food_item, portion,
+                    calories, protein_g, carbs_g, fat_g
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """
+            cursor.execute(query, (
+                log_id, user_id, str(log_date), meal_type, food_item, portion,
+                float(calories), float(protein_g), float(carbs_g), float(fat_g)
+            ))
+        cursor.close()
+
+    return {
+        "id": log_id,
+        "user_id": user_id,
+        "log_date": str(log_date),
+        "meal_type": meal_type,
+        "food_item": food_item,
+        "portion": portion,
+        "calories": calories,
+        "protein_g": protein_g,
+        "carbs_g": carbs_g,
+        "fat_g": fat_g,
+    }
+
+
+def get_daily_calorie_summary(user_id, target_date=None):
+    """Retrieve all meals logged on a given day with aggregates."""
+    if not target_date:
+        target_date = date.today().isoformat()
+    elif isinstance(target_date, (date, datetime)):
+        target_date = target_date.strftime("%Y-%m-%d")
+
+    meals = []
+    total_cals = 0.0
+    total_prot = 0.0
+    total_carbs = 0.0
+    total_fat = 0.0
+
+    with DatabaseConnection() as (conn, is_pg):
+        if is_pg:
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                SELECT id, user_id, log_date, meal_type, food_item, portion,
+                       calories, protein_g, carbs_g, fat_g, logged_at
+                FROM calorie_logs
+                WHERE user_id = %s AND log_date = %s
+                ORDER BY logged_at ASC;
+            """, (user_id, target_date))
+            rows = cursor.fetchall()
+            cursor.close()
+        else:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, user_id, log_date, meal_type, food_item, portion,
+                       calories, protein_g, carbs_g, fat_g, logged_at
+                FROM calorie_logs
+                WHERE user_id = ? AND log_date = ?
+                ORDER BY logged_at ASC;
+            """, (user_id, str(target_date)))
+            rows = cursor.fetchall()
+            cursor.close()
+
+        for r in rows:
+            item = dict(r)
+            if isinstance(item.get("log_date"), (date, datetime)):
+                item["log_date"] = item["log_date"].strftime("%Y-%m-%d")
+            if isinstance(item.get("logged_at"), datetime):
+                item["logged_at"] = item["logged_at"].strftime("%H:%M")
+            meals.append(item)
+
+            total_cals += float(item.get("calories") or 0)
+            total_prot += float(item.get("protein_g") or 0)
+            total_carbs += float(item.get("carbs_g") or 0)
+            total_fat += float(item.get("fat_g") or 0)
+
+    # Get target calories from user profile
+    profile = get_user_profile(user_id) or {}
+    target_cals = profile.get("target_calories") or 2000
+    target_protein = profile.get("target_protein_g") or 75
+    target_carbs = profile.get("target_carbs_g") or 250
+    target_fat = profile.get("target_fat_g") or 55
+
+    return {
+        "date": str(target_date),
+        "total_calories": round(total_cals, 1),
+        "total_protein_g": round(total_prot, 1),
+        "total_carbs_g": round(total_carbs, 1),
+        "total_fat_g": round(total_fat, 1),
+        "target_calories": target_cals,
+        "target_protein_g": target_protein,
+        "target_carbs_g": target_carbs,
+        "target_fat_g": target_fat,
+        "calories_remaining": max(0, round(target_cals - total_cals, 1)),
+        "percent_target": min(100, round((total_cals / target_cals) * 100, 1)) if target_cals else 0,
+        "meals": meals,
+    }
+
+
+def delete_meal_log(log_id, user_id):
+    """Delete a logged meal entry."""
+    with DatabaseConnection() as (conn, is_pg):
+        cursor = conn.cursor()
+        if is_pg:
+            cursor.execute("DELETE FROM calorie_logs WHERE id = %s AND user_id = %s;", (log_id, user_id))
+        else:
+            cursor.execute("DELETE FROM calorie_logs WHERE id = ? AND user_id = ?;", (log_id, user_id))
+        deleted = cursor.rowcount > 0
+        cursor.close()
+    return deleted
