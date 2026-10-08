@@ -1075,9 +1075,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                             <label for="login-password">Password <span class="req">*</span></label>
                             <input type="password" id="login-password" class="fb-input" placeholder="Enter your password" autocomplete="current-password" required>
                         </div>
-                        <p style="font-size:0.78rem; color:var(--muted); margin-bottom:14px;">
-                            💡 Developer account? Enter your developer ID and credentials to access administrative views.
-                        </p>
+                       
                         <button type="submit" id="btn-submit-login" class="fb-submit-btn">
                             🔓 Sign In to My Account
                         </button>
@@ -1105,7 +1103,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                             <label for="reg-is-dev" style="margin:0; font-size:0.84rem; cursor:pointer;">Register as Developer (Admin feedback view)</label>
                         </div>
                         <button type="submit" id="btn-submit-register" class="fb-submit-btn" style="margin-top:14px;">
-                            ✨ Create Private Account
+                             Create Private Account
                         </button>
                         <div id="reg-status-msg" class="fb-status-msg"></div>
                     </form>
@@ -2756,7 +2754,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             if (statusDiv) {
                 statusDiv.style.display = 'block';
                 statusDiv.style.color = 'var(--accent)';
-                statusDiv.textContent = '⚡ Calculating macros and generating customized meals via Meta-Llama-3.1-8B...';
+                statusDiv.textContent = ' Calculating macros and generating customized meals via Meta-Llama-3.1-8B...';
             }
 
             fetch('/api/diet/plan/generate', {
