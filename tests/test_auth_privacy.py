@@ -212,5 +212,74 @@ class FoodCheckPrivateAuthTest(unittest.TestCase):
         self.assertIn('suggestions', data['result'])
         self.assertEqual(len(data['result']['suggestions']), 3)
 
+    def test_06_register_validations_and_edge_cases(self):
+        # 1. Missing fields
+        res_empty = self.client.post('/api/auth/register', json={
+            'username': '',
+            'password': '',
+            'name': ''
+        })
+        self.assertEqual(res_empty.status_code, 400)
+        self.assertIn('required', res_empty.get_json()['error'].lower())
+
+        # 2. Short password (< 4 chars)
+        res_short_pw = self.client.post('/api/auth/register', json={
+            'username': 'user_valid',
+            'password': '123',
+            'name': 'Short Password User'
+        })
+        self.assertEqual(res_short_pw.status_code, 400)
+        self.assertIn('4 characters', res_short_pw.get_json()['error'])
+
+        # 3. Short username (< 2 chars)
+        res_short_u = self.client.post('/api/auth/register', json={
+            'username': 'a',
+            'password': 'valid_pass_123',
+            'name': 'Short Username'
+        })
+        self.assertEqual(res_short_u.status_code, 400)
+        self.assertIn('2 characters', res_short_u.get_json()['error'])
+
+        # 4. Username with spaces gets normalized and created cleanly
+        import time
+        ts = int(time.time() * 1000)
+        test_u = f"Deepak Kumar {ts}"
+        expected_u = f"deepak_kumar_{ts}"
+
+        res_spaces = self.client.post('/api/auth/register', json={
+            'username': test_u,
+            'password': 'securepass123',
+            'name': 'Deepak Kumar'
+        })
+        self.assertEqual(res_spaces.status_code, 200)
+        u_data = res_spaces.get_json()['user']
+        self.assertEqual(u_data['user_id'], expected_u)
+
+        # 5. Duplicate username registration returns 400 with clear error
+        res_dup = self.client.post('/api/auth/register', json={
+            'username': expected_u,
+            'password': 'anotherpassword',
+            'name': 'Deepak Again'
+        })
+        self.assertEqual(res_dup.status_code, 400)
+        self.assertIn('already exists', res_dup.get_json()['error'].lower())
+
+        # 6. Auto-login verification on registered user
+        charlie_u = f"charlie_{ts}"
+        with self.client:
+            res_reg = self.client.post('/api/auth/register', json={
+                'username': charlie_u,
+                'password': 'charlie_password',
+                'name': 'Charlie Brown'
+            })
+            self.assertEqual(res_reg.status_code, 200)
+            res_me = self.client.get('/api/auth/me')
+            self.assertEqual(res_me.status_code, 200)
+            me_data = res_me.get_json()
+            self.assertTrue(me_data['authenticated'])
+            self.assertEqual(me_data['user_id'], charlie_u)
+            self.assertEqual(me_data['name'], 'Charlie Brown')
+
+
 if __name__ == '__main__':
     unittest.main()

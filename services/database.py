@@ -56,33 +56,89 @@ SQLITE_DB_PATH = os.path.join(
 )
 
 
+def get_or_create_pg_pool():
+    """Retrieve existing PG pool or initialize a fresh pool if needed."""
+    global pg_pool, USE_POSTGRES
+    if not DB_URL or not DB_URL.startswith("postgresql://"):
+        return None
+    if pg_pool is not None:
+        return pg_pool
+    try:
+        import psycopg2
+        from psycopg2 import pool
+        url = DB_URL
+        if "sslmode=" not in url:
+            sep = "&" if "?" in url else "?"
+            url += f"{sep}sslmode=require"
+        pg_pool = psycopg2.pool.SimpleConnectionPool(minconn=1, maxconn=10, dsn=url)
+        USE_POSTGRES = True
+        return pg_pool
+    except Exception as e:
+        logger.warning(f"Could not initialize PostgreSQL pool: {e}")
+        return None
+
+
 class DatabaseConnection:
     """Context manager to yield a DB connection and handle commits/rollbacks."""
 
     def __init__(self):
         self.conn = None
-        self.is_pg = USE_POSTGRES and pg_pool is not None
+        self.is_pg = False
 
     def __enter__(self):
-        if self.is_pg:
-            self.conn = pg_pool.getconn()
-            return self.conn, True
-        else:
-            self.conn = sqlite3.connect(SQLITE_DB_PATH)
-            self.conn.row_factory = sqlite3.Row
-            return self.conn, False
+        pool_inst = get_or_create_pg_pool()
+        if pool_inst:
+            try:
+                conn = pool_inst.getconn()
+                # Verify connection is not closed
+                if getattr(conn, "closed", 0) != 0:
+                    try:
+                        pool_inst.putconn(conn, close=True)
+                    except Exception:
+                        pass
+                    conn = pool_inst.getconn()
+                self.conn = conn
+                self.is_pg = True
+                return self.conn, True
+            except Exception as e:
+                logger.warning(f"PostgreSQL connection acquisition failed ({e}). Falling back to SQLite.")
+                self.is_pg = False
+
+        # SQLite fallback
+        self.conn = sqlite3.connect(SQLITE_DB_PATH)
+        self.conn.row_factory = sqlite3.Row
+        self.is_pg = False
+        return self.conn, False
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.conn:
-            if exc_type is None:
-                self.conn.commit()
-            else:
-                self.conn.rollback()
-
             if self.is_pg:
-                pg_pool.putconn(self.conn)
+                try:
+                    if exc_type is None:
+                        self.conn.commit()
+                    else:
+                        self.conn.rollback()
+                except Exception as e:
+                    logger.warning(f"Error during PostgreSQL commit/rollback: {e}")
+
+                try:
+                    is_broken = exc_type is not None or getattr(self.conn, "closed", 0) != 0
+                    if pg_pool:
+                        pg_pool.putconn(self.conn, close=is_broken)
+                except Exception as e:
+                    logger.warning(f"Error putting PG connection back to pool: {e}")
             else:
-                self.conn.close()
+                try:
+                    if exc_type is None:
+                        self.conn.commit()
+                    else:
+                        self.conn.rollback()
+                except Exception as e:
+                    logger.warning(f"Error during SQLite commit/rollback: {e}")
+                try:
+                    self.conn.close()
+                except Exception:
+                    pass
 
 
 def init_db():
@@ -631,64 +687,103 @@ def delete_meal_log(log_id, user_id):
 
 def register_account(user_id, password, name="", role="user"):
     """Register a new user account with hashed password."""
-    user_id = str(user_id).strip().lower()
-    if not user_id or not password:
-        return None, "User ID and password are required."
-    if len(password) < 4:
-        return None, "Password must be at least 4 characters long."
+    try:
+        user_id = str(user_id or "").strip().lower().replace(" ", "_")
+        if not user_id or not password:
+            return None, "User ID and password are required."
+        if len(user_id) < 2:
+            return None, "User ID must be at least 2 characters long."
+        if len(password) < 4:
+            return None, "Password must be at least 4 characters long."
 
-    pw_hash = generate_password_hash(password)
-    name = str(name).strip() or user_id
+        pw_hash = generate_password_hash(password)
+        name = str(name or "").strip() or user_id
 
-    with DatabaseConnection() as (conn, is_pg):
-        cursor = conn.cursor()
-        # Check if username exists
-        if is_pg:
-            cursor.execute("SELECT user_id FROM users_auth WHERE user_id = %s;", (user_id,))
-        else:
-            cursor.execute("SELECT user_id FROM users_auth WHERE user_id = ?;", (user_id,))
-        if cursor.fetchone():
-            cursor.close()
-            return None, "User ID already exists. Please pick another ID or Log In."
+        def _do_register_insert():
+            with DatabaseConnection() as (conn, is_pg):
+                cursor = conn.cursor()
+                if is_pg:
+                    cursor.execute("SELECT user_id FROM users_auth WHERE user_id = %s;", (user_id,))
+                else:
+                    cursor.execute("SELECT user_id FROM users_auth WHERE user_id = ?;", (user_id,))
+                if cursor.fetchone():
+                    cursor.close()
+                    return None, "User ID already exists. Please choose a different ID or Sign In."
 
-        # Insert account
-        if is_pg:
-            cursor.execute("""
-                INSERT INTO users_auth (user_id, password_hash, name, role)
-                VALUES (%s, %s, %s, %s);
-            """, (user_id, pw_hash, name, role))
-        else:
-            cursor.execute("""
-                INSERT INTO users_auth (user_id, password_hash, name, role)
-                VALUES (?, ?, ?, ?);
-            """, (user_id, pw_hash, name, role))
-        cursor.close()
+                if is_pg:
+                    cursor.execute("""
+                        INSERT INTO users_auth (user_id, password_hash, name, role)
+                        VALUES (%s, %s, %s, %s);
+                    """, (user_id, pw_hash, name, role))
+                else:
+                    cursor.execute("""
+                        INSERT INTO users_auth (user_id, password_hash, name, role)
+                        VALUES (?, ?, ?, ?);
+                    """, (user_id, pw_hash, name, role))
+                cursor.close()
+            return {"user_id": user_id, "name": name, "role": role}, None
 
-    # Create empty user profile
-    save_user_profile({"user_id": user_id, "name": name})
+        try:
+            user_data, err = _do_register_insert()
+            if err:
+                return None, err
+        except Exception as insert_err:
+            err_str = str(insert_err).lower()
+            if "users_auth" in err_str and ("does not exist" in err_str or "no such table" in err_str):
+                logger.warning("users_auth table missing during register_account. Initializing database and retrying...")
+                init_db()
+                user_data, err = _do_register_insert()
+                if err:
+                    return None, err
+            else:
+                logger.error(f"Error during registration insert for {user_id}: {insert_err}", exc_info=True)
+                return None, f"Database error during registration: {str(insert_err)}"
 
-    return {
-        "user_id": user_id,
-        "name": name,
-        "role": role,
-    }, None
+        # Attempt to create initial user profile record
+        try:
+            save_user_profile({"user_id": user_id, "name": name})
+        except Exception as prof_err:
+            logger.warning(f"Failed to create default user profile for {user_id}: {prof_err}")
+
+        return user_data, None
+    except Exception as e:
+        logger.error(f"Unexpected error in register_account for {user_id}: {e}", exc_info=True)
+        return None, f"Could not create account: {str(e)}"
 
 
 def authenticate_account(user_id, password):
     """Authenticate user with user_id and password."""
-    user_id = str(user_id).strip().lower()
-    with DatabaseConnection() as (conn, is_pg):
-        if is_pg:
-            from psycopg2.extras import RealDictCursor
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-            cursor.execute("SELECT user_id, password_hash, name, role FROM users_auth WHERE user_id = %s;", (user_id,))
-            row = cursor.fetchone()
-            cursor.close()
-        else:
-            cursor = conn.cursor()
-            cursor.execute("SELECT user_id, password_hash, name, role FROM users_auth WHERE user_id = ?;", (user_id,))
-            row = cursor.fetchone()
-            cursor.close()
+    try:
+        user_id = str(user_id or "").strip().lower().replace(" ", "_")
+        if not user_id or not password:
+            return None, "User ID and password are required."
+
+        def _do_auth_lookup():
+            with DatabaseConnection() as (conn, is_pg):
+                if is_pg:
+                    from psycopg2.extras import RealDictCursor
+                    cursor = conn.cursor(cursor_factory=RealDictCursor)
+                    cursor.execute("SELECT user_id, password_hash, name, role FROM users_auth WHERE user_id = %s;", (user_id,))
+                    row = cursor.fetchone()
+                    cursor.close()
+                else:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT user_id, password_hash, name, role FROM users_auth WHERE user_id = ?;", (user_id,))
+                    row = cursor.fetchone()
+                    cursor.close()
+                return row
+
+        try:
+            row = _do_auth_lookup()
+        except Exception as lookup_err:
+            err_str = str(lookup_err).lower()
+            if "users_auth" in err_str and ("does not exist" in err_str or "no such table" in err_str):
+                logger.warning("users_auth table missing during authenticate_account. Initializing database and retrying...")
+                init_db()
+                row = _do_auth_lookup()
+            else:
+                logger.error(f"Error during auth lookup for {user_id}: {lookup_err}", exc_info=True)
+                return None, f"Database error during authentication: {str(lookup_err)}"
 
         if not row:
             return None, "User ID not found. Please register first."
@@ -702,27 +797,47 @@ def authenticate_account(user_id, password):
             "name": record.get("name") or record["user_id"],
             "role": record.get("role") or "user",
         }, None
+    except Exception as e:
+        logger.error(f"Unexpected error in authenticate_account for {user_id}: {e}", exc_info=True)
+        return None, f"Authentication error: {str(e)}"
 
 
 def get_account(user_id):
     """Get account info without password hash."""
-    user_id = str(user_id).strip().lower()
-    with DatabaseConnection() as (conn, is_pg):
-        if is_pg:
-            from psycopg2.extras import RealDictCursor
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-            cursor.execute("SELECT user_id, name, role, created_at FROM users_auth WHERE user_id = %s;", (user_id,))
-            row = cursor.fetchone()
-            cursor.close()
-        else:
-            cursor = conn.cursor()
-            cursor.execute("SELECT user_id, name, role, created_at FROM users_auth WHERE user_id = ?;", (user_id,))
-            row = cursor.fetchone()
-            cursor.close()
+    try:
+        user_id = str(user_id or "").strip().lower().replace(" ", "_")
+        if not user_id:
+            return None
 
-        if row:
-            return dict(row)
-    return None
+        def _do_get():
+            with DatabaseConnection() as (conn, is_pg):
+                if is_pg:
+                    from psycopg2.extras import RealDictCursor
+                    cursor = conn.cursor(cursor_factory=RealDictCursor)
+                    cursor.execute("SELECT user_id, name, role, created_at FROM users_auth WHERE user_id = %s;", (user_id,))
+                    row = cursor.fetchone()
+                    cursor.close()
+                else:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT user_id, name, role, created_at FROM users_auth WHERE user_id = ?;", (user_id,))
+                    row = cursor.fetchone()
+                    cursor.close()
+                if row:
+                    return dict(row)
+                return None
+
+        try:
+            return _do_get()
+        except Exception as e:
+            err_str = str(e).lower()
+            if "users_auth" in err_str and ("does not exist" in err_str or "no such table" in err_str):
+                init_db()
+                return _do_get()
+            logger.warning(f"Error getting account info for {user_id}: {e}")
+            return None
+    except Exception as ex:
+        logger.warning(f"Unexpected error in get_account: {ex}")
+        return None
 
 
 # ─────────────────────────────────────────────────────────────

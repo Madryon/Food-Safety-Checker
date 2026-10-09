@@ -1066,7 +1066,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
 
                 <!-- LOGIN VIEW -->
                 <div id="auth-login-view">
-                    <form id="form-auth-login" onsubmit="return false;">
+                    <form id="form-auth-login">
                         <div class="fb-field">
                             <label for="login-username">User ID / Username <span class="req">*</span></label>
                             <input type="text" id="login-username" class="fb-input" placeholder="e.g. ankitk_023 (btw its my Instagram username)" autocomplete="username" required>
@@ -1079,24 +1079,26 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                         <button type="submit" id="btn-submit-login" class="fb-submit-btn">
                             🔓 Sign In to My Account
                         </button>
-                        <div id="login-status-msg" class="fb-status-msg"></div>
+                        <div id="login-status-msg" class="fb-status-msg" style="margin-top:10px; font-size:0.86rem; text-align:center;"></div>
                     </form>
                 </div>
 
                 <!-- REGISTER VIEW -->
                 <div id="auth-register-view" class="hidden">
-                    <form id="form-auth-register" onsubmit="return false;">
+                    <form id="form-auth-register">
                         <div class="fb-field">
                             <label for="reg-name">Your Full Name <span class="req">*</span></label>
-                            <input type="text" id="reg-name" class="fb-input" placeholder="e.g. Ankit Kumar" required>
+                            <input type="text" id="reg-name" class="fb-input" placeholder="e.g. Ankit Kumar" autocomplete="name" required>
                         </div>
                         <div class="fb-field">
                             <label for="reg-username">Choose User ID <span class="req">*</span></label>
-                            <input type="text" id="reg-username" class="fb-input" placeholder="e.g. ankitk_023 (letters and numbers)" autocomplete="username" required>
+                            <input type="text" id="reg-username" class="fb-input" placeholder="e.g. ankitk_023 (letters and numbers)" autocomplete="username" minlength="2" required>
+                            <div style="font-size:0.76rem; color:var(--muted); margin-top:3px;">Minimum 2 characters (letters, numbers, underscores).</div>
                         </div>
                         <div class="fb-field">
                             <label for="reg-password">Password <span class="req">*</span></label>
-                            <input type="password" id="reg-password" class="fb-input" placeholder="Create a secure password" autocomplete="new-password" required>
+                            <input type="password" id="reg-password" class="fb-input" placeholder="Create a password (min 4 characters)" autocomplete="new-password" minlength="4" required>
+                            <div style="font-size:0.76rem; color:var(--muted); margin-top:3px;">Must be at least 4 characters long.</div>
                         </div>
                         <div class="fb-field" style="display:flex; align-items:center; gap:8px; margin-top:8px;">
                             <input type="checkbox" id="reg-is-dev" style="width:16px; height:16px; accent-color:var(--accent); cursor:pointer;">
@@ -1105,7 +1107,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                         <button type="submit" id="btn-submit-register" class="fb-submit-btn" style="margin-top:14px;">
                              Create Private Account
                         </button>
-                        <div id="reg-status-msg" class="fb-status-msg"></div>
+                        <div id="reg-status-msg" class="fb-status-msg" style="margin-top:10px; font-size:0.86rem; text-align:center;"></div>
                     </form>
                 </div>
             </div>
@@ -2257,9 +2259,9 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
         modal.classList.remove('hidden');
         switchAuthTab(mode || 'login');
         var logStat = $('login-status-msg');
-        if (logStat) logStat.style.display = 'none';
+        if (logStat) { logStat.style.display = 'none'; logStat.textContent = ''; }
         var regStat = $('reg-status-msg');
-        if (regStat) regStat.style.display = 'none';
+        if (regStat) { regStat.style.display = 'none'; regStat.textContent = ''; }
     }
 
     function closeAuthModal() {
@@ -2272,6 +2274,10 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
         var regTab = $('tab-auth-register');
         var loginView = $('auth-login-view');
         var regView = $('auth-register-view');
+        var logStat = $('login-status-msg');
+        var regStat = $('reg-status-msg');
+        if (logStat) { logStat.style.display = 'none'; logStat.textContent = ''; }
+        if (regStat) { regStat.style.display = 'none'; regStat.textContent = ''; }
 
         if (tab === 'login') {
             if (loginTab) loginTab.classList.add('active');
@@ -2310,89 +2316,168 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
     var fbLoginLink = $('feedback-login-link');
     if (fbLoginLink) fbLoginLink.addEventListener('click', function (e) { e.preventDefault(); openAuthModal('login'); });
 
-    var formLogin = $('form-auth-login');
-    if (formLogin) {
-        formLogin.addEventListener('submit', function (e) {
-            e.preventDefault();
-            var uInp = $('login-username'), pInp = $('login-password'), stat = $('login-status-msg'), btn = $('btn-submit-login');
-            var username = uInp ? uInp.value.trim() : '';
-            var password = pInp ? pInp.value.trim() : '';
+    function handleLoginSubmit(e) {
+        if (e && e.preventDefault) e.preventDefault();
+        var uInp = $('login-username'), pInp = $('login-password'), stat = $('login-status-msg'), btn = $('btn-submit-login');
+        var rawUsername = uInp ? uInp.value.trim() : '';
+        var username = rawUsername.toLowerCase().replace(/\s+/g, '_');
+        var password = pInp ? pInp.value.trim() : '';
 
-            if (!username || !password) {
-                if (stat) { stat.className = 'fb-status-msg error'; stat.textContent = '⚠️ Please enter both User ID and password.'; }
+        function showLoginError(msg) {
+            if (btn) { btn.disabled = false; btn.textContent = '🔓 Sign In to My Account'; }
+            if (stat) {
+                stat.style.display = 'block';
+                stat.className = 'fb-status-msg error';
+                stat.textContent = '⚠️ ' + msg;
+            }
+        }
+
+        if (!username || !password) {
+            showLoginError('Please enter both User ID and password.');
+            return;
+        }
+
+        if (btn) { btn.disabled = true; btn.textContent = 'Signing in...'; }
+        if (stat) { stat.style.display = 'none'; stat.textContent = ''; }
+
+        fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: username, password: password })
+        })
+        .then(function (res) {
+            return res.json().then(function (d) {
+                return { ok: res.ok, status: res.status, data: d };
+            }).catch(function () {
+                return { ok: res.ok, status: res.status, data: { error: 'Server error (' + res.status + ')' } };
+            });
+        })
+        .then(function (res) {
+            if (!res.ok) {
+                showLoginError(res.data && res.data.error ? res.data.error : ('Sign in failed (' + res.status + ')'));
                 return;
             }
-
-            if (btn) { btn.disabled = true; btn.textContent = 'Signing in...'; }
-            if (stat) stat.style.display = 'none';
-
-            fetch('/api/auth/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: username, password: password })
-            })
-            .then(function (res) { return res.json().then(function (d) { return { ok: res.ok, data: d }; }); })
-            .then(function (res) {
-                if (btn) { btn.disabled = false; btn.textContent = '🔓 Sign In to My Account'; }
-                if (!res.ok) {
-                    if (stat) { stat.className = 'fb-status-msg error'; stat.textContent = '⚠️ ' + (res.data.error || 'Authentication failed'); }
-                    return;
-                }
+            if (btn) { btn.disabled = false; btn.textContent = '🔓 Sign In to My Account'; }
+            if (stat) {
+                stat.style.display = 'block';
+                stat.className = 'fb-status-msg success';
+                stat.textContent = '🎉 Signed in successfully!';
+            }
+            setTimeout(function () {
                 closeAuthModal();
                 checkAuthStatus(function () {
                     initDietHub();
                     loadFeedbacks();
-                    toast('🎉 Welcome back, ' + (res.data.user.name || res.data.user.user_id) + '!');
+                    toast('🎉 Welcome back, ' + ((res.data.user && res.data.user.name) || (res.data.user && res.data.user.user_id) || username) + '!');
                 });
-            })
-            .catch(function (err) {
-                if (btn) { btn.disabled = false; btn.textContent = '🔓 Sign In to My Account'; }
-                if (stat) { stat.className = 'fb-status-msg error'; stat.textContent = '⚠️ Network error: ' + err.message; }
+            }, 350);
+        })
+        .catch(function (err) {
+            showLoginError('Network error: ' + (err.message || 'Unable to connect to server.'));
+        });
+    }
+
+    var formLogin = $('form-auth-login');
+    if (formLogin) {
+        formLogin.addEventListener('submit', handleLoginSubmit);
+    }
+    var btnLogin = $('btn-submit-login');
+    if (btnLogin) {
+        btnLogin.addEventListener('click', function (e) {
+            if (formLogin && formLogin.checkValidity && !formLogin.checkValidity()) {
+                if (formLogin.reportValidity) formLogin.reportValidity();
+                return;
+            }
+            handleLoginSubmit(e);
+        });
+    }
+
+    function handleRegisterSubmit(e) {
+        if (e && e.preventDefault) e.preventDefault();
+        var nInp = $('reg-name'), uInp = $('reg-username'), pInp = $('reg-password'), devInp = $('reg-is-dev'), stat = $('reg-status-msg'), btn = $('btn-submit-register');
+        var name = nInp ? nInp.value.trim() : '';
+        var rawUsername = uInp ? uInp.value.trim() : '';
+        var username = rawUsername.toLowerCase().replace(/\s+/g, '_');
+        var password = pInp ? pInp.value.trim() : '';
+        var isDev = devInp ? devInp.checked : false;
+
+        function showRegError(msg) {
+            if (btn) { btn.disabled = false; btn.textContent = '✨ Create Private Account'; }
+            if (stat) {
+                stat.style.display = 'block';
+                stat.className = 'fb-status-msg error';
+                stat.textContent = '⚠️ ' + msg;
+            }
+        }
+
+        if (!name) {
+            showRegError('Please enter your full name.');
+            if (nInp) nInp.focus();
+            return;
+        }
+        if (!username || username.length < 2) {
+            showRegError('User ID must be at least 2 characters long.');
+            if (uInp) uInp.focus();
+            return;
+        }
+        if (!password || password.length < 4) {
+            showRegError('Password must be at least 4 characters long.');
+            if (pInp) pInp.focus();
+            return;
+        }
+
+        if (btn) { btn.disabled = true; btn.textContent = 'Creating account...'; }
+        if (stat) { stat.style.display = 'none'; stat.textContent = ''; }
+
+        fetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name, username: username, password: password, is_developer: isDev })
+        })
+        .then(function (res) {
+            return res.json().then(function (d) {
+                return { ok: res.ok, status: res.status, data: d };
+            }).catch(function () {
+                return { ok: res.ok, status: res.status, data: { error: 'Server error (' + res.status + ')' } };
             });
+        })
+        .then(function (res) {
+            if (!res.ok) {
+                showRegError(res.data && res.data.error ? res.data.error : ('Registration failed (' + res.status + ')'));
+                return;
+            }
+            if (btn) { btn.disabled = false; btn.textContent = '✨ Create Private Account'; }
+            if (stat) {
+                stat.style.display = 'block';
+                stat.className = 'fb-status-msg success';
+                stat.textContent = '🎉 Account created! Loading your space...';
+            }
+            setTimeout(function () {
+                closeAuthModal();
+                checkAuthStatus(function () {
+                    initDietHub();
+                    loadFeedbacks();
+                    toast('🎉 Account created! Welcome, ' + ((res.data.user && res.data.user.name) || (res.data.user && res.data.user.user_id) || name) + '!');
+                });
+            }, 350);
+        })
+        .catch(function (err) {
+            showRegError('Network error: ' + (err.message || 'Unable to connect to server.'));
         });
     }
 
     var formReg = $('form-auth-register');
     if (formReg) {
-        formReg.addEventListener('submit', function (e) {
-            e.preventDefault();
-            var nInp = $('reg-name'), uInp = $('reg-username'), pInp = $('reg-password'), devInp = $('reg-is-dev'), stat = $('reg-status-msg'), btn = $('btn-submit-register');
-            var name = nInp ? nInp.value.trim() : '';
-            var username = uInp ? uInp.value.trim() : '';
-            var password = pInp ? pInp.value.trim() : '';
-            var isDev = devInp ? devInp.checked : false;
-
-            if (!name || !username || !password) {
-                if (stat) { stat.className = 'fb-status-msg error'; stat.textContent = '⚠️ Please fill all fields.'; }
+        formReg.addEventListener('submit', handleRegisterSubmit);
+    }
+    var btnReg = $('btn-submit-register');
+    if (btnReg) {
+        btnReg.addEventListener('click', function (e) {
+            if (formReg && formReg.checkValidity && !formReg.checkValidity()) {
+                if (formReg.reportValidity) formReg.reportValidity();
                 return;
             }
-
-            if (btn) { btn.disabled = true; btn.textContent = 'Creating account...'; }
-            if (stat) stat.style.display = 'none';
-
-            fetch('/api/auth/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: name, username: username, password: password, is_developer: isDev })
-            })
-            .then(function (res) { return res.json().then(function (d) { return { ok: res.ok, data: d }; }); })
-            .then(function (res) {
-                if (btn) { btn.disabled = false; btn.textContent = '✨ Create Private Account'; }
-                if (!res.ok) {
-                    if (stat) { stat.className = 'fb-status-msg error'; stat.textContent = '⚠️ ' + (res.data.error || 'Registration failed'); }
-                    return;
-                }
-                closeAuthModal();
-                checkAuthStatus(function () {
-                    initDietHub();
-                    loadFeedbacks();
-                    toast('🎉 Account created! Welcome, ' + (res.data.user.name || res.data.user.user_id) + '!');
-                });
-            })
-            .catch(function (err) {
-                if (btn) { btn.disabled = false; btn.textContent = '✨ Create Private Account'; }
-                if (stat) { stat.className = 'fb-status-msg error'; stat.textContent = '⚠️ Network error: ' + err.message; }
-            });
+            handleRegisterSubmit(e);
         });
     }
 

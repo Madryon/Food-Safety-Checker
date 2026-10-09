@@ -277,45 +277,61 @@ def save_feedbacks(feedbacks):
 
 @app.route("/api/auth/register", methods=["POST"])
 def auth_register():
-    data = request.get_json(silent=True) or request.form.to_dict() or {}
-    username = (data.get("username") or data.get("user_id") or "").strip().lower()
-    password = (data.get("password") or "").strip()
-    name = (data.get("name") or username).strip()
-    is_dev = bool(data.get("is_developer"))
+    try:
+        data = request.get_json(silent=True) or request.form.to_dict() or {}
+        raw_username = (data.get("username") or data.get("user_id") or "").strip()
+        username = raw_username.lower().replace(" ", "_")
+        password = (data.get("password") or "").strip()
+        name = (data.get("name") or raw_username or username).strip()
+        is_dev = bool(data.get("is_developer"))
 
-    if not username or not password:
-        return jsonify({"error": "User ID and Password are required."}), 400
+        if not username or not password:
+            return jsonify({"error": "User ID and Password are required."}), 400
 
-    role = "developer" if is_dev else "user"
-    user, err = register_account(username, password, name=name, role=role)
-    if err:
-        return jsonify({"error": err}), 400
+        if len(username) < 2:
+            return jsonify({"error": "User ID must be at least 2 characters long."}), 400
 
-    session["user_id"] = user["user_id"]
-    session["name"] = user["name"]
-    session["role"] = user["role"]
+        if len(password) < 4:
+            return jsonify({"error": "Password must be at least 4 characters long."}), 400
 
-    return jsonify({"status": "success", "user": user})
+        role = "developer" if is_dev else "user"
+        user, err = register_account(username, password, name=name, role=role)
+        if err:
+            return jsonify({"error": err}), 400
+
+        session["user_id"] = user["user_id"]
+        session["name"] = user["name"]
+        session["role"] = user["role"]
+
+        return jsonify({"status": "success", "user": user})
+    except Exception as e:
+        app.logger.error(f"Error during registration endpoint: {e}", exc_info=True)
+        return jsonify({"error": f"Failed to register: {str(e)}"}), 500
 
 
 @app.route("/api/auth/login", methods=["POST"])
 def auth_login():
-    data = request.get_json(silent=True) or request.form.to_dict() or {}
-    username = (data.get("username") or data.get("user_id") or "").strip().lower()
-    password = (data.get("password") or "").strip()
+    try:
+        data = request.get_json(silent=True) or request.form.to_dict() or {}
+        raw_username = (data.get("username") or data.get("user_id") or "").strip()
+        username = raw_username.lower().replace(" ", "_")
+        password = (data.get("password") or "").strip()
 
-    if not username or not password:
-        return jsonify({"error": "Please provide both User ID and Password."}), 400
+        if not username or not password:
+            return jsonify({"error": "Please provide both User ID and Password."}), 400
 
-    user, err = authenticate_account(username, password)
-    if err:
-        return jsonify({"error": err}), 401
+        user, err = authenticate_account(username, password)
+        if err:
+            return jsonify({"error": err}), 401
 
-    session["user_id"] = user["user_id"]
-    session["name"] = user["name"]
-    session["role"] = user["role"]
+        session["user_id"] = user["user_id"]
+        session["name"] = user["name"]
+        session["role"] = user["role"]
 
-    return jsonify({"status": "success", "user": user})
+        return jsonify({"status": "success", "user": user})
+    except Exception as e:
+        app.logger.error(f"Error during login endpoint: {e}", exc_info=True)
+        return jsonify({"error": f"Failed to log in: {str(e)}"}), 500
 
 
 @app.route("/api/auth/logout", methods=["POST", "GET"])
@@ -326,20 +342,24 @@ def auth_logout():
 
 @app.route("/api/auth/me", methods=["GET"])
 def auth_me():
-    user_id = session.get("user_id")
-    if not user_id:
-        return jsonify({"authenticated": False})
-    account = get_account(user_id)
-    if not account:
-        session.clear()
-        return jsonify({"authenticated": False})
-    return jsonify({
-        "authenticated": True,
-        "user_id": account["user_id"],
-        "name": account["name"],
-        "role": account.get("role", "user"),
-        "is_developer": account.get("role") == "developer",
-    })
+    try:
+        user_id = session.get("user_id")
+        if not user_id:
+            return jsonify({"authenticated": False})
+        account = get_account(user_id)
+        if not account:
+            session.clear()
+            return jsonify({"authenticated": False})
+        return jsonify({
+            "authenticated": True,
+            "user_id": account["user_id"],
+            "name": account["name"],
+            "role": account.get("role", "user"),
+            "is_developer": account.get("role") == "developer",
+        })
+    except Exception as e:
+        app.logger.error(f"Error in auth_me endpoint: {e}", exc_info=True)
+        return jsonify({"authenticated": False, "error": str(e)})
 
 
 # ── COMMUNITY FEEDBACK & EDIT ROUTES ────────────────────────────────────────
