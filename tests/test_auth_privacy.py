@@ -1,12 +1,19 @@
 import json
 import unittest
 from app import app
+from extensions import limiter
 from services.database import (
     register_account, authenticate_account,
     get_user_feedbacks, get_developer_feedbacks, save_feedback_db
 )
 
 class FoodCheckPrivateAuthTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        app.config["TESTING"] = True
+        app.config["RATELIMIT_ENABLED"] = False
+        limiter.enabled = False
+
     def setUp(self):
         self.client = app.test_client()
         self.app_context = app.app_context()

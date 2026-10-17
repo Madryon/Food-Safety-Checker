@@ -858,6 +858,9 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                         <button type="button" id="btn-menu-register" class="dropdown-item-btn">
                             <span>✨</span> Create Account
                         </button>
+                        <button type="button" id="btn-menu-admin-login" class="dropdown-item-btn" style="color:var(--accent);">
+                            <span>🛡️</span> Admin Sign In
+                        </button>
                         <button type="button" id="menu-guest-feedback-link" class="dropdown-item-btn">
                             <span>💬</span> Community Reviews
                         </button>
@@ -1085,6 +1088,15 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                             <label for="login-password">Password <span class="req">*</span></label>
                             <input type="password" id="login-password" class="fb-input" placeholder="Enter your password" autocomplete="current-password" required>
                         </div>
+                        <div class="fb-field" style="margin: 10px 0; padding: 8px 12px; background: rgba(0,0,0,0.03); border: 1px solid var(--border); border-radius: 8px; display: flex; align-items: center; justify-content: space-between;">
+                            <label for="login-is-admin" style="margin: 0; font-size: 0.88rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; color: var(--text);">
+                                <span>🛡️</span> Log in as Administrator
+                            </label>
+                            <input type="checkbox" id="login-is-admin" style="width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer;">
+                        </div>
+                        <div id="login-admin-hint" class="hidden" style="margin-bottom: 12px; font-size: 0.78rem; color: var(--accent); font-weight: 500;">
+                            ✨ Admin mode: Enter your User ID and assigned Admin Password.
+                        </div>
                        
                         <button type="submit" id="btn-submit-login" class="fb-submit-btn">
                             🔓 Sign In to My Account
@@ -1110,9 +1122,16 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                             <input type="password" id="reg-password" class="fb-input" placeholder="Create a password (min 4 characters)" autocomplete="new-password" minlength="4" required>
                             <div style="font-size:0.76rem; color:var(--muted); margin-top:3px;">Must be at least 4 characters long.</div>
                         </div>
-                        <div class="fb-field" style="display:flex; align-items:center; gap:8px; margin-top:8px;">
-                            <input type="checkbox" id="reg-is-dev" style="width:16px; height:16px; accent-color:var(--accent); cursor:pointer;">
-        
+                        <div class="fb-field" style="margin: 10px 0; padding: 8px 12px; background: rgba(0,0,0,0.03); border: 1px solid var(--border); border-radius: 8px; display: flex; align-items: center; justify-content: space-between;">
+                            <label for="reg-is-admin" style="margin: 0; font-size: 0.88rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; color: var(--text);">
+                                <span>🛡️</span> Register as Administrator
+                            </label>
+                            <input type="checkbox" id="reg-is-admin" style="width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer;">
+                        </div>
+                        <div id="reg-admin-key-container" class="fb-field hidden" style="margin-bottom: 12px;">
+                            <label for="reg-admin-key">Admin Invite Key / Master Password <span class="req">*</span></label>
+                            <input type="password" id="reg-admin-key" class="fb-input" placeholder="Enter assigned admin key">
+                            <div style="font-size:0.76rem; color:var(--muted); margin-top:3px;">Enter the pre-assigned admin key to create an Administrator account.</div>
                         </div>
                         <button type="submit" id="btn-submit-register" class="fb-submit-btn" style="margin-top:14px;">
                              Create Private Account
@@ -2368,9 +2387,11 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
         var rawUsername = uInp ? uInp.value.trim() : '';
         var username = rawUsername.toLowerCase().replace(/\s+/g, '_');
         var password = pInp ? pInp.value.trim() : '';
+        var chkAdmin = $('login-is-admin');
+        var isAdmin = chkAdmin ? chkAdmin.checked : false;
 
         function showLoginError(msg) {
-            if (btn) { btn.disabled = false; btn.textContent = '🔓 Sign In to My Account'; }
+            if (btn) { btn.disabled = false; btn.textContent = isAdmin ? '🛡️ Sign In as Administrator' : '🔓 Sign In to My Account'; }
             if (stat) {
                 stat.style.display = 'block';
                 stat.className = 'fb-status-msg error';
@@ -2389,7 +2410,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
         fetch('/api/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: username, password: password })
+            body: JSON.stringify({ username: username, password: password, is_admin: isAdmin })
         })
         .then(function (res) {
             return res.json().then(function (d) {
@@ -2403,7 +2424,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                 showLoginError(res.data && res.data.error ? res.data.error : ('Sign in failed (' + res.status + ')'));
                 return;
             }
-            if (btn) { btn.disabled = false; btn.textContent = '🔓 Sign In to My Account'; }
+            if (btn) { btn.disabled = false; btn.textContent = isAdmin ? '🛡️ Sign In as Administrator' : '🔓 Sign In to My Account'; }
             if (stat) {
                 stat.style.display = 'block';
                 stat.className = 'fb-status-msg success';
@@ -2414,7 +2435,11 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                 checkAuthStatus(function () {
                     initDietHub();
                     loadFeedbacks();
-                    toast('🎉 Welcome back, ' + ((res.data.user && res.data.user.name) || (res.data.user && res.data.user.user_id) || username) + '!');
+                    if (res.data.user && res.data.user.role === 'admin') {
+                        toast('🛡️ Welcome Administrator, ' + ((res.data.user && res.data.user.name) || username) + '! Admin Console is unlocked.');
+                    } else {
+                        toast('🎉 Welcome back, ' + ((res.data.user && res.data.user.name) || (res.data.user && res.data.user.user_id) || username) + '!');
+                    }
                 });
             }, 350);
         })
@@ -2440,15 +2465,19 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
 
     function handleRegisterSubmit(e) {
         if (e && e.preventDefault) e.preventDefault();
-        var nInp = $('reg-name'), uInp = $('reg-username'), pInp = $('reg-password'), devInp = $('reg-is-dev'), stat = $('reg-status-msg'), btn = $('btn-submit-register');
+        var nInp = $('reg-name'), uInp = $('reg-username'), pInp = $('reg-password'), stat = $('reg-status-msg'), btn = $('btn-submit-register');
+        var chkRegAdmin = $('reg-is-admin');
+        var isRegAdmin = chkRegAdmin ? chkRegAdmin.checked : false;
+        var kInp = $('reg-admin-key');
+        var adminKey = kInp ? kInp.value.trim() : '';
+
         var name = nInp ? nInp.value.trim() : '';
         var rawUsername = uInp ? uInp.value.trim() : '';
         var username = rawUsername.toLowerCase().replace(/\s+/g, '_');
         var password = pInp ? pInp.value.trim() : '';
-        var isDev = devInp ? devInp.checked : false;
 
         function showRegError(msg) {
-            if (btn) { btn.disabled = false; btn.textContent = '✨ Create Private Account'; }
+            if (btn) { btn.disabled = false; btn.textContent = isRegAdmin ? '🛡️ Create Administrator Account' : '✨ Create Private Account'; }
             if (stat) {
                 stat.style.display = 'block';
                 stat.className = 'fb-status-msg error';
@@ -2471,6 +2500,11 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             if (pInp) pInp.focus();
             return;
         }
+        if (isRegAdmin && !adminKey) {
+            showRegError('Please enter the Admin Invite Key.');
+            if (kInp) kInp.focus();
+            return;
+        }
 
         if (btn) { btn.disabled = true; btn.textContent = 'Creating account...'; }
         if (stat) { stat.style.display = 'none'; stat.textContent = ''; }
@@ -2478,7 +2512,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
         fetch('/api/auth/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: name, username: username, password: password, is_developer: isDev })
+            body: JSON.stringify({ name: name, username: username, password: password, is_admin: isRegAdmin, invite_key: adminKey })
         })
         .then(function (res) {
             return res.json().then(function (d) {
@@ -2492,7 +2526,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                 showRegError(res.data && res.data.error ? res.data.error : ('Registration failed (' + res.status + ')'));
                 return;
             }
-            if (btn) { btn.disabled = false; btn.textContent = '✨ Create Private Account'; }
+            if (btn) { btn.disabled = false; btn.textContent = isRegAdmin ? '🛡️ Create Administrator Account' : '✨ Create Private Account'; }
             if (stat) {
                 stat.style.display = 'block';
                 stat.className = 'fb-status-msg success';
@@ -2503,12 +2537,58 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                 checkAuthStatus(function () {
                     initDietHub();
                     loadFeedbacks();
-                    toast('🎉 Account created! Welcome, ' + ((res.data.user && res.data.user.name) || (res.data.user && res.data.user.user_id) || name) + '!');
+                    if (res.data.user && res.data.user.role === 'admin') {
+                        toast('🛡️ Administrator account created! Welcome, ' + ((res.data.user && res.data.user.name) || name) + '!');
+                    } else {
+                        toast('🎉 Account created! Welcome, ' + ((res.data.user && res.data.user.name) || (res.data.user && res.data.user.user_id) || name) + '!');
+                    }
                 });
             }, 350);
         })
         .catch(function (err) {
             showRegError('Network error: ' + (err.message || 'Unable to connect to server.'));
+        });
+    }
+
+    var chkLoginAdmin = $('login-is-admin');
+    if (chkLoginAdmin) {
+        chkLoginAdmin.addEventListener('change', function () {
+            var hint = $('login-admin-hint');
+            var btn = $('btn-submit-login');
+            if (this.checked) {
+                if (hint) hint.classList.remove('hidden');
+                if (btn) btn.textContent = '🛡️ Sign In as Administrator';
+            } else {
+                if (hint) hint.classList.add('hidden');
+                if (btn) btn.textContent = '🔓 Sign In to My Account';
+            }
+        });
+    }
+
+    var chkRegAdmin = $('reg-is-admin');
+    if (chkRegAdmin) {
+        chkRegAdmin.addEventListener('change', function () {
+            var box = $('reg-admin-key-container');
+            var btn = $('btn-submit-register');
+            if (this.checked) {
+                if (box) box.classList.remove('hidden');
+                if (btn) btn.textContent = '🛡️ Create Administrator Account';
+            } else {
+                if (box) box.classList.add('hidden');
+                if (btn) btn.textContent = '✨ Create Private Account';
+            }
+        });
+    }
+
+    var btnMenuAdminLogin = $('btn-menu-admin-login');
+    if (btnMenuAdminLogin) {
+        btnMenuAdminLogin.addEventListener('click', function () {
+            openAuthModal('login');
+            var chk = $('login-is-admin');
+            if (chk) {
+                chk.checked = true;
+                chk.dispatchEvent(new Event('change'));
+            }
         });
     }
 

@@ -24,6 +24,7 @@ class LoginForm(FlaskForm):
         "Password",
         validators=[DataRequired(message="Password is required.")]
     )
+    login_as_admin = BooleanField("Log in as Administrator")
     remember_me = BooleanField("Remember Me")
     submit = SubmitField("Sign In")
 
@@ -54,6 +55,10 @@ class RegisterForm(FlaskForm):
             DataRequired(message="Please confirm your password."),
             EqualTo("password", message="Passwords must match.")
         ]
+    )
+    admin_invite_key = PasswordField(
+        "Admin Invite Key (optional)",
+        validators=[Optional()]
     )
     submit = SubmitField("Create Account")
 

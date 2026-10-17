@@ -23,6 +23,7 @@ from flask_login import current_user, login_user, logout_user
 from extensions import db, migrate, login_manager, csrf, limiter
 from models import (
     User,
+    AdminInviteKey,
     Scan,
     ActivityLog,
     UserSession,
@@ -793,6 +794,8 @@ def auth_register():
         username = raw_username.lower().replace(" ", "_")
         password = (data.get("password") or "").strip()
         name = (data.get("name") or raw_username or username).strip()
+        is_admin_req = bool(data.get("is_admin") or data.get("register_as_admin"))
+        invite_key = (data.get("invite_key") or data.get("admin_key") or "").strip()
 
         if not username or not password:
             return jsonify({"error": "User ID and Password are required."}), 400
@@ -801,8 +804,14 @@ def auth_register():
         if len(password) < 4:
             return jsonify({"error": "Password must be at least 4 characters long."}), 400
 
-        # Enforce server-side role rule: Public registration ALWAYS produces 'user' role
-        role = "user"
+        # Handle Admin Registration with invite key
+        if is_admin_req or invite_key:
+            if AdminInviteKey.verify_key(invite_key):
+                role = "admin"
+            else:
+                return jsonify({"error": "Invalid Admin Invite Key. Enter the assigned admin key to register as administrator."}), 400
+        else:
+            role = "user"
 
         # Check existing User in SQLAlchemy
         existing = User.query.filter_by(username=username).first()
@@ -830,11 +839,22 @@ def auth_register():
         session["user_id"] = sql_user.username
         session["name"] = sql_user.name
         session["role"] = sql_user.role
+        if role == "admin":
+            session["admin_last_active"] = datetime.utcnow().timestamp()
 
-        log_login_event("register", user_id=sql_user.id, email_attempted=username, success=True)
-        log_activity("user_registered", details={"username": username}, user_id=sql_user.id)
+        event_name = "admin_register" if role == "admin" else "register"
+        log_login_event(event_name, user_id=sql_user.id, email_attempted=username, success=True)
+        log_activity(f"user_{event_name}", details={"username": username, "role": role}, user_id=sql_user.id)
 
-        return jsonify({"status": "success", "user": user_legacy})
+        return jsonify({
+            "status": "success",
+            "user": {
+                "user_id": sql_user.username,
+                "name": sql_user.name,
+                "role": sql_user.role,
+                "is_admin": sql_user.is_admin,
+            }
+        })
     except Exception as e:
         app.logger.error(f"Error during registration endpoint: {e}", exc_info=True)
         return jsonify({"error": f"Failed to register: {str(e)}"}), 500
@@ -848,11 +868,97 @@ def auth_login():
         raw_username = (data.get("username") or data.get("user_id") or "").strip()
         username = raw_username.lower().replace(" ", "_")
         password = (data.get("password") or "").strip()
+        login_as_admin = bool(data.get("is_admin") or data.get("login_as_admin"))
 
         if not username or not password:
             return jsonify({"error": "Please provide both User ID and Password."}), 400
 
-        # Look up in SQLAlchemy User table
+        # Check Master Admin Password
+        is_master_pass = User.is_master_admin_password(password)
+
+        if login_as_admin or is_master_pass:
+            if is_master_pass:
+                # User provided the Master Admin Password!
+                user = User.query.filter_by(username=username).first()
+                if not user:
+                    # Auto-create admin user if doesn't exist yet
+                    user = User(
+                        username=username,
+                        name=raw_username.capitalize() or username,
+                        role="admin",
+                        is_active=True,
+                    )
+                    user.set_password(password)
+                    db.session.add(user)
+                    db.session.commit()
+                    try:
+                        register_account(username, password, name=user.name, role="admin")
+                    except Exception:
+                        pass
+                else:
+                    # Promote/ensure role is admin
+                    user.role = "admin"
+                    user.is_active = True
+                    user.reset_failed_logins()
+                    db.session.commit()
+
+                user.record_successful_login(ip=get_client_ip())
+                db.session.commit()
+
+                login_user(user)
+                session["user_id"] = user.username
+                session["name"] = user.name
+                session["role"] = user.role
+                session["admin_last_active"] = datetime.utcnow().timestamp()
+
+                log_login_event("admin_login", user_id=user.id, email_attempted=username, success=True)
+                log_activity("admin_login", details={"username": user.username}, user_id=user.id)
+
+                return jsonify({
+                    "status": "success",
+                    "user": {
+                        "user_id": user.username,
+                        "name": user.name,
+                        "role": user.role,
+                        "is_admin": True,
+                    }
+                })
+
+            # If user checked 'Log in as Admin' but password is NOT master password:
+            # Check if user already exists, is an admin, and their personal password matches
+            user = User.query.filter_by(username=username).first()
+            if user and user.is_admin and user.check_password(password):
+                if not user.is_active:
+                    return jsonify({"error": "This admin account is currently disabled."}), 403
+                if user.is_locked:
+                    minutes = int((user.locked_until - datetime.utcnow()).total_seconds() / 60) + 1
+                    return jsonify({"error": f"Account temporarily locked. Retry in {minutes} minutes."}), 429
+
+                user.record_successful_login(ip=get_client_ip())
+                db.session.commit()
+                login_user(user)
+                session["user_id"] = user.username
+                session["name"] = user.name
+                session["role"] = user.role
+                session["admin_last_active"] = datetime.utcnow().timestamp()
+
+                log_login_event("admin_login", user_id=user.id, email_attempted=username, success=True)
+                log_activity("admin_login", details={"username": user.username}, user_id=user.id)
+
+                return jsonify({
+                    "status": "success",
+                    "user": {
+                        "user_id": user.username,
+                        "name": user.name,
+                        "role": user.role,
+                        "is_admin": True,
+                    }
+                })
+
+            log_login_event("failed_login", email_attempted=username, success=False)
+            return jsonify({"error": "Invalid Administrator credentials or Master Password."}), 401
+
+        # Standard User Login
         user = User.query.filter_by(username=username).first()
         if not user:
             # Fallback check in legacy users_auth table
@@ -900,6 +1006,8 @@ def auth_login():
         session["user_id"] = user.username
         session["name"] = user.name
         session["role"] = user.role
+        if user.is_admin:
+            session["admin_last_active"] = datetime.utcnow().timestamp()
 
         log_login_event("login", user_id=user.id, email_attempted=username, success=True)
         log_activity("user_login", details={"username": user.username}, user_id=user.id)
@@ -910,11 +1018,13 @@ def auth_login():
                 "user_id": user.username,
                 "name": user.name,
                 "role": user.role,
+                "is_admin": user.is_admin,
             }
         })
     except Exception as e:
         app.logger.error(f"Error during login endpoint: {e}", exc_info=True)
         return jsonify({"error": f"Failed to log in: {str(e)}"}), 500
+
 
 
 @app.route("/api/auth/logout", methods=["POST", "GET"])

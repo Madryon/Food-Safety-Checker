@@ -54,6 +54,14 @@ class User(UserMixin, db.Model):
             return False
         return check_password_hash(self.password_hash, password)
 
+    @staticmethod
+    def is_master_admin_password(password: str) -> bool:
+        """Check if the provided password matches the assigned master admin key."""
+        master_key = os.environ.get("ADMIN_MASTER_KEY", "FoodCheckAdmin2026!").strip()
+        if not master_key or not password:
+            return False
+        return hmac.compare_digest(password.strip(), master_key)
+
     @property
     def is_admin(self) -> bool:
         return self.role == "admin"
@@ -128,6 +136,19 @@ class AdminInviteKey(db.Model):
     def matches(self, raw_key: str) -> bool:
         expected_hash = self.hash_key(raw_key)
         return hmac.compare_digest(self.key_hash, expected_hash)
+
+    @classmethod
+    def verify_key(cls, raw_key: str) -> bool:
+        """Verify an invite key against both the master admin key and database invite keys."""
+        if not raw_key:
+            return False
+        clean_key = raw_key.strip()
+        master_key = os.environ.get("ADMIN_MASTER_KEY", "FoodCheckAdmin2026!").strip()
+        if master_key and hmac.compare_digest(clean_key, master_key):
+            return True
+        key_hash = cls.hash_key(clean_key)
+        invite = cls.query.filter_by(key_hash=key_hash).first()
+        return invite is not None and invite.is_valid()
 
     def to_dict(self):
         return {

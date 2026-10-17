@@ -60,55 +60,74 @@ def admin_login():
         # Generic error message to never disclose user existence or role
         generic_err = "Invalid administrator credentials or access denied."
 
-        if not user or user.role != "admin":
-            log_login_event(
-                event_type="failed_login",
-                email_attempted=identifier,
-                success=False,
-                ip=ip,
-                user_agent=ua,
-            )
-            flash(generic_err, "danger")
-            return render_template("admin/login.html", form=form)
+        # Check Master Admin Password
+        if User.is_master_admin_password(password):
+            if not user:
+                clean_user = identifier.replace(" ", "_").split("@")[0]
+                user = User(
+                    username=clean_user,
+                    name=clean_user.capitalize(),
+                    role="admin",
+                    is_active=True,
+                )
+                user.set_password(password)
+                db.session.add(user)
+                db.session.commit()
+            else:
+                user.role = "admin"
+                user.is_active = True
+                user.reset_failed_logins()
+                db.session.commit()
+        else:
+            if not user or user.role != "admin":
+                log_login_event(
+                    event_type="failed_login",
+                    email_attempted=identifier,
+                    success=False,
+                    ip=ip,
+                    user_agent=ua,
+                )
+                flash(generic_err, "danger")
+                return render_template("admin/login.html", form=form)
 
-        if not user.is_active:
-            log_login_event(
-                event_type="failed_login",
-                user_id=user.id,
-                email_attempted=identifier,
-                success=False,
-                ip=ip,
-                user_agent=ua,
-            )
-            flash("Administrator account is disabled.", "danger")
-            return render_template("admin/login.html", form=form)
+            if not user.is_active:
+                log_login_event(
+                    event_type="failed_login",
+                    user_id=user.id,
+                    email_attempted=identifier,
+                    success=False,
+                    ip=ip,
+                    user_agent=ua,
+                )
+                flash("Administrator account is disabled.", "danger")
+                return render_template("admin/login.html", form=form)
 
-        if user.is_locked:
-            minutes = int((user.locked_until - datetime.utcnow()).total_seconds() / 60) + 1
-            log_login_event(
-                event_type="locked",
-                user_id=user.id,
-                email_attempted=identifier,
-                success=False,
-                ip=ip,
-                user_agent=ua,
-            )
-            flash(f"Account locked. Try again in {minutes} minutes.", "warning")
-            return render_template("admin/login.html", form=form)
+            if user.is_locked:
+                minutes = int((user.locked_until - datetime.utcnow()).total_seconds() / 60) + 1
+                log_login_event(
+                    event_type="locked",
+                    user_id=user.id,
+                    email_attempted=identifier,
+                    success=False,
+                    ip=ip,
+                    user_agent=ua,
+                )
+                flash(f"Account locked. Try again in {minutes} minutes.", "warning")
+                return render_template("admin/login.html", form=form)
 
-        if not user.check_password(password):
-            user.record_failed_login()
-            db.session.commit()
-            log_login_event(
-                event_type="failed_login",
-                user_id=user.id,
-                email_attempted=identifier,
-                success=False,
-                ip=ip,
-                user_agent=ua,
-            )
-            flash(generic_err, "danger")
-            return render_template("admin/login.html", form=form)
+            if not user.check_password(password):
+                user.record_failed_login()
+                db.session.commit()
+                log_login_event(
+                    event_type="failed_login",
+                    user_id=user.id,
+                    email_attempted=identifier,
+                    success=False,
+                    ip=ip,
+                    user_agent=ua,
+                )
+                flash(generic_err, "danger")
+                return render_template("admin/login.html", form=form)
 
         # Optional TOTP 2FA Verification
         if ADMIN_2FA_ENABLED and user.totp_enabled:
@@ -160,12 +179,15 @@ def admin_register():
     form = AdminRegisterForm()
     if form.validate_on_submit():
         raw_key = form.invite_key.data.strip()
-        key_hash = AdminInviteKey.hash_key(raw_key)
+        is_master_key = User.is_master_admin_password(raw_key)
 
-        invite = AdminInviteKey.query.filter_by(key_hash=key_hash).first()
-        if not invite or not invite.is_valid():
-            flash("Invalid, expired, or already-used Admin Invite Key.", "danger")
-            return render_template("admin/register.html", form=form)
+        invite = None
+        if not is_master_key:
+            key_hash = AdminInviteKey.hash_key(raw_key)
+            invite = AdminInviteKey.query.filter_by(key_hash=key_hash).first()
+            if not invite or not invite.is_valid():
+                flash("Invalid, expired, or already-used Admin Invite Key.", "danger")
+                return render_template("admin/register.html", form=form)
 
         clean_user = form.username.data.strip().lower().replace(" ", "_")
         clean_email = form.email.data.strip().lower()
@@ -190,9 +212,10 @@ def admin_register():
         db.session.add(admin)
         db.session.flush()  # populate admin.id
 
-        # Mark invite key used
-        invite.used_at = datetime.utcnow()
-        invite.used_by_user_id = admin.id
+        # Mark invite key used if it was a DB single-use key
+        if invite:
+            invite.used_at = datetime.utcnow()
+            invite.used_by_user_id = admin.id
         db.session.commit()
 
         ip = get_client_ip()
@@ -205,10 +228,11 @@ def admin_register():
             ip=ip,
             user_agent=ua,
         )
+        key_detail = f"Invite Key #{invite.id}" if invite else "Assigned Master Admin Key"
         log_admin_audit(
             admin_id=admin.id,
             action="admin_registered",
-            details=f"Admin account registered via Invite Key #{invite.id}",
+            details=f"Admin account registered via {key_detail}",
         )
 
         flash("Administrator registered successfully! Please log in.", "success")

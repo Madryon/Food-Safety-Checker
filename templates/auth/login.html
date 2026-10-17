@@ -23,7 +23,10 @@
         {% endfor %}
     </div>
 
-    <div class="form-group" style="display: flex; align-items: center; justify-content: space-between;">
+    <div class="form-group" style="display: flex; flex-direction: column; gap: 8px;">
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); font-weight: 600; cursor: pointer;">
+            {{ form.login_as_admin(style="width: 16px; height: 16px; accent-color: var(--accent);") }} 🛡️ Log in as Administrator
+        </label>
         <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); cursor: pointer;">
             {{ form.remember_me() }} Remember Me
         </label>

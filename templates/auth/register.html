@@ -48,6 +48,15 @@
         {% endfor %}
     </div>
 
+    <div class="form-group">
+        <label class="form-label" for="admin_invite_key">🛡️ Admin Invite Key <span style="font-size: 11px; color: var(--muted); font-weight: normal;">(Optional - leave blank for regular user)</span></label>
+        {{ form.admin_invite_key(class="form-control", placeholder="Enter assigned admin key if registering as administrator") }}
+        <div style="font-size: 11px; color: var(--muted); margin-top: 4px;">Enter the assigned admin master key to create an Administrator account.</div>
+        {% for error in form.admin_invite_key.errors %}
+            <div style="color: var(--bad); font-size: 12px; margin-top: 4px;">{{ error }}</div>
+        {% endfor %}
+    </div>
+
     {{ form.submit(class="btn-submit") }}
 </form>
 

@@ -1,5 +1,7 @@
+import os
 import io
 import json
+import secrets
 import unittest
 from datetime import datetime, timedelta
 from app import app
@@ -20,6 +22,9 @@ class AdminAndRoleAuthTest(unittest.TestCase):
     def setUpClass(cls):
         app.config["TESTING"] = True
         app.config["WTF_CSRF_ENABLED"] = False
+        app.config["RATELIMIT_ENABLED"] = False
+        from extensions import limiter
+        limiter.enabled = False
         with app.app_context():
             db.drop_all()
             db.create_all()
@@ -278,6 +283,50 @@ class AdminAndRoleAuthTest(unittest.TestCase):
         AppSetting.set_setting("maintenance_mode", "false")
         res_restored = client_anon.get("/")
         self.assertEqual(res_restored.status_code, 200)
+
+    def test_09_master_admin_password_and_front_page_admin_auth(self):
+        """Users can log in and register as admin using the master admin key."""
+        master_key = os.environ.get("ADMIN_MASTER_KEY", "FoodCheckAdmin2026!")
+
+        # 1. Front-page admin login with master key
+        res_login = self.client.post("/api/auth/login", json={
+            "username": "frontpage_master_admin",
+            "password": master_key,
+            "is_admin": True,
+        })
+        self.assertEqual(res_login.status_code, 200)
+        login_data = res_login.get_json()
+        self.assertEqual(login_data["user"]["role"], "admin")
+        self.assertTrue(login_data["user"]["is_admin"])
+
+        # Access /admin/ dashboard
+        res_dash = self.client.get("/admin/")
+        self.assertEqual(res_dash.status_code, 200)
+
+        # 2. Front-page admin registration with invalid invite key
+        res_reg_bad = self.client.post("/api/auth/register", json={
+            "username": "bad_admin_candidate",
+            "name": "Bad Candidate",
+            "password": "Password123",
+            "is_admin": True,
+            "invite_key": "wrong_invalid_key",
+        })
+        self.assertEqual(res_reg_bad.status_code, 400)
+        self.assertIn("Invalid Admin Invite Key", res_reg_bad.get_json().get("error", ""))
+
+        # 3. Front-page admin registration with master invite key
+        new_adm_user = f"adm_{secrets.token_hex(4)}"
+        res_reg_ok = self.client.post("/api/auth/register", json={
+            "username": new_adm_user,
+            "name": "Master Created",
+            "password": "Password123",
+            "is_admin": True,
+            "invite_key": master_key,
+        })
+        self.assertEqual(res_reg_ok.status_code, 200, msg=f"Error body: {res_reg_ok.get_json()}")
+        reg_data = res_reg_ok.get_json()
+        self.assertEqual(reg_data["user"]["role"], "admin")
+        self.assertTrue(reg_data["user"]["is_admin"])
 
 
 if __name__ == "__main__":
