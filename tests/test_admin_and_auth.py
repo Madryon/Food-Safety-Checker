@@ -328,6 +328,68 @@ class AdminAndRoleAuthTest(unittest.TestCase):
         self.assertEqual(reg_data["user"]["role"], "admin")
         self.assertTrue(reg_data["user"]["is_admin"])
 
+    def test_10_admin_delete_feedback(self):
+        """Verify that an administrator can delete community reviews via API and Admin Panel."""
+        # 1. Normal user posts a feedback
+        u_name = f"user_{secrets.token_hex(4)}"
+        self.client.post("/api/auth/register", json={
+            "username": u_name,
+            "name": "Feedback Author",
+            "password": "Password123",
+        })
+        res_fb = self.client.post("/api/feedback", json={
+            "name": "Feedback Author",
+            "rating": 4,
+            "message": "Delicious and informative app!",
+        })
+        self.assertEqual(res_fb.status_code, 200)
+        fb_id = res_fb.get_json()["feedback"]["id"]
+
+        # 2. Another non-admin user cannot delete user 1's feedback
+        u_other = f"user_{secrets.token_hex(4)}"
+        client_other = self.app.test_client()
+        client_other.post("/api/auth/register", json={
+            "username": u_other,
+            "name": "Other User",
+            "password": "Password123",
+        })
+        res_del_unauth = client_other.delete(f"/api/feedback/{fb_id}")
+        self.assertEqual(res_del_unauth.status_code, 404)  # Permission denied / not found for this user
+
+        # 3. Admin logs in and deletes the feedback via API
+        client_admin = self.app.test_client()
+        client_admin.post("/api/auth/login", json={
+            "username": "super_admin_01",
+            "password": "AdminPassword123",
+            "is_admin": True,
+        })
+        res_del_admin = client_admin.delete(f"/api/feedback/{fb_id}")
+        self.assertEqual(res_del_admin.status_code, 200)
+        del_data = res_del_admin.get_json()
+        self.assertEqual(del_data["status"], "success")
+        self.assertNotIn(fb_id, [f["id"] for f in del_data["feedbacks"]])
+
+        # 4. Verify Admin Panel reviews list and deletion action
+        # Post another feedback
+        res_fb2 = self.client.post("/api/feedback", json={
+            "name": "Feedback Author",
+            "rating": 5,
+            "message": "Moderation test review",
+        })
+        fb2_id = res_fb2.get_json()["feedback"]["id"]
+
+        # Admin visits /admin/reviews
+        res_rev_page = client_admin.get("/admin/reviews")
+        self.assertEqual(res_rev_page.status_code, 200)
+        self.assertIn(b"Moderation test review", res_rev_page.data)
+
+        # Admin deletes via POST /admin/reviews/<fb_id>/delete
+        res_del_panel = client_admin.post(f"/admin/reviews/{fb2_id}/delete", follow_redirects=True)
+        self.assertEqual(res_del_panel.status_code, 200)
+        self.assertIn(b"deleted successfully", res_del_panel.data)
+        self.assertNotIn(b"Moderation test review", res_del_panel.data)
+
 
 if __name__ == "__main__":
     unittest.main()
+

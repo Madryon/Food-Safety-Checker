@@ -602,6 +602,24 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
     background: var(--accent);
     color: var(--on-accent);
 }
+.fb-delete-btn {
+    background: color-mix(in srgb, #ef4444 15%, transparent);
+    color: #ef4444;
+    border: 1px solid #ef4444;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: .72rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all .15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.fb-delete-btn:hover {
+    background: #ef4444;
+    color: #ffffff;
+}
 
 /* ===== Navigation Modes (Food Scanner vs Diet Planner) ===== */
 .nav-modes { display: flex; align-items: center; gap: 6px; background: var(--surface-2); padding: 4px; border-radius: 999px; border: 1px solid var(--border); }
@@ -1972,6 +1990,10 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             var editBtn = item.can_edit
                 ? '<button type="button" class="fb-edit-btn" data-id="' + esc(item.id) + '" data-name="' + name + '" data-rating="' + rating + '" data-msg="' + esc(item.message) + '">✏️ Edit</button>'
                 : '';
+            var canDel = item.can_delete || (currentUser && currentUser.is_admin);
+            var deleteBtn = canDel
+                ? '<button type="button" class="fb-delete-btn" data-id="' + esc(item.id) + '" data-name="' + name + '" title="Delete this review as Administrator">🗑️ Delete</button>'
+                : '';
 
             return '<div class="feedback-card-item" id="fb-card-' + esc(item.id) + '">' +
                 '<div class="feedback-item-header">' +
@@ -1982,6 +2004,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                     '<div class="feedback-item-meta">' +
                         '<span class="feedback-item-stars">' + stars + '</span>' +
                         editBtn +
+                        deleteBtn +
                     '</div>' +
                 '</div>' +
                 '<p class="feedback-text-content">' + msg + '</p>' +
@@ -1996,6 +2019,41 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                 var frating = parseInt(btn.getAttribute('data-rating'), 10) || 5;
                 var fmsg = btn.getAttribute('data-msg') || '';
                 openEditFeedbackModal(fid, fname, frating, fmsg);
+            });
+        });
+
+        // Attach listeners for delete buttons (Admin and owner)
+        container.querySelectorAll('.fb-delete-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var fid = btn.getAttribute('data-id');
+                var fname = btn.getAttribute('data-name');
+                if (!confirm('Are you sure you want to permanently delete this review by "' + fname + '"?')) {
+                    return;
+                }
+                btn.disabled = true;
+                btn.textContent = '⏳ Deleting...';
+                fetch('/api/feedback/' + encodeURIComponent(fid), {
+                    method: 'DELETE',
+                    headers: { 'Accept': 'application/json' }
+                })
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (data.status === 'success') {
+                        toast('🗑️ Review deleted successfully!');
+                        if (data.feedbacks) {
+                            renderFeedbacks(data.feedbacks);
+                        } else {
+                            loadFeedbacks();
+                        }
+                    } else {
+                        throw new Error(data.error || 'Failed to delete review.');
+                    }
+                })
+                .catch(function (err) {
+                    btn.disabled = false;
+                    btn.textContent = '🗑️ Delete';
+                    toast('❌ ' + err.message);
+                });
             });
         });
     }

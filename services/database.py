@@ -1019,3 +1019,27 @@ def update_feedback_db(fb_id, user_id, rating, message, is_dev=False):
     return item, None
 
 
+def delete_feedback_db(fb_id, user_id=None, is_admin=False):
+    """Delete a feedback entry if admin or if owned by user_id."""
+    fb_id = str(fb_id).strip()
+    deleted = False
+    with DatabaseConnection() as (conn, is_pg):
+        cursor = conn.cursor()
+        if is_pg:
+            if is_admin:
+                cursor.execute("DELETE FROM feedbacks WHERE id = %s;", (fb_id,))
+            else:
+                user_id = str(user_id or "").strip().lower()
+                cursor.execute("DELETE FROM feedbacks WHERE id = %s AND user_id = %s;", (fb_id, user_id))
+            deleted = cursor.rowcount > 0
+        else:
+            if is_admin:
+                cursor.execute("DELETE FROM feedbacks WHERE id = ?;", (fb_id,))
+            else:
+                user_id = str(user_id or "").strip().lower()
+                cursor.execute("DELETE FROM feedbacks WHERE id = ? AND user_id = ?;", (fb_id, user_id))
+            deleted = cursor.rowcount > 0
+        cursor.close()
+    return deleted
+
+

@@ -409,6 +409,9 @@
             <a href="{{ url_for('admin.active_sessions') }}" class="nav-link {% if request.endpoint == 'admin.active_sessions' %}active{% endif %}">
                 <span>💻</span> Active Sessions
             </a>
+            <a href="{{ url_for('admin.reviews_list') }}" class="nav-link {% if request.endpoint == 'admin.reviews_list' %}active{% endif %}">
+                <span>💬</span> Reviews Moderation
+            </a>
 
             <div class="nav-label">Security & System</div>
             <a href="{{ url_for('admin.keys_page') }}" class="nav-link {% if request.endpoint == 'admin.keys_page' %}active{% endif %}">

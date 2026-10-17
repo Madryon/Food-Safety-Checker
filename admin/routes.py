@@ -33,6 +33,7 @@ from services.activity_tracker import (
     get_client_ip,
     is_suspicious_login,
 )
+from services.database import get_all_feedbacks, delete_feedback_db
 
 # Optional TOTP 2FA
 ADMIN_2FA_ENABLED = os.getenv("ADMIN_2FA_ENABLED", "false").lower() in ("true", "1", "yes")
@@ -810,3 +811,32 @@ def settings_page():
         return redirect(url_for("admin.settings_page"))
 
     return render_template("admin/settings.html", form=form)
+
+
+# ── REVIEWS MODERATION ───────────────────────────────────────────────────────
+
+@admin_bp.route("/reviews")
+@admin_required
+def reviews_list():
+    q = (request.args.get("q") or "").strip().lower()
+    feedbacks = get_all_feedbacks()
+    if q:
+        feedbacks = [
+            f for f in feedbacks
+            if q in (f.get("name") or "").lower()
+            or q in (f.get("message") or "").lower()
+            or q in (f.get("user_id") or "").lower()
+        ]
+    return render_template("admin/reviews.html", feedbacks=feedbacks, q=q)
+
+
+@admin_bp.route("/reviews/<fb_id>/delete", methods=["POST"])
+@admin_required
+def delete_review_action(fb_id):
+    success = delete_feedback_db(fb_id, is_admin=True)
+    if success:
+        log_admin_audit(current_user.id, "delete_review", details=f"Deleted community review '{fb_id}'")
+        flash(f"Review '{fb_id}' deleted successfully.", "success")
+    else:
+        flash(f"Review '{fb_id}' could not be found or was already deleted.", "warning")
+    return redirect(url_for("admin.reviews_list"))

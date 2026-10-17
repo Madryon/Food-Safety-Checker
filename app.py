@@ -64,6 +64,7 @@ from services.database import (
     get_developer_feedbacks,
     get_all_feedbacks,
     update_feedback_db,
+    delete_feedback_db,
 )
 from services.diet_generator import generate_diet_plan, calculate_bmr_and_tdee, suggest_quick_meal
 
@@ -437,10 +438,13 @@ def debug_models():
 
 # ── COMMUNITY FEEDBACK & EDIT ROUTES ────────────────────────────────────────
 
+# ── COMMUNITY FEEDBACK & EDIT ROUTES ────────────────────────────────────────
+
 @app.route("/api/feedback", methods=["GET", "POST"])
 def handle_feedback():
     user_id = session.get("user_id")
-    is_dev = session.get("role") in ("developer", "admin")
+    is_admin = session.get("role") in ("admin",) or (current_user.is_authenticated and current_user.is_admin)
+    is_dev = session.get("role") in ("developer", "admin") or is_admin
 
     if request.method == "POST":
         data = request.get_json(silent=True) or request.form.to_dict()
@@ -462,8 +466,10 @@ def handle_feedback():
             feedbacks = get_all_feedbacks()
             for f in feedbacks:
                 f["can_edit"] = is_dev or (f.get("user_id") == user_id)
+                f["can_delete"] = is_admin
         else:
             saved_fb["can_edit"] = False
+            saved_fb["can_delete"] = False
             feedbacks = [saved_fb]
 
         log_activity(action="submit_feedback", details={"rating": rating, "fb_id": fb_id})
@@ -473,6 +479,7 @@ def handle_feedback():
             "feedback": saved_fb,
             "feedbacks": feedbacks,
             "is_developer": is_dev,
+            "is_admin": is_admin,
             "is_signed_in": bool(user_id),
         })
 
@@ -481,10 +488,12 @@ def handle_feedback():
             feedbacks = get_all_feedbacks()
             for f in feedbacks:
                 f["can_edit"] = is_dev or (f.get("user_id") == user_id)
+                f["can_delete"] = is_admin
 
             return jsonify({
                 "feedbacks": feedbacks,
                 "is_developer": is_dev,
+                "is_admin": is_admin,
                 "is_signed_in": True,
                 "role": session.get("role", "user"),
             })
@@ -492,6 +501,7 @@ def handle_feedback():
             return jsonify({
                 "feedbacks": [],
                 "is_developer": False,
+                "is_admin": False,
                 "is_signed_in": False,
                 "prompt_login": True,
             })
@@ -511,7 +521,8 @@ def edit_feedback_endpoint(fb_id):
         return jsonify({"error": "Feedback message cannot be empty."}), 400
 
     rating = data.get("rating", 5)
-    is_dev = session.get("role") in ("developer", "admin")
+    is_admin = session.get("role") in ("admin",) or (current_user.is_authenticated and current_user.is_admin)
+    is_dev = session.get("role") in ("developer", "admin") or is_admin
 
     updated_fb, err = update_feedback_db(fb_id, user_id, rating, message, is_dev=is_dev)
     if err:
@@ -520,6 +531,7 @@ def edit_feedback_endpoint(fb_id):
     feedbacks = get_all_feedbacks()
     for f in feedbacks:
         f["can_edit"] = is_dev or (f.get("user_id") == user_id)
+        f["can_delete"] = is_admin
 
     log_activity(action="edit_feedback", details={"fb_id": fb_id})
 
@@ -527,6 +539,37 @@ def edit_feedback_endpoint(fb_id):
         "status": "success",
         "message": "Feedback updated successfully!",
         "feedback": updated_fb,
+        "feedbacks": feedbacks,
+    })
+
+
+@app.route("/api/feedback/<fb_id>", methods=["DELETE"])
+def delete_feedback_endpoint(fb_id):
+    """Allow admins (or review owners) to delete a community review."""
+    user_id = session.get("user_id")
+    is_admin = session.get("role") in ("admin",) or (current_user.is_authenticated and current_user.is_admin)
+
+    if not is_admin and not user_id:
+        return jsonify({"error": "Admin access required to delete reviews.", "auth_required": True}), 403
+
+    success = delete_feedback_db(fb_id, user_id=user_id, is_admin=is_admin)
+    if not success:
+        return jsonify({"error": "Feedback not found or permission denied."}), 404
+
+    log_activity(
+        action="delete_feedback",
+        details={"fb_id": fb_id, "by_admin": is_admin},
+        user_id=current_user.id if current_user.is_authenticated else None,
+    )
+
+    feedbacks = get_all_feedbacks()
+    for f in feedbacks:
+        f["can_edit"] = is_admin or (f.get("user_id") == user_id)
+        f["can_delete"] = is_admin
+
+    return jsonify({
+        "status": "success",
+        "message": "Review deleted successfully.",
         "feedbacks": feedbacks,
     })
 
@@ -1084,6 +1127,7 @@ for _api_func in [
     log_calorie_meal,
     get_today_calories,
     delete_calorie_log,
+    delete_feedback_endpoint,
 ]:
     csrf.exempt(_api_func)
 

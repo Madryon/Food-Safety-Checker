@@ -1,0 +1,83 @@
+{% extends "admin/base_admin.html" %}
+
+{% block title %}Reviews Moderation — FoodCheck Admin{% endblock %}
+{% block page_title %}Community Reviews Moderation ({{ feedbacks|length }} Reviews){% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-title">
+        <span>💬 Community Feedback & Reviews</span>
+        <div style="font-size: 12px; color: var(--muted); font-weight: normal;">
+            Inspect and moderate user reviews submitted across the platform
+        </div>
+    </div>
+
+    <!-- Search Form -->
+    <form method="GET" action="{{ url_for('admin.reviews_list') }}" style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px;">
+        <input type="text" name="q" value="{{ q }}" placeholder="Search author, user ID, or review text..." class="form-control" style="max-width: 320px; padding: 8px 12px; font-size: 13px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text);">
+        <button type="submit" class="btn btn-primary btn-sm">Search</button>
+        {% if q %}
+            <a href="{{ url_for('admin.reviews_list') }}" class="btn btn-secondary btn-sm">Clear</a>
+        {% endif %}
+    </form>
+
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 180px;">Author</th>
+                    <th style="width: 120px;">Rating</th>
+                    <th>Feedback / Review</th>
+                    <th style="width: 140px;">Review ID</th>
+                    <th style="width: 120px; text-align: right;">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for f in feedbacks %}
+                <tr>
+                    <td>
+                        <div style="font-weight: 700; color: var(--text);">{{ f.name or 'User' }}</div>
+                        {% if f.user_id and f.user_id != 'anonymous' %}
+                            <div style="font-size: 11px; color: var(--muted);">@{{ f.user_id }}</div>
+                        {% else %}
+                            <span class="badge" style="background: rgba(148,163,184,0.15); color: var(--muted); font-size: 10px;">Anonymous</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span style="letter-spacing: 1px; color: #fbbf24;">
+                            {% set rating_int = f.rating|default(5)|int %}
+                            {% for _ in range(rating_int) %}⭐{% endfor %}
+                        </span>
+                        <span style="font-size: 11px; color: var(--muted); margin-left: 4px;">({{ f.rating }}/5)</span>
+                    </td>
+                    <td style="font-size: 13.5px; line-height: 1.45; color: var(--text); word-break: break-word;">
+                        {{ f.message }}
+                    </td>
+                    <td style="font-family: monospace; font-size: 11.5px; color: var(--muted);">
+                        {{ f.id }}
+                    </td>
+                    <td style="text-align: right;">
+                        <form method="POST" action="{{ url_for('admin.delete_review_action', fb_id=f.id) }}" onsubmit="return confirm('Permanently delete review {{ f.id }} by &quot;{{ f.name }}&quot;?');" style="display: inline-block;">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-danger btn-sm" title="Delete Review">
+                                🗑️ Delete
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" style="text-align: center; color: var(--muted); padding: 36px 16px;">
+                        {% if q %}
+                            No community reviews match the search term "<strong>{{ q }}</strong>".
+                        {% else %}
+                            No community reviews found in the system.
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
