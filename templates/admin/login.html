@@ -1,0 +1,48 @@
+{% extends "auth/base_auth.html" %}
+
+{% block title %}Administrator Console — FoodCheck{% endblock %}
+{% block subtitle %}
+<span style="display: inline-block; padding: 2px 8px; background: var(--accent); color: var(--on-accent); border-radius: 6px; font-size: 11px; font-weight: 800; margin-bottom: 6px;">
+    ADMIN CONSOLE
+</span><br>
+Sign in with verified administrator credentials
+{% endblock %}
+
+{% block content %}
+<form method="POST" action="{{ url_for('admin.admin_login') }}">
+    {{ form.hidden_tag() }}
+
+    <div class="form-group">
+        <label class="form-label" for="username_or_email">Admin ID or Email</label>
+        {{ form.username_or_email(class="form-control", placeholder="admin username or email", autofocus=True) }}
+        {% for error in form.username_or_email.errors %}
+            <div style="color: var(--bad); font-size: 12px; margin-top: 4px;">{{ error }}</div>
+        {% endfor %}
+    </div>
+
+    <div class="form-group">
+        <label class="form-label" for="password">Password</label>
+        {{ form.password(class="form-control", placeholder="Admin password") }}
+        {% for error in form.password.errors %}
+            <div style="color: var(--bad); font-size: 12px; margin-top: 4px;">{{ error }}</div>
+        {% endfor %}
+    </div>
+
+    <div class="form-group">
+        <label class="form-label" for="totp_code">2FA Authenticator Code (Optional)</label>
+        {{ form.totp_code(class="form-control", placeholder="6-digit TOTP code if enabled") }}
+        {% for error in form.totp_code.errors %}
+            <div style="color: var(--bad); font-size: 12px; margin-top: 4px;">{{ error }}</div>
+        {% endfor %}
+    </div>
+
+    {{ form.submit(class="btn-submit") }}
+</form>
+
+<div class="auth-footer">
+    Developer invite key received? <a href="{{ url_for('admin.admin_register') }}">Register Admin</a>
+    <div style="margin-top: 8px;">
+        <a href="/" style="color: var(--muted); font-size: 12px;">← Back to Public Scanner</a>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,70 @@
+{% extends "auth/base_auth.html" %}
+
+{% block title %}Register Administrator — FoodCheck{% endblock %}
+{% block subtitle %}
+<span style="display: inline-block; padding: 2px 8px; background: var(--accent); color: var(--on-accent); border-radius: 6px; font-size: 11px; font-weight: 800; margin-bottom: 6px;">
+    DEVELOPER KEY REQUIRED
+</span><br>
+Create an administrator account using a valid invite key
+{% endblock %}
+
+{% block content %}
+<form method="POST" action="{{ url_for('admin.admin_register') }}">
+    {{ form.hidden_tag() }}
+
+    <div class="form-group">
+        <label class="form-label" for="invite_key">🔑 Admin Invite Key</label>
+        {{ form.invite_key(class="form-control", placeholder="Single-use key generated via CLI", autofocus=True) }}
+        <div style="font-size: 11px; color: var(--muted); margin-top: 4px;">Issued via CLI: <code>flask create-admin-key</code></div>
+        {% for error in form.invite_key.errors %}
+            <div style="color: var(--bad); font-size: 12px; margin-top: 4px;">{{ error }}</div>
+        {% endfor %}
+    </div>
+
+    <div class="form-group">
+        <label class="form-label" for="name">Full Name</label>
+        {{ form.name(class="form-control", placeholder="Administrator Name") }}
+        {% for error in form.name.errors %}
+            <div style="color: var(--bad); font-size: 12px; margin-top: 4px;">{{ error }}</div>
+        {% endfor %}
+    </div>
+
+    <div class="form-group">
+        <label class="form-label" for="username">Admin Username</label>
+        {{ form.username(class="form-control", placeholder="e.g. sysadmin") }}
+        {% for error in form.username.errors %}
+            <div style="color: var(--bad); font-size: 12px; margin-top: 4px;">{{ error }}</div>
+        {% endfor %}
+    </div>
+
+    <div class="form-group">
+        <label class="form-label" for="email">Admin Email</label>
+        {{ form.email(class="form-control", placeholder="admin@domain.com") }}
+        {% for error in form.email.errors %}
+            <div style="color: var(--bad); font-size: 12px; margin-top: 4px;">{{ error }}</div>
+        {% endfor %}
+    </div>
+
+    <div class="form-group">
+        <label class="form-label" for="password">Password</label>
+        {{ form.password(class="form-control", placeholder="At least 8 chars, 1 letter, 1 number") }}
+        {% for error in form.password.errors %}
+            <div style="color: var(--bad); font-size: 12px; margin-top: 4px;">{{ error }}</div>
+        {% endfor %}
+    </div>
+
+    <div class="form-group">
+        <label class="form-label" for="confirm_password">Confirm Password</label>
+        {{ form.confirm_password(class="form-control", placeholder="Repeat password") }}
+        {% for error in form.confirm_password.errors %}
+            <div style="color: var(--bad); font-size: 12px; margin-top: 4px;">{{ error }}</div>
+        {% endfor %}
+    </div>
+
+    {{ form.submit(class="btn-submit") }}
+</form>
+
+<div class="auth-footer">
+    Already have admin credentials? <a href="{{ url_for('admin.admin_login') }}">Sign In</a>
+</div>
+{% endblock %}

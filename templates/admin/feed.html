@@ -1,0 +1,126 @@
+{% extends "admin/base_admin.html" %}
+
+{% block title %}Live Activity Feed — FoodCheck Admin{% endblock %}
+{% block page_title %}Real-time Activity Stream{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-title">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--good); animation: pulse 1.5s infinite;"></span>
+            <span>Live System Events (Latest 50)</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <span id="countdown-text" style="font-size: 12px; color: var(--muted);">Auto-refreshing in 10s</span>
+            <button id="toggle-refresh-btn" class="btn btn-secondary btn-sm" onclick="toggleFeedRefresh()">Pause</button>
+            <button class="btn btn-primary btn-sm" onclick="fetchLiveFeed()">Refresh Now</button>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 130px;">Time</th>
+                    <th>User / Actor</th>
+                    <th>Action</th>
+                    <th>Details</th>
+                    <th>IP Address</th>
+                </tr>
+            </thead>
+            <tbody id="feed-tbody">
+                <tr>
+                    <td colspan="5" style="text-align: center; color: var(--muted); padding: 30px;">
+                        Connecting to activity feed...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    var feedTimer = null;
+    var countdownSec = 10;
+    var isPaused = false;
+
+    function renderFeedRow(item) {
+        var userBadge = item.user_id ?
+            '<a href="/admin/users/' + item.user_id + '" style="color: var(--accent); font-weight: 600; text-decoration: none;">@' + item.user + '</a>' :
+            '<span style="color: var(--muted);">Anonymous</span>';
+
+        var ipHtml = item.ip;
+        if (item.suspicious) {
+            ipHtml += ' <span class="badge badge-suspicious" title="New/unseen IP address for this user">⚠️ Suspicious IP</span>';
+        }
+
+        var detailsText = '';
+        if (item.details) {
+            if (typeof item.details === 'object') {
+                detailsText = '<code style="font-size: 11px;">' + JSON.stringify(item.details) + '</code>';
+            } else {
+                detailsText = '<span style="font-size: 12px; color: var(--muted);">' + item.details + '</span>';
+            }
+        }
+
+        return '<tr>' +
+            '<td style="color: var(--muted); font-size: 12px; font-family: monospace;">' + item.time + '</td>' +
+            '<td>' + userBadge + '</td>' +
+            '<td><span class="badge badge-info">' + item.action + '</span></td>' +
+            '<td>' + detailsText + '</td>' +
+            '<td style="font-family: monospace; font-size: 12px;">' + ipHtml + '</td>' +
+            '</tr>';
+    }
+
+    function fetchLiveFeed() {
+        fetch('/admin/api/feed')
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                var tbody = document.getElementById('feed-tbody');
+                if (!data.feed || data.feed.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--muted); padding: 30px;">No events logged yet.</td></tr>';
+                    return;
+                }
+                var html = '';
+                data.feed.forEach(function(item) {
+                    html += renderFeedRow(item);
+                });
+                tbody.innerHTML = html;
+                countdownSec = 10;
+            })
+            .catch(function(err) {
+                console.error("Feed error:", err);
+            });
+    }
+
+    function toggleFeedRefresh() {
+        isPaused = !isPaused;
+        var btn = document.getElementById('toggle-refresh-btn');
+        var text = document.getElementById('countdown-text');
+        if (isPaused) {
+            btn.textContent = 'Resume';
+            text.textContent = 'Paused';
+        } else {
+            btn.textContent = 'Pause';
+            countdownSec = 10;
+        }
+    }
+
+    // Interval ticker
+    setInterval(function() {
+        if (!isPaused) {
+            countdownSec--;
+            var text = document.getElementById('countdown-text');
+            if (countdownSec <= 0) {
+                fetchLiveFeed();
+                countdownSec = 10;
+            } else {
+                text.textContent = 'Auto-refreshing in ' + countdownSec + 's';
+            }
+        }
+    }, 1000);
+
+    // Initial fetch
+    fetchLiveFeed();
+</script>
+{% endblock %}

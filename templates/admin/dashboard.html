@@ -1,0 +1,293 @@
+{% extends "admin/base_admin.html" %}
+
+{% block title %}Dashboard — FoodCheck Admin{% endblock %}
+{% block page_title %}Operational Dashboard{% endblock %}
+
+{% block content %}
+<!-- KPI Stats Cards -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-label">Total Users</div>
+        <div class="stat-val">{{ total_users }}</div>
+        <div class="stat-sub">+{{ new_users_today }} registered today</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Users Online</div>
+        <div class="stat-val" style="color: var(--good);">{{ users_online_now }}</div>
+        <div class="stat-sub">Active in last 5 mins</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Logins Today</div>
+        <div class="stat-val">{{ logins_today }}</div>
+        <div class="stat-sub">{{ failed_logins_today }} failed attempts</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Total Scans</div>
+        <div class="stat-val" style="color: var(--accent);">{{ total_scans }}</div>
+        <div class="stat-sub">{{ scans_today }} performed today</div>
+    </div>
+</div>
+
+<!-- Charts Grid -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 24px; margin-bottom: 24px;">
+    <!-- 30-Day Scans Trend -->
+    <div class="card" style="margin-bottom: 0;">
+        <div class="card-title">
+            <span>📈 Daily Product Scans (Last 30 Days)</span>
+        </div>
+        <div style="height: 250px;">
+            <canvas id="scansChart"></canvas>
+        </div>
+    </div>
+
+    <!-- 30-Day Signups Trend -->
+    <div class="card" style="margin-bottom: 0;">
+        <div class="card-title">
+            <span>👥 New User Signups (Last 30 Days)</span>
+        </div>
+        <div style="height: 250px;">
+            <canvas id="signupsChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; margin-bottom: 24px;">
+    <!-- Health Verdict Distribution Donut -->
+    <div class="card" style="margin-bottom: 0;">
+        <div class="card-title">
+            <span>🥗 Health Verdict Distribution</span>
+        </div>
+        <div style="height: 220px; display: flex; justify-content: center;">
+            <canvas id="verdictChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Top 10 Scanned Products -->
+    <div class="card" style="margin-bottom: 0;">
+        <div class="card-title">
+            <span>🏆 Top Scanned Products</span>
+        </div>
+        <div style="height: 220px;">
+            <canvas id="productsChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Top 10 Brands -->
+    <div class="card" style="margin-bottom: 0;">
+        <div class="card-title">
+            <span>🏭 Most Checked Brands</span>
+        </div>
+        <div style="height: 220px;">
+            <canvas id="brandsChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Leaderboards: Unhealthy Products & Controversial Brands -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 24px;">
+    <!-- Unhealthy Products Leaderboard -->
+    <div class="card">
+        <div class="card-title">
+            <span>⚠️ Most Unhealthy Flagged Products</span>
+            <span class="badge badge-danger">High Risk</span>
+        </div>
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th>Brand</th>
+                        <th>Times Flagged</th>
+                        <th>Avg Health Score</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in unhealthy_products %}
+                    <tr>
+                        <td><strong>{{ p.product_name }}</strong></td>
+                        <td>{{ p.brand or 'Unknown' }}</td>
+                        <td><span class="badge badge-warning">{{ p.times_flagged }}</span></td>
+                        <td>
+                            <span style="font-weight: 700; color: {% if (p.avg_score or 0) < 40 %}var(--bad){% else %}var(--warn){% endif %};">
+                                {{ "%.1f" | format(p.avg_score or 0) }}/100
+                            </span>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4" style="text-align: center; color: var(--muted); padding: 20px;">No flagged unhealthy products yet.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Controversial Brands Leaderboard -->
+    <div class="card">
+        <div class="card-title">
+            <span>🚩 Most Controversial Brands</span>
+            <span class="badge badge-warning">Watchlist</span>
+        </div>
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Brand</th>
+                        <th>Unsafe Scans</th>
+                        <th>Avg Score</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for b in controversial_brands %}
+                    <tr>
+                        <td><strong>{{ b.brand }}</strong></td>
+                        <td><span class="badge badge-danger">{{ b.flagged_count }} unsafe</span></td>
+                        <td>
+                            <span style="font-weight: 700; color: {% if (b.avg_score or 0) < 40 %}var(--bad){% else %}var(--warn){% endif %};">
+                                {{ "%.1f" | format(b.avg_score or 0) }}/100
+                            </span>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="3" style="text-align: center; color: var(--muted); padding: 20px;">No controversial brands logged yet.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Theme-aware Chart defaults
+    var isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    var textColor = isLight ? '#14221b' : '#e8eef5';
+    var gridColor = isLight ? 'rgba(20,40,30,.08)' : 'rgba(255,255,255,.07)';
+
+    // 1. Scans Trend Chart
+    var scansLabels = {{ chart_scans_labels | safe }};
+    var scansData = {{ chart_scans_data | safe }};
+    new Chart(document.getElementById('scansChart'), {
+        type: 'line',
+        data: {
+            labels: scansLabels.length ? scansLabels : ['No scans in last 30 days'],
+            datasets: [{
+                label: 'Scans',
+                data: scansData.length ? scansData : [0],
+                borderColor: '#34d399',
+                backgroundColor: 'rgba(52,211,153,0.12)',
+                fill: true,
+                tension: 0.35,
+                borderWidth: 2,
+                pointRadius: 3
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { ticks: { color: textColor, maxTicksLimit: 8 }, grid: { color: gridColor } },
+                y: { ticks: { color: textColor, precision: 0 }, grid: { color: gridColor }, beginAtZero: true }
+            }
+        }
+    });
+
+    // 2. Signups Chart
+    var signupsLabels = {{ chart_signups_labels | safe }};
+    var signupsData = {{ chart_signups_data | safe }};
+    new Chart(document.getElementById('signupsChart'), {
+        type: 'bar',
+        data: {
+            labels: signupsLabels.length ? signupsLabels : ['No signups in last 30 days'],
+            datasets: [{
+                label: 'New Users',
+                data: signupsData.length ? signupsData : [0],
+                backgroundColor: '#22d3ee',
+                borderRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { ticks: { color: textColor, maxTicksLimit: 8 }, grid: { color: gridColor } },
+                y: { ticks: { color: textColor, precision: 0 }, grid: { color: gridColor }, beginAtZero: true }
+            }
+        }
+    });
+
+    // 3. Verdict Donut Chart
+    var verdictData = {{ chart_verdicts_data | safe }};
+    new Chart(document.getElementById('verdictChart'), {
+        type: 'doughnut',
+        data: {
+            labels: ['Safe / Healthy', 'Moderate', 'Unsafe / Unhealthy'],
+            datasets: [{
+                data: (verdictData[0] + verdictData[1] + verdictData[2] > 0) ? verdictData : [1, 1, 1],
+                backgroundColor: ['#34d399', '#fbbf24', '#f87171'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { color: textColor, font: { size: 11 } } }
+            }
+        }
+    });
+
+    // 4. Top Products Bar Chart
+    var prodLabels = {{ chart_top_products_labels | safe }};
+    var prodData = {{ chart_top_products_data | safe }};
+    new Chart(document.getElementById('productsChart'), {
+        type: 'bar',
+        data: {
+            labels: prodLabels.length ? prodLabels : ['No data'],
+            datasets: [{
+                data: prodData.length ? prodData : [0],
+                backgroundColor: '#34d399',
+                borderRadius: 4
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { ticks: { color: textColor, precision: 0 }, grid: { color: gridColor }, beginAtZero: true },
+                y: { ticks: { color: textColor, font: { size: 10 } }, grid: { display: false } }
+            }
+        }
+    });
+
+    // 5. Top Brands Bar Chart
+    var brandLabels = {{ chart_top_brands_labels | safe }};
+    var brandData = {{ chart_top_brands_data | safe }};
+    new Chart(document.getElementById('brandsChart'), {
+        type: 'bar',
+        data: {
+            labels: brandLabels.length ? brandLabels : ['No data'],
+            datasets: [{
+                data: brandData.length ? brandData : [0],
+                backgroundColor: '#a78bfa',
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { ticks: { color: textColor, font: { size: 10 } }, grid: { display: false } },
+                y: { ticks: { color: textColor, precision: 0 }, grid: { color: gridColor }, beginAtZero: true }
+            }
+        }
+    });
+</script>
+{% endblock %}

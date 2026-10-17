@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maintenance in Progress — FoodCheck</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+            background: #0b1117;
+            color: #e8eef5;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            margin: 0;
+            text-align: center;
+        }
+        .box {
+            background: #121c27;
+            border: 1px solid rgba(255,255,255,.09);
+            border-radius: 18px;
+            padding: 48px 36px;
+            max-width: 480px;
+            box-shadow: 0 12px 32px rgba(0,0,0,.4);
+        }
+        .icon { font-size: 48px; margin-bottom: 16px; }
+        h1 { font-size: 24px; margin-bottom: 12px; }
+        p { color: #8ea0b3; font-size: 14.5px; line-height: 1.6; margin-bottom: 24px; }
+        .admin-link { color: #34d399; font-size: 13px; text-decoration: none; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <div class="icon">🛠️</div>
+        <h1>We'll be right back</h1>
+        <p>FoodCheck is undergoing scheduled upgrades and routine maintenance to optimize safety scanning performance. Please check back shortly.</p>
+        <a href="{{ url_for('admin.admin_login') }}" class="admin-link">Administrator Sign In →</a>
+    </div>
+</body>
+</html>

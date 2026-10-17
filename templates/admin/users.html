@@ -1,0 +1,103 @@
+{% extends "admin/base_admin.html" %}
+
+{% block title %}User Management — FoodCheck Admin{% endblock %}
+{% block page_title %}User Management ({{ pagination.total }} Accounts){% endblock %}
+
+{% block content %}
+<div class="card">
+    <!-- Filters & Search Form -->
+    <form method="GET" action="{{ url_for('admin.users_list') }}" style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px;">
+        <input type="text" name="q" value="{{ search_q }}" placeholder="Search username, name, email..." class="form-control" style="max-width: 280px; padding: 8px 12px; font-size: 13px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text);">
+
+        <select name="role" class="form-control" style="max-width: 150px; padding: 8px 12px; font-size: 13px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text);">
+            <option value="">All Roles</option>
+            <option value="user" {% if role_filter == 'user' %}selected{% endif %}>Users</option>
+            <option value="admin" {% if role_filter == 'admin' %}selected{% endif %}>Admins</option>
+        </select>
+
+        <select name="status" class="form-control" style="max-width: 150px; padding: 8px 12px; font-size: 13px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text);">
+            <option value="">All Statuses</option>
+            <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Active</option>
+            <option value="disabled" {% if status_filter == 'disabled' %}selected{% endif %}>Disabled</option>
+            <option value="locked" {% if status_filter == 'locked' %}selected{% endif %}>Locked</option>
+        </select>
+
+        <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+        {% if search_q or role_filter or status_filter %}
+            <a href="{{ url_for('admin.users_list') }}" class="btn btn-secondary btn-sm">Clear</a>
+        {% endif %}
+    </form>
+
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>User / Name</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Joined</th>
+                    <th>Last Login</th>
+                    <th>Logins</th>
+                    <th>Scans</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in pagination.items %}
+                <tr>
+                    <td>
+                        <div style="font-weight: 700; color: var(--text);">{{ u.name }}</div>
+                        <div style="font-size: 12px; color: var(--muted);">@{{ u.username }}</div>
+                    </td>
+                    <td>{{ u.email or '—' }}</td>
+                    <td>
+                        {% if u.role == 'admin' %}
+                            <span class="badge" style="background: var(--accent); color: var(--on-accent);">Admin</span>
+                        {% else %}
+                            <span class="badge badge-info">User</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if not u.is_active %}
+                            <span class="badge badge-danger">Disabled</span>
+                        {% elif u.is_locked %}
+                            <span class="badge badge-warning">Locked</span>
+                        {% else %}
+                            <span class="badge badge-success">Active</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-size: 12px; color: var(--muted);">{{ u.created_at.strftime('%Y-%m-%d') }}</td>
+                    <td style="font-size: 12px; color: var(--muted);">{{ u.last_login_at.strftime('%b %d, %H:%M') if u.last_login_at else 'Never' }}</td>
+                    <td style="font-weight: 600;">{{ u.login_count }}</td>
+                    <td style="font-weight: 600; color: var(--accent);">{{ user_scan_counts.get(u.id, 0) }}</td>
+                    <td>
+                        <a href="{{ url_for('admin.user_detail', user_id=u.id) }}" class="btn btn-secondary btn-sm">Manage</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="9" style="text-align: center; color: var(--muted); padding: 30px;">
+                        No users match the search filter.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if pagination.pages > 1 %}
+    <div class="pagination">
+        {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+            {% if p %}
+                <a href="{{ url_for('admin.users_list', page=p, q=search_q, role=role_filter, status=status_filter) }}"
+                   class="page-link {% if p == pagination.page %}active{% endif %}">{{ p }}</a>
+            {% else %}
+                <span class="page-link" style="border: none;">…</span>
+            {% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

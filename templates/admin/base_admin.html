@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}FoodCheck Admin Console{% endblock %}</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Chart.js for data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+    <script>
+        (function() {
+            var t = localStorage.getItem('foodcheck-theme') || 'dark';
+            if (t === 'tech') t = 'techno';
+            document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
+    <style>
+        :root {
+            --bg: #0b1117; --surface: #121c27; --surface-2: #182535; --border: rgba(255,255,255,.09);
+            --text: #e8eef5; --muted: #8ea0b3; --accent: #34d399; --accent-2: #22d3ee; --on-accent: #04261b;
+            --good: #34d399; --warn: #fbbf24; --bad: #f87171; --shadow: 0 12px 32px rgba(0,0,0,.35);
+            --radius: 14px; --sidebar-width: 250px;
+        }
+        [data-theme="light"] {
+            --bg: #f6f8f5; --surface: #ffffff; --surface-2: #eef3ee; --border: rgba(20,40,30,.12);
+            --text: #14221b; --muted: #5c6f64; --accent: #15803d; --accent-2: #0891b2; --on-accent: #ffffff;
+            --good: #15803d; --warn: #b45309; --bad: #dc2626; --shadow: 0 10px 28px rgba(20,40,30,.10);
+        }
+        [data-theme="techno"], [data-theme="tech"] {
+            --bg: #05060d; --surface: rgba(12,16,32,.88); --surface-2: rgba(20,26,52,.92); --border: rgba(0,240,255,.28);
+            --text: #e6f7ff; --muted: #7f95b8; --accent: #00f0ff; --accent-2: #ff2bd6; --on-accent: #001418;
+            --good: #39ff88; --warn: #ffd23f; --bad: #ff4d6d; --shadow: 0 0 24px rgba(0,240,255,.16);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+        }
+
+        /* ── Sidebar ── */
+        .admin-sidebar {
+            width: var(--sidebar-width);
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0; bottom: 0; left: 0;
+            z-index: 100;
+            overflow-y: auto;
+            transition: transform .25s ease;
+        }
+        .sidebar-brand {
+            padding: 24px 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 20px;
+            font-weight: 800;
+            text-decoration: none;
+            color: var(--text);
+            border-bottom: 1px solid var(--border);
+        }
+        .admin-badge {
+            font-size: 10px;
+            background: var(--accent);
+            color: var(--on-accent);
+            padding: 2px 7px;
+            border-radius: 6px;
+            font-weight: 800;
+            letter-spacing: .5px;
+            text-transform: uppercase;
+        }
+        .sidebar-nav {
+            padding: 16px 12px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .nav-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--muted);
+            padding: 12px 10px 4px;
+            font-weight: 700;
+        }
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            color: var(--text);
+            text-decoration: none;
+            font-size: 13.5px;
+            font-weight: 500;
+            transition: background .15s ease, color .15s ease;
+        }
+        .nav-link:hover {
+            background: var(--surface-2);
+            color: var(--accent);
+        }
+        .nav-link.active {
+            background: var(--accent);
+            color: var(--on-accent);
+            font-weight: 700;
+        }
+        .sidebar-footer {
+            padding: 16px 20px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .admin-profile {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            overflow: hidden;
+        }
+        .admin-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--accent);
+            color: var(--on-accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 13px;
+        }
+        .admin-name {
+            font-size: 13px;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* ── Main Layout ── */
+        .admin-layout {
+            margin-left: var(--sidebar-width);
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+        .admin-header {
+            height: 64px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 28px;
+            position: sticky;
+            top: 0;
+            z-index: 90;
+        }
+        .mobile-menu-btn {
+            display: none;
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 6px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .header-title {
+            font-size: 18px;
+            font-weight: 700;
+        }
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .theme-pill-wrap {
+            display: flex;
+            gap: 4px;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            padding: 3px;
+            border-radius: 20px;
+        }
+        .theme-pill-btn {
+            background: transparent;
+            border: none;
+            color: var(--muted);
+            padding: 4px 9px;
+            border-radius: 14px;
+            font-size: 11px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .theme-pill-btn.active {
+            background: var(--surface);
+            color: var(--accent);
+        }
+        .admin-content {
+            padding: 28px;
+            flex: 1;
+        }
+
+        /* ── Common UI Cards, Tables, Buttons ── */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 22px;
+            box-shadow: var(--shadow);
+            margin-bottom: 24px;
+        }
+        .card-title {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 18px;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: var(--muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            margin-bottom: 6px;
+        }
+        .stat-val {
+            font-size: 26px;
+            font-weight: 800;
+            color: var(--text);
+        }
+        .stat-sub {
+            font-size: 11px;
+            color: var(--muted);
+            margin-top: 4px;
+        }
+
+        /* Table styles */
+        .table-responsive {
+            overflow-x: auto;
+            width: 100%;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13.5px;
+        }
+        th {
+            text-align: left;
+            padding: 12px 14px;
+            font-size: 11.5px;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            color: var(--muted);
+            border-bottom: 1px solid var(--border);
+            font-weight: 700;
+        }
+        td {
+            padding: 13px 14px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text);
+        }
+        tr:hover td {
+            background: var(--surface-2);
+        }
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .badge-success { background: rgba(52,211,153,.15); color: #34d399; }
+        .badge-warning { background: rgba(251,191,36,.15); color: #fbbf24; }
+        .badge-danger { background: rgba(248,113,113,.15); color: #f87171; }
+        .badge-info { background: rgba(34,211,238,.15); color: #22d3ee; }
+        .badge-suspicious { background: #dc2626; color: #ffffff; animation: pulse 2s infinite; }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: opacity .15s ease;
+        }
+        .btn:hover { opacity: .9; }
+        .btn-primary { background: var(--accent); color: var(--on-accent); }
+        .btn-secondary { background: var(--surface-2); color: var(--text); border-color: var(--border); }
+        .btn-danger { background: var(--bad); color: #fff; }
+        .btn-sm { padding: 4px 8px; font-size: 11.5px; border-radius: 6px; }
+
+        .pagination {
+            display: flex;
+            gap: 6px;
+            margin-top: 18px;
+            justify-content: flex-end;
+        }
+        .page-link {
+            padding: 6px 12px;
+            border-radius: 6px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text);
+            text-decoration: none;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .page-link.active {
+            background: var(--accent);
+            color: var(--on-accent);
+            border-color: var(--accent);
+        }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: 10px;
+            font-size: 13.5px;
+            margin-bottom: 20px;
+            border: 1px solid transparent;
+        }
+        .alert-danger { background: rgba(248,113,113,.15); color: #f87171; border-color: rgba(248,113,113,.3); }
+        .alert-warning { background: rgba(251,191,36,.15); color: #fbbf24; border-color: rgba(251,191,36,.3); }
+        .alert-success { background: rgba(52,211,153,.15); color: #34d399; border-color: rgba(52,211,153,.3); }
+        .alert-info { background: rgba(34,211,238,.15); color: #22d3ee; border-color: rgba(34,211,238,.3); }
+
+        /* Responsive */
+        @media (max-width: 992px) {
+            .admin-sidebar {
+                transform: translateX(-100%);
+            }
+            .admin-sidebar.open {
+                transform: translateX(0);
+            }
+            .admin-layout {
+                margin-left: 0;
+            }
+            .mobile-menu-btn {
+                display: block;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <aside class="admin-sidebar" id="adminSidebar">
+        <a href="{{ url_for('admin.dashboard') }}" class="sidebar-brand">
+            <span>🛡️ FoodCheck</span>
+            <span class="admin-badge">Admin</span>
+        </a>
+
+        <nav class="sidebar-nav">
+            <div class="nav-label">Overview</div>
+            <a href="{{ url_for('admin.dashboard') }}" class="nav-link {% if request.endpoint == 'admin.dashboard' %}active{% endif %}">
+                <span>📊</span> Dashboard
+            </a>
+            <a href="{{ url_for('admin.feed_page') }}" class="nav-link {% if request.endpoint == 'admin.feed_page' %}active{% endif %}">
+                <span>⚡</span> Live Feed
+            </a>
+
+            <div class="nav-label">Management</div>
+            <a href="{{ url_for('admin.users_list') }}" class="nav-link {% if request.endpoint in ('admin.users_list', 'admin.user_detail') %}active{% endif %}">
+                <span>👥</span> Users
+            </a>
+            <a href="{{ url_for('admin.scans_list') }}" class="nav-link {% if request.endpoint == 'admin.scans_list' %}active{% endif %}">
+                <span>🔍</span> Scans Explorer
+            </a>
+            <a href="{{ url_for('admin.logins_history') }}" class="nav-link {% if request.endpoint == 'admin.logins_history' %}active{% endif %}">
+                <span>🔐</span> Login Events
+            </a>
+            <a href="{{ url_for('admin.active_sessions') }}" class="nav-link {% if request.endpoint == 'admin.active_sessions' %}active{% endif %}">
+                <span>💻</span> Active Sessions
+            </a>
+
+            <div class="nav-label">Security & System</div>
+            <a href="{{ url_for('admin.keys_page') }}" class="nav-link {% if request.endpoint == 'admin.keys_page' %}active{% endif %}">
+                <span>🔑</span> Admin Keys
+            </a>
+            <a href="{{ url_for('admin.system_health') }}" class="nav-link {% if request.endpoint == 'admin.system_health' %}active{% endif %}">
+                <span>🩺</span> System Health
+            </a>
+            <a href="{{ url_for('admin.audit_log') }}" class="nav-link {% if request.endpoint == 'admin.audit_log' %}active{% endif %}">
+                <span>📜</span> Audit Trail
+            </a>
+            <a href="{{ url_for('admin.export_data') }}" class="nav-link {% if request.endpoint == 'admin.export_data' %}active{% endif %}">
+                <span>📥</span> CSV Export
+            </a>
+            <a href="{{ url_for('admin.settings_page') }}" class="nav-link {% if request.endpoint == 'admin.settings_page' %}active{% endif %}">
+                <span>⚙️</span> Settings
+            </a>
+
+            <div class="nav-label">Application</div>
+            <a href="/" class="nav-link" target="_blank">
+                <span>🌐</span> View Web App ↗
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="admin-profile">
+                <div class="admin-avatar">{{ current_user.name[0] | upper if current_user.name else 'A' }}</div>
+                <div class="admin-name">{{ current_user.name }}</div>
+            </div>
+            <a href="{{ url_for('auth.logout') }}" class="btn btn-secondary btn-sm" title="Sign Out">🚪</a>
+        </div>
+    </aside>
+
+    <!-- Main Content Layout -->
+    <div class="admin-layout">
+        <header class="admin-header">
+            <div style="display: flex; align-items: center; gap: 14px;">
+                <button class="mobile-menu-btn" onclick="toggleSidebar()">☰</button>
+                <h1 class="header-title">{% block page_title %}Dashboard{% endblock %}</h1>
+            </div>
+
+            <div class="header-actions">
+                <div class="theme-pill-wrap">
+                    <button class="theme-pill-btn" onclick="setTheme('light')">☀️ Light</button>
+                    <button class="theme-pill-btn" onclick="setTheme('dark')">🌙 Dark</button>
+                    <button class="theme-pill-btn" onclick="setTheme('techno')">💎 Tech</button>
+                </div>
+            </div>
+        </header>
+
+        <main class="admin-content">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <script>
+        function toggleSidebar() {
+            document.getElementById('adminSidebar').classList.toggle('open');
+        }
+        function setTheme(t) {
+            document.documentElement.setAttribute('data-theme', t);
+            localStorage.setItem('foodcheck-theme', t);
+            updatePillActive();
+        }
+        function updatePillActive() {
+            var cur = document.documentElement.getAttribute('data-theme') || 'dark';
+            document.querySelectorAll('.theme-pill-btn').forEach(function(btn) {
+                var isAct = btn.textContent.toLowerCase().indexOf(cur === 'techno' ? 'tech' : cur) !== -1;
+                btn.classList.toggle('active', isAct);
+            });
+        }
+        updatePillActive();
+    </script>
+</body>
+</html>

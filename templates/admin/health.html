@@ -1,0 +1,78 @@
+{% extends "admin/base_admin.html" %}
+
+{% block title %}System Health — FoodCheck Admin{% endblock %}
+{% block page_title %}Service Health & Diagnostics{% endblock %}
+
+{% block content %}
+<!-- External Service Telemetry Cards -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-label">Gemini AI Calls</div>
+        <div class="stat-val">{{ gemini_total }}</div>
+        <div class="stat-sub">{{ gemini_success }} success / {{ gemini_failed }} errors</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Gemini Avg Latency</div>
+        <div class="stat-val" style="color: var(--accent);">{{ gemini_avg_time }} ms</div>
+        <div class="stat-sub">Across all model tiers</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Open Food Facts Hits</div>
+        <div class="stat-val" style="color: var(--good);">{{ off_hits }}</div>
+        <div class="stat-sub">{{ off_misses }} misses / fallback used</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Total Errors Logged</div>
+        <div class="stat-val" style="color: {% if errors | length > 0 %}var(--warn){% else %}var(--good){% endif %};">
+            {{ errors | length }}
+        </div>
+        <div class="stat-sub">Recent non-critical alerts</div>
+    </div>
+</div>
+
+<!-- Error Logs Table -->
+<div class="card">
+    <div class="card-title">
+        <span>⚠️ Recent Error & Exception Telemetry</span>
+    </div>
+
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Source Component</th>
+                    <th>Error Message</th>
+                    <th>Path</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for err in errors %}
+                <tr>
+                    <td style="font-family: monospace; font-size: 12px; color: var(--muted); white-space: nowrap;">
+                        {{ err.created_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                    </td>
+                    <td>
+                        {% if err.source == 'gemini' %}
+                            <span class="badge badge-warning">Gemini AI</span>
+                        {% elif err.source == 'open_food_facts' %}
+                            <span class="badge badge-info">Open Food Facts</span>
+                        {% else %}
+                            <span class="badge badge-danger">{{ err.source }}</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-size: 12.5px; color: var(--text);">{{ err.message }}</td>
+                    <td style="font-family: monospace; font-size: 12px; color: var(--muted);">{{ err.path or '—' }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="4" style="text-align: center; color: var(--muted); padding: 30px;">
+                        🎉 All systems operating normally with zero recent errors logged.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

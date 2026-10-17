@@ -1,0 +1,78 @@
+{% extends "admin/base_admin.html" %}
+
+{% block title %}Audit Trail — FoodCheck Admin{% endblock %}
+{% block page_title %}Administrative Audit Trail ({{ logs.total }} Actions){% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-title">
+        <span>📜 Admin Action Audit Log</span>
+        <div style="font-size: 12px; color: var(--muted); font-weight: normal;">
+            Immutable log of all user interventions, security changes, and exports
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Administrator</th>
+                    <th>Action</th>
+                    <th>Target User</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in logs.items %}
+                <tr>
+                    <td style="font-family: monospace; font-size: 12px; color: var(--muted); white-space: nowrap;">
+                        {{ a.created_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                    </td>
+                    <td>
+                        <strong style="color: var(--text);">{{ a.admin.name if a.admin else 'System' }}</strong>
+                        <div style="font-size: 11px; color: var(--muted);">@{{ a.admin.username if a.admin else 'system' }}</div>
+                    </td>
+                    <td>
+                        <span class="badge badge-info">{{ a.action }}</span>
+                    </td>
+                    <td>
+                        {% if a.target_user %}
+                            <a href="{{ url_for('admin.user_detail', user_id=a.target_user.id) }}" style="color: var(--accent); text-decoration: none; font-weight: 600;">
+                                @{{ a.target_user.username }}
+                            </a>
+                        {% elif a.target_user_id %}
+                            <span style="color: var(--muted); font-size: 12px;">User ID #{{ a.target_user_id }}</span>
+                        {% else %}
+                            <span style="color: var(--muted);">—</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-size: 12.5px; color: var(--muted);">
+                        {{ a.details or '—' }}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" style="text-align: center; color: var(--muted); padding: 30px;">
+                        No administrative actions recorded yet.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if logs.pages > 1 %}
+    <div class="pagination">
+        {% for p in logs.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+            {% if p %}
+                <a href="{{ url_for('admin.audit_log', page=p) }}" class="page-link {% if p == logs.page %}active{% endif %}">{{ p }}</a>
+            {% else %}
+                <span class="page-link" style="border: none;">…</span>
+            {% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

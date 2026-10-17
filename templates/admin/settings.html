@@ -1,0 +1,67 @@
+{% extends "admin/base_admin.html" %}
+
+{% block title %}System Settings — FoodCheck Admin{% endblock %}
+{% block page_title %}Application Configuration & Policies{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width: 680px;">
+    <div class="card-title">
+        <span>⚙️ Live System Controls</span>
+        <div style="font-size: 12px; color: var(--muted); font-weight: normal;">Changes apply immediately without server restart</div>
+    </div>
+
+    <form method="POST" action="{{ url_for('admin.settings_page') }}">
+        {{ form.hidden_tag() }}
+
+        <!-- Maintenance Mode -->
+        <div style="padding: 16px; border-radius: 10px; background: var(--surface-2); margin-bottom: 20px; border: 1px solid var(--border);">
+            <label style="display: flex; align-items: flex-start; gap: 12px; cursor: pointer;">
+                {{ form.maintenance_mode(style="margin-top: 4px; width: 18px; height: 18px; cursor: pointer;") }}
+                <div>
+                    <div style="font-weight: 700; font-size: 14px; color: var(--text);">Maintenance Mode</div>
+                    <div style="font-size: 12px; color: var(--muted); margin-top: 2px;">
+                        When enabled, non-admin visitors see a "We'll be back soon" maintenance screen. Only logged-in administrators can access the site and API.
+                    </div>
+                </div>
+            </label>
+        </div>
+
+        <!-- Registration Toggle -->
+        <div style="padding: 16px; border-radius: 10px; background: var(--surface-2); margin-bottom: 20px; border: 1px solid var(--border);">
+            <label style="display: flex; align-items: flex-start; gap: 12px; cursor: pointer;">
+                {{ form.registration_enabled(style="margin-top: 4px; width: 18px; height: 18px; cursor: pointer;") }}
+                <div>
+                    <div style="font-weight: 700; font-size: 14px; color: var(--text);">Allow Public User Registration</div>
+                    <div style="font-size: 12px; color: var(--muted); margin-top: 2px;">
+                        Uncheck this to freeze new account creation via <code>/register</code>. Existing users can still log in normally.
+                    </div>
+                </div>
+            </label>
+        </div>
+
+        <!-- Announcement Banner -->
+        <div class="form-group" style="margin-bottom: 20px;">
+            <label class="form-label" for="announcement_banner">Global Announcement Banner (Optional)</label>
+            {{ form.announcement_banner(class="form-control", placeholder="e.g. Scheduled database maintenance tonight at 11 PM IST.", style="background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 10px 14px;") }}
+            <div style="font-size: 11px; color: var(--muted); margin-top: 4px;">Leave empty to hide the announcement banner on the front page.</div>
+        </div>
+
+        <!-- Quota Limits -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+            <div class="form-group">
+                <label class="form-label" for="daily_scan_limit_anon">Daily Scan Limit (Anonymous IP)</label>
+                {{ form.daily_scan_limit_anon(class="form-control", style="background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 10px 14px;") }}
+                <div style="font-size: 11px; color: var(--muted); margin-top: 4px;">Protects free Gemini API quota from automated abuse.</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="daily_scan_limit_user">Daily Scan Limit (Signed-in User)</label>
+                {{ form.daily_scan_limit_user(class="form-control", style="background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 10px 14px;") }}
+                <div style="font-size: 11px; color: var(--muted); margin-top: 4px;">Max scans per registered user per calendar day.</div>
+            </div>
+        </div>
+
+        {{ form.submit(class="btn btn-primary", style="padding: 12px 24px; font-size: 14px; width: 100%; justify-content: center;") }}
+    </form>
+</div>
+{% endblock %}

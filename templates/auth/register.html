@@ -1,0 +1,57 @@
+{% extends "auth/base_auth.html" %}
+
+{% block title %}Create Account — FoodCheck{% endblock %}
+{% block subtitle %}Start tracking your food health and diet history{% endblock %}
+
+{% block content %}
+<form method="POST" action="{{ url_for('auth.register') }}">
+    {{ form.hidden_tag() }}
+
+    <div class="form-group">
+        <label class="form-label" for="name">Full Name</label>
+        {{ form.name(class="form-control", placeholder="e.g. Ansh Sharma", autofocus=True) }}
+        {% for error in form.name.errors %}
+            <div style="color: var(--bad); font-size: 12px; margin-top: 4px;">{{ error }}</div>
+        {% endfor %}
+    </div>
+
+    <div class="form-group">
+        <label class="form-label" for="username">Username</label>
+        {{ form.username(class="form-control", placeholder="e.g. ansh123") }}
+        {% for error in form.username.errors %}
+            <div style="color: var(--bad); font-size: 12px; margin-top: 4px;">{{ error }}</div>
+        {% endfor %}
+    </div>
+
+    <div class="form-group">
+        <label class="form-label" for="email">Email (Optional)</label>
+        {{ form.email(class="form-control", placeholder="e.g. ansh@example.com") }}
+        {% for error in form.email.errors %}
+            <div style="color: var(--bad); font-size: 12px; margin-top: 4px;">{{ error }}</div>
+        {% endfor %}
+    </div>
+
+    <div class="form-group">
+        <label class="form-label" for="password">Password</label>
+        {{ form.password(class="form-control", placeholder="At least 8 chars, 1 letter, 1 number") }}
+        <div style="font-size: 11px; color: var(--muted); margin-top: 4px;">Must be at least 8 characters with a letter and a number.</div>
+        {% for error in form.password.errors %}
+            <div style="color: var(--bad); font-size: 12px; margin-top: 4px;">{{ error }}</div>
+        {% endfor %}
+    </div>
+
+    <div class="form-group">
+        <label class="form-label" for="confirm_password">Confirm Password</label>
+        {{ form.confirm_password(class="form-control", placeholder="Repeat password") }}
+        {% for error in form.confirm_password.errors %}
+            <div style="color: var(--bad); font-size: 12px; margin-top: 4px;">{{ error }}</div>
+        {% endfor %}
+    </div>
+
+    {{ form.submit(class="btn-submit") }}
+</form>
+
+<div class="auth-footer">
+    Already have an account? <a href="{{ url_for('auth.login') }}">Sign In</a>
+</div>
+{% endblock %}

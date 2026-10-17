@@ -1,0 +1,119 @@
+{% extends "admin/base_admin.html" %}
+
+{% block title %}Scans Explorer — FoodCheck Admin{% endblock %}
+{% block page_title %}Food Product Safety Scans ({{ pagination.total }} Records){% endblock %}
+
+{% block content %}
+<div class="card">
+    <form method="GET" action="{{ url_for('admin.scans_list') }}" style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px;">
+        <input type="text" name="brand" value="{{ brand }}" placeholder="Filter by brand..." class="form-control" style="max-width: 200px; padding: 8px 12px; font-size: 13px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text);">
+
+        <input type="text" name="username" value="{{ username }}" placeholder="Filter by username..." class="form-control" style="max-width: 200px; padding: 8px 12px; font-size: 13px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text);">
+
+        <select name="verdict" class="form-control" style="max-width: 160px; padding: 8px 12px; font-size: 13px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text);">
+            <option value="">All Verdicts</option>
+            <option value="safe" {% if verdict == 'safe' %}selected{% endif %}>Safe / Healthy</option>
+            <option value="moderate" {% if verdict == 'moderate' %}selected{% endif %}>Moderate</option>
+            <option value="unsafe" {% if verdict == 'unsafe' %}selected{% endif %}>Unsafe / Unhealthy</option>
+        </select>
+
+        <select name="success" class="form-control" style="max-width: 150px; padding: 8px 12px; font-size: 13px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text);">
+            <option value="">All Statuses</option>
+            <option value="1" {% if success_filter == '1' %}selected{% endif %}>Successful</option>
+            <option value="0" {% if success_filter == '0' %}selected{% endif %}>Failed</option>
+        </select>
+
+        <button type="submit" class="btn btn-primary btn-sm">Apply Filters</button>
+        {% if brand or username or verdict or success_filter %}
+            <a href="{{ url_for('admin.scans_list') }}" class="btn btn-secondary btn-sm">Clear</a>
+        {% endif %}
+    </form>
+
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Product / Brand</th>
+                    <th>User</th>
+                    <th>Verdict</th>
+                    <th>Score</th>
+                    <th>Source</th>
+                    <th>Latency</th>
+                    <th>Date & Time</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for sc in pagination.items %}
+                <tr>
+                    <td>
+                        <div style="font-weight: 700; color: var(--text);">{{ sc.product_name or 'Unknown Product' }}</div>
+                        <div style="font-size: 12px; color: var(--muted);">{{ sc.brand or 'Brand Unknown' }}</div>
+                        {% if not sc.success %}
+                            <div style="font-size: 11px; color: var(--bad); margin-top: 2px;">Error: {{ sc.error_message }}</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if sc.user %}
+                            <a href="{{ url_for('admin.user_detail', user_id=sc.user.id) }}" style="color: var(--accent); text-decoration: none; font-weight: 600;">
+                                @{{ sc.user.username }}
+                            </a>
+                        {% else %}
+                            <span style="color: var(--muted); font-size: 12px;">Anonymous</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if not sc.success %}
+                            <span class="badge badge-danger">Failed</span>
+                        {% elif sc.health_verdict in ('safe', 'healthy') %}
+                            <span class="badge badge-success">Safe</span>
+                        {% elif sc.health_verdict == 'moderate' %}
+                            <span class="badge badge-warning">Moderate</span>
+                        {% elif sc.health_verdict in ('unsafe', 'unhealthy') %}
+                            <span class="badge badge-danger">Unsafe</span>
+                        {% else %}
+                            <span class="badge badge-info">{{ sc.health_verdict or 'N/A' }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if sc.health_score is not none %}
+                            <span style="font-weight: 800; font-size: 14px; color: {% if sc.health_score >= 70 %}var(--good){% elif sc.health_score >= 40 %}var(--warn){% else %}var(--bad){% endif %};">
+                                {{ sc.health_score }}/100
+                            </span>
+                        {% else %}
+                            <span style="color: var(--muted);">—</span>
+                        {% endif %}
+                    </td>
+                    <td><span class="badge badge-info">{{ sc.source }}</span></td>
+                    <td style="font-size: 12px; font-family: monospace;">
+                        {{ sc.response_time_ms ~ 'ms' if sc.response_time_ms else '—' }}
+                    </td>
+                    <td style="font-size: 12px; color: var(--muted);">
+                        {{ sc.created_at.strftime('%Y-%m-%d %H:%M') }}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" style="text-align: center; color: var(--muted); padding: 30px;">
+                        No product scans found matching criteria.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if pagination.pages > 1 %}
+    <div class="pagination">
+        {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+            {% if p %}
+                <a href="{{ url_for('admin.scans_list', page=p, brand=brand, username=username, verdict=verdict, success=success_filter) }}"
+                   class="page-link {% if p == pagination.page %}active{% endif %}">{{ p }}</a>
+            {% else %}
+                <span class="page-link" style="border: none;">…</span>
+            {% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,107 @@
+{% extends "admin/base_admin.html" %}
+
+{% block title %}Login Events — FoodCheck Admin{% endblock %}
+{% block page_title %}Authentication & Security Audit ({{ pagination.total }} Events){% endblock %}
+
+{% block content %}
+<div class="card">
+    <form method="GET" action="{{ url_for('admin.logins_history') }}" style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px;">
+        <input type="text" name="username" value="{{ username }}" placeholder="Filter by username or email..." class="form-control" style="max-width: 240px; padding: 8px 12px; font-size: 13px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text);">
+
+        <select name="event_type" class="form-control" style="max-width: 170px; padding: 8px 12px; font-size: 13px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text);">
+            <option value="">All Event Types</option>
+            <option value="login" {% if event_type == 'login' %}selected{% endif %}>User Login</option>
+            <option value="failed_login" {% if event_type == 'failed_login' %}selected{% endif %}>Failed Login</option>
+            <option value="admin_login" {% if event_type == 'admin_login' %}selected{% endif %}>Admin Login</option>
+            <option value="register" {% if event_type == 'register' %}selected{% endif %}>User Register</option>
+            <option value="admin_register" {% if event_type == 'admin_register' %}selected{% endif %}>Admin Register</option>
+            <option value="logout" {% if event_type == 'logout' %}selected{% endif %}>Logout</option>
+            <option value="locked" {% if event_type == 'locked' %}selected{% endif %}>Account Locked</option>
+        </select>
+
+        <select name="success" class="form-control" style="max-width: 140px; padding: 8px 12px; font-size: 13px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text);">
+            <option value="">All Results</option>
+            <option value="1" {% if success_val == '1' %}selected{% endif %}>Success</option>
+            <option value="0" {% if success_val == '0' %}selected{% endif %}>Failed</option>
+        </select>
+
+        <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+        {% if username or event_type or success_val %}
+            <a href="{{ url_for('admin.logins_history') }}" class="btn btn-secondary btn-sm">Clear</a>
+        {% endif %}
+    </form>
+
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>User / Attempted</th>
+                    <th>Event Type</th>
+                    <th>Status</th>
+                    <th>IP Address</th>
+                    <th>Client / Device</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ev in pagination.items %}
+                <tr>
+                    <td style="font-family: monospace; font-size: 12px; color: var(--muted);">
+                        {{ ev.created_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                    </td>
+                    <td>
+                        {% if ev.user %}
+                            <a href="{{ url_for('admin.user_detail', user_id=ev.user.id) }}" style="color: var(--accent); text-decoration: none; font-weight: 600;">
+                                @{{ ev.user.username }}
+                            </a>
+                        {% else %}
+                            <span style="font-family: monospace; color: var(--text);">{{ ev.email_attempted or 'Unknown' }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if ev.event_type in ('login', 'admin_login') %}
+                            <span class="badge badge-success">{{ ev.event_type }}</span>
+                        {% elif ev.event_type in ('failed_login', 'locked') %}
+                            <span class="badge badge-danger">{{ ev.event_type }}</span>
+                        {% else %}
+                            <span class="badge badge-info">{{ ev.event_type }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if ev.success %}
+                            <span style="color: var(--good); font-weight: 700;">Success</span>
+                        {% else %}
+                            <span style="color: var(--bad); font-weight: 700;">Failed</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-family: monospace; font-size: 12px;">{{ ev.ip_address or '—' }}</td>
+                    <td style="font-size: 11px; color: var(--muted); max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        {{ ev.user_agent or '—' }}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" style="text-align: center; color: var(--muted); padding: 30px;">
+                        No login events found.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if pagination.pages > 1 %}
+    <div class="pagination">
+        {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+            {% if p %}
+                <a href="{{ url_for('admin.logins_history', page=p, username=username, event_type=event_type, success=success_val) }}"
+                   class="page-link {% if p == pagination.page %}active{% endif %}">{{ p }}</a>
+            {% else %}
+                <span class="page-link" style="border: none;">…</span>
+            {% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

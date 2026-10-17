@@ -1,0 +1,39 @@
+{% extends "admin/base_admin.html" %}
+
+{% block title %}Export Data — FoodCheck Admin{% endblock %}
+{% block page_title %}Data Export & Archiving{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width: 600px;">
+    <div class="card-title">
+        <span>📥 Download Data as CSV</span>
+    </div>
+
+    <p style="font-size: 13.5px; color: var(--muted); margin-bottom: 24px;">
+        Generate and download structured CSV records for external class presentations, spreadsheet analytics, or compliance audits.
+    </p>
+
+    <form method="POST" action="{{ url_for('admin.export_data') }}">
+        {{ form.hidden_tag() }}
+
+        <div class="form-group" style="margin-bottom: 20px;">
+            <label class="form-label" for="export_type">Select Dataset</label>
+            {{ form.export_type(class="form-control", style="background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 10px 14px;") }}
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+            <div class="form-group">
+                <label class="form-label" for="date_from">Start Date (Optional)</label>
+                {{ form.date_from(class="form-control", placeholder="YYYY-MM-DD", style="background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 10px 14px;") }}
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="date_to">End Date (Optional)</label>
+                {{ form.date_to(class="form-control", placeholder="YYYY-MM-DD", style="background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 10px 14px;") }}
+            </div>
+        </div>
+
+        {{ form.submit(class="btn btn-primary", style="padding: 12px 24px; font-size: 14px; width: 100%; justify-content: center;") }}
+    </form>
+</div>
+{% endblock %}

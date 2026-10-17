@@ -2,16 +2,49 @@ import os
 import uuid
 import shutil
 import json
-from datetime import datetime
+import time
+from datetime import datetime, timedelta
 
-from flask import Flask, request, render_template, jsonify, session
+from flask import (
+    Flask,
+    request,
+    render_template,
+    jsonify,
+    session,
+    redirect,
+    url_for,
+    flash,
+    abort,
+)
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
+from flask_login import current_user, login_user, logout_user
 
+from extensions import db, migrate, login_manager, csrf, limiter
+from models import (
+    User,
+    Scan,
+    ActivityLog,
+    UserSession,
+    ErrorLog,
+    AppSetting,
+    LoginEvent,
+)
+from cli import register_cli_commands
+from auth import auth_bp
+from admin import admin_bp
 from services.vision_extractor import extract
 from services.product_lookup import search
 from services.health_analyzer import analyze
 from services.news_fetcher import get_news
+from services.activity_tracker import (
+    log_activity,
+    log_scan,
+    log_error,
+    log_login_event,
+    check_daily_scan_limit,
+    get_client_ip,
+)
 from services.database import (
     init_db,
     save_user_profile,
@@ -29,7 +62,7 @@ from services.database import (
     get_user_feedbacks,
     get_developer_feedbacks,
     get_all_feedbacks,
-    update_feedback_db
+    update_feedback_db,
 )
 from services.diet_generator import generate_diet_plan, calculate_bmr_and_tdee, suggest_quick_meal
 
@@ -37,21 +70,67 @@ from services.diet_generator import generate_diet_plan, calculate_bmr_and_tdee, 
 load_dotenv()
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5MB
-app.secret_key = os.getenv("SECRET_KEY", "foodcheck-dev-key-change-in-prod")
+app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5MB upload limit
+app.secret_key = os.getenv("SECRET_KEY", "foodcheck-dev-secret-key-change-in-prod-xyz789")
+
+# ── DATABASE CONFIGURATION (SQLite default / PostgreSQL override) ───────────
+db_url = (
+    os.getenv("DATABASE_URL")
+    or os.getenv("AIVEN_DATABASE_URL")
+    or os.getenv("POSTGRES_URL")
+    or ""
+).strip()
+
+if db_url.startswith("postgres://"):
+    db_url = db_url.replace("postgres://", "postgresql://", 1)
+
+if db_url.startswith("postgresql://"):
+    if "sslmode=" not in db_url:
+        sep = "&" if "?" in db_url else "?"
+        db_url += f"{sep}sslmode=require"
+    app.config["SQLALCHEMY_DATABASE_URI"] = db_url
+else:
+    # Local SQLite default in instance/foodcheck.db
+    os.makedirs(app.instance_path, exist_ok=True)
+    sqlite_path = os.path.join(app.instance_path, "foodcheck.db")
+    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{sqlite_path}"
+
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+# ── SECURE COOKIE & SESSION POLICIES ───────────────────────────────────────
+is_production = os.getenv("FLASK_ENV") == "production" or os.getenv("RENDER") is not None
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = is_production
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
+
+# ── INITIALIZE EXTENSIONS ──────────────────────────────────────────────────
+db.init_app(app)
+migrate.init_app(app, db)
+login_manager.init_app(app)
+csrf.init_app(app)
+limiter.init_app(app)
+
+# ── REGISTER BLUEPRINTS & CLI ──────────────────────────────────────────────
+app.register_blueprint(auth_bp)
+app.register_blueprint(admin_bp)
+register_cli_commands(app)
+
+# Ensure database tables exist (both SQLAlchemy models & legacy raw connection pool)
+with app.app_context():
+    try:
+        db.create_all()
+    except Exception as e:
+        app.logger.warning(f"SQLAlchemy table creation warning: {e}")
+    try:
+        init_db()
+    except Exception as e:
+        app.logger.warning(f"Legacy database initialization warning: {e}")
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Initialize database tables (PostgreSQL / SQLite)
-try:
-    init_db()
-except Exception as e:
-    app.logger.warning(f"Database initialization warning: {e}")
-
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
-
-# Simple in-memory caches to save API quota on repeated lookups
 HEALTH_CACHE = {}
 NEWS_CACHE = {}
 
@@ -60,16 +139,90 @@ def allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+# ── MIDDLEWARE: MAINTENANCE MODE & SESSION EXPIRY CHECK ─────────────────────
+@app.before_request
+def check_maintenance_and_session():
+    # 1. Maintenance Mode Enforcement
+    # Admins and static assets are exempt from maintenance screen
+    path = request.path
+    if not path.startswith("/static") and not path.startswith("/admin") and not path.startswith("/login"):
+        try:
+            maint_active = AppSetting.get_setting("maintenance_mode", "false") == "true"
+            if maint_active:
+                if not current_user.is_authenticated or not getattr(current_user, "is_admin", False):
+                    return render_template("maintenance.html"), 503
+        except Exception:
+            pass
+
+    # 2. Session Revocation & Last Seen Tracking
+    if current_user.is_authenticated:
+        current_user.last_seen_at = datetime.utcnow()
+        auth_token = session.get("auth_token")
+        if auth_token:
+            token_hash = UserSession.hash_token(auth_token)
+            user_sess = UserSession.query.filter_by(session_token_hash=token_hash).first()
+            if user_sess and user_sess.revoked:
+                logout_user()
+                session.clear()
+                flash("Your session was terminated by an administrator.", "warning")
+                return redirect(url_for("auth.login"))
+            elif user_sess:
+                user_sess.last_seen_at = datetime.utcnow()
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+
+# ── MIDDLEWARE: SECURITY HEADERS ────────────────────────────────────────────
+@app.after_request
+def set_security_headers(response):
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data: blob: https://images.openfoodfacts.org; "
+        "connect-src 'self' https://world.openfoodfacts.org; "
+        "frame-ancestors 'none';"
+    )
+    return response
+
+
+# ── CONTEXT PROCESSOR: ANNOUNCEMENT BANNER ──────────────────────────────────
+@app.context_processor
+def inject_global_banner():
+    try:
+        banner = AppSetting.get_setting("announcement_banner", "")
+    except Exception:
+        banner = ""
+    return dict(announcement_banner=banner)
+
+
+# ── PUBLIC ROUTES ───────────────────────────────────────────────────────────
+
 @app.route("/")
 def index():
+    log_activity(action="page_view", details={"page": "index"})
     return render_template("index.html")
 
 
-# ── STAGE 1: Vision (fastest — returns product info + ingredients) ──────────
+# ── STAGE 1: Vision (Gemini Multimodal OCR & Product Identification) ─────────
 @app.route("/analyze/vision", methods=["POST"])
+@limiter.limit("20 per minute")
 def analyze_vision():
-    """Extract brand, product, ingredients, and nutrition from the image.
-    Returns instantly so the frontend can render product info right away."""
+    """Extract brand, product, ingredients, and nutrition from the image."""
+    start_time = time.time()
+
+    # Quota limit check
+    allowed, remaining, limit = check_daily_scan_limit()
+    if not allowed:
+        return jsonify({
+            "error": f"Daily scan quota reached ({limit} scans/day). Please try again tomorrow or sign in."
+        }), 429
 
     if "image" not in request.files:
         return jsonify({"error": "No image file uploaded."}), 400
@@ -88,10 +241,23 @@ def analyze_vision():
     image_path = os.path.join(job_dir, filename)
     file.save(image_path)
 
+    image_size = os.path.getsize(image_path)
+    image_mime = file.mimetype
+
     try:
         vision_result = extract(image_path)
 
         if "error" in vision_result:
+            duration_ms = int((time.time() - start_time) * 1000)
+            log_scan(
+                source="vision",
+                response_time_ms=duration_ms,
+                image_size_bytes=image_size,
+                image_mime_type=image_mime,
+                success=False,
+                error_message=vision_result["error"],
+            )
+            log_error("gemini", vision_result["error"], path=request.path)
             return jsonify({"error": vision_result["error"]}), 422
 
         brand = vision_result.get("brand", "Unknown")
@@ -99,12 +265,12 @@ def analyze_vision():
         ingredients_text = vision_result.get("ingredients_text", "")
         nutrition_facts = vision_result.get("nutrition_facts")
 
-        # Quick Open Food Facts lookup (non-blocking, timeout 4s)
+        # Open Food Facts lookup
         off_match = None
         try:
             off_match = search(product_name, brand)
-        except Exception:
-            pass
+        except Exception as off_err:
+            log_error("open_food_facts", str(off_err), path=request.path)
 
         # Merge nutrition
         merged_nutrition = nutrition_facts or {}
@@ -113,6 +279,24 @@ def analyze_vision():
                 if v is not None and (k not in merged_nutrition or merged_nutrition.get(k) is None):
                     merged_nutrition[k] = v
 
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        # Log scan in database
+        scan_id = log_scan(
+            product_name=product_name,
+            brand=brand,
+            source="vision",
+            gemini_used=True,
+            response_time_ms=duration_ms,
+            image_size_bytes=image_size,
+            image_mime_type=image_mime,
+            success=True,
+        )
+        log_activity(
+            action="analyze_vision",
+            details={"brand": brand, "product": product_name, "scan_id": scan_id},
+        )
+
         return jsonify({
             "brand": brand,
             "product_name": product_name,
@@ -120,10 +304,12 @@ def analyze_vision():
             "nutrition_facts": merged_nutrition,
             "off_match": off_match,
             "data_source": vision_result.get("data_source", "image"),
+            "scan_id": scan_id,
         })
 
     except Exception as e:
         app.logger.error(f"Vision error: {e}", exc_info=True)
+        log_error("gemini", str(e), path=request.path)
         return jsonify({"error": f"Vision analysis failed: {str(e)}"}), 500
 
     finally:
@@ -133,8 +319,9 @@ def analyze_vision():
             pass
 
 
-# ── STAGE 2: Health scoring (called after vision returns) ───────────────────
+# ── STAGE 2: Health Scoring (Gemini Text Assessment) ────────────────────────
 @app.route("/analyze/health", methods=["POST"])
+@limiter.limit("30 per minute")
 def analyze_health():
     """Score ingredients + nutrition. Called with JSON body from frontend."""
     data = request.get_json(silent=True)
@@ -144,19 +331,42 @@ def analyze_health():
     ingredients_text = data.get("ingredients_text", "")
     nutrition_facts = data.get("nutrition_facts", {})
     product_name = data.get("product_name", "")
+    scan_id = data.get("scan_id")
 
     cache_key = f"{product_name.strip().lower()}:{ingredients_text.strip().lower()[:150]}"
     if cache_key in HEALTH_CACHE:
-        app.logger.info(f"Serving health analysis from cache for key: {cache_key}")
         return jsonify(HEALTH_CACHE[cache_key])
 
     try:
         health_result = analyze(ingredients_text, nutrition_facts, product_name)
         if health_result.get("score") is not None:
             HEALTH_CACHE[cache_key] = health_result
+
+            # Update existing scan record if scan_id provided
+            if scan_id:
+                try:
+                    s = Scan.query.get(int(scan_id))
+                    if s:
+                        s.health_verdict = health_result.get("verdict")
+                        s.health_score = health_result.get("score")
+                        flags = [f.get("type") for f in health_result.get("flags", []) if isinstance(f, dict)]
+                        s.key_flags = json.dumps(flags)
+                        db.session.commit()
+                except Exception:
+                    pass
+
+        log_activity(
+            action="analyze_health",
+            details={
+                "product": product_name,
+                "score": health_result.get("score"),
+                "verdict": health_result.get("verdict"),
+            },
+        )
         return jsonify(health_result)
     except Exception as e:
         app.logger.error(f"Health analysis error: {e}", exc_info=True)
+        log_error("gemini", str(e), path=request.path)
         return jsonify({
             "score": None,
             "verdict": "unknown",
@@ -166,7 +376,7 @@ def analyze_health():
         })
 
 
-# ── STAGE 3: News (independent, called in parallel with health) ─────────────
+# ── STAGE 3: News (Corporate Transparency & FSSAI Notices) ──────────────────
 @app.route("/news")
 def news_endpoint():
     """Fetch corporate transparency news for a brand."""
@@ -183,14 +393,16 @@ def news_endpoint():
         articles_list = articles or []
         if articles_list:
             NEWS_CACHE[brand_key] = articles_list
+        log_activity(action="news_fetch", details={"brand": brand, "count": len(articles_list)})
         return jsonify({"articles": articles_list})
-    except Exception:
+    except Exception as e:
+        log_error("news", str(e), path=request.path)
         return jsonify({"articles": []})
 
 
 @app.route("/health")
 def health_check():
-    return jsonify({"status": "ok", "version": "v1.2.3-fast-lite"})
+    return jsonify({"status": "ok", "version": "v2.0.0-admin-secured"})
 
 
 @app.route("/debug/models")
@@ -222,152 +434,12 @@ def debug_models():
         }), 500
 
 
-FEEDBACK_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "feedbacks.json")
-
-DEFAULT_FEEDBACKS = [
-    {
-        "id": "fb-1",
-        "name": "Aarav Sharma",
-        "rating": 5,
-        "message": "Incredible accuracy! It detected excess sodium and hidden maltodextrin in instant noodles and suggested healthier millet noodles.",
-        "date": "Today, 10:45 AM"
-    },
-    {
-        "id": "fb-2",
-        "name": "Priya Patel",
-        "rating": 5,
-        "message": "As a mother of two, the additive red flags help me check breakfast cereals in seconds. Love the clean design and dark theme!",
-        "date": "Yesterday, 4:20 PM"
-    },
-    {
-        "id": "fb-3",
-        "name": "Rohan Deshmukh",
-        "rating": 4,
-        "message": "Quick and accurate label scanning. The camera option works smoothly on mobile. Super helpful app!",
-        "date": "2 days ago"
-    }
-]
-
-
-def load_feedbacks():
-    if not os.path.exists(FEEDBACK_FILE):
-        try:
-            with open(FEEDBACK_FILE, "w", encoding="utf-8") as f:
-                json.dump(DEFAULT_FEEDBACKS, f, indent=2)
-            return list(DEFAULT_FEEDBACKS)
-        except Exception:
-            return list(DEFAULT_FEEDBACKS)
-    try:
-        with open(FEEDBACK_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return data if isinstance(data, list) else list(DEFAULT_FEEDBACKS)
-    except Exception:
-        return list(DEFAULT_FEEDBACKS)
-
-
-def save_feedbacks(feedbacks):
-    try:
-        with open(FEEDBACK_FILE, "w", encoding="utf-8") as f:
-            json.dump(feedbacks, f, indent=2)
-    except Exception as e:
-        app.logger.error(f"Failed to save feedbacks: {e}")
-
-
-# ── USER AUTHENTICATION & SESSION ROUTES ───────────────────────────────────
-
-@app.route("/api/auth/register", methods=["POST"])
-def auth_register():
-    try:
-        data = request.get_json(silent=True) or request.form.to_dict() or {}
-        raw_username = (data.get("username") or data.get("user_id") or "").strip()
-        username = raw_username.lower().replace(" ", "_")
-        password = (data.get("password") or "").strip()
-        name = (data.get("name") or raw_username or username).strip()
-        is_dev = bool(data.get("is_developer"))
-
-        if not username or not password:
-            return jsonify({"error": "User ID and Password are required."}), 400
-
-        if len(username) < 2:
-            return jsonify({"error": "User ID must be at least 2 characters long."}), 400
-
-        if len(password) < 4:
-            return jsonify({"error": "Password must be at least 4 characters long."}), 400
-
-        role = "developer" if is_dev else "user"
-        user, err = register_account(username, password, name=name, role=role)
-        if err:
-            return jsonify({"error": err}), 400
-
-        session["user_id"] = user["user_id"]
-        session["name"] = user["name"]
-        session["role"] = user["role"]
-
-        return jsonify({"status": "success", "user": user})
-    except Exception as e:
-        app.logger.error(f"Error during registration endpoint: {e}", exc_info=True)
-        return jsonify({"error": f"Failed to register: {str(e)}"}), 500
-
-
-@app.route("/api/auth/login", methods=["POST"])
-def auth_login():
-    try:
-        data = request.get_json(silent=True) or request.form.to_dict() or {}
-        raw_username = (data.get("username") or data.get("user_id") or "").strip()
-        username = raw_username.lower().replace(" ", "_")
-        password = (data.get("password") or "").strip()
-
-        if not username or not password:
-            return jsonify({"error": "Please provide both User ID and Password."}), 400
-
-        user, err = authenticate_account(username, password)
-        if err:
-            return jsonify({"error": err}), 401
-
-        session["user_id"] = user["user_id"]
-        session["name"] = user["name"]
-        session["role"] = user["role"]
-
-        return jsonify({"status": "success", "user": user})
-    except Exception as e:
-        app.logger.error(f"Error during login endpoint: {e}", exc_info=True)
-        return jsonify({"error": f"Failed to log in: {str(e)}"}), 500
-
-
-@app.route("/api/auth/logout", methods=["POST", "GET"])
-def auth_logout():
-    session.clear()
-    return jsonify({"status": "success", "message": "Logged out successfully."})
-
-
-@app.route("/api/auth/me", methods=["GET"])
-def auth_me():
-    try:
-        user_id = session.get("user_id")
-        if not user_id:
-            return jsonify({"authenticated": False})
-        account = get_account(user_id)
-        if not account:
-            session.clear()
-            return jsonify({"authenticated": False})
-        return jsonify({
-            "authenticated": True,
-            "user_id": account["user_id"],
-            "name": account["name"],
-            "role": account.get("role", "user"),
-            "is_developer": account.get("role") == "developer",
-        })
-    except Exception as e:
-        app.logger.error(f"Error in auth_me endpoint: {e}", exc_info=True)
-        return jsonify({"authenticated": False, "error": str(e)})
-
-
 # ── COMMUNITY FEEDBACK & EDIT ROUTES ────────────────────────────────────────
 
 @app.route("/api/feedback", methods=["GET", "POST"])
 def handle_feedback():
     user_id = session.get("user_id")
-    is_dev = session.get("role") == "developer"
+    is_dev = session.get("role") in ("developer", "admin")
 
     if request.method == "POST":
         data = request.get_json(silent=True) or request.form.to_dict()
@@ -385,7 +457,6 @@ def handle_feedback():
         fb_id = f"fb-{str(uuid.uuid4())[:8]}"
         saved_fb = save_feedback_db(fb_id, user_id_val, name, rating, message)
 
-        # All signed-in users can see all feedbacks
         if user_id:
             feedbacks = get_all_feedbacks()
             for f in feedbacks:
@@ -394,17 +465,18 @@ def handle_feedback():
             saved_fb["can_edit"] = False
             feedbacks = [saved_fb]
 
+        log_activity(action="submit_feedback", details={"rating": rating, "fb_id": fb_id})
+
         return jsonify({
             "status": "success",
             "feedback": saved_fb,
             "feedbacks": feedbacks,
             "is_developer": is_dev,
-            "is_signed_in": bool(user_id)
+            "is_signed_in": bool(user_id),
         })
 
     else:
         if user_id:
-            # All signed-in users see all feedback from everyone
             feedbacks = get_all_feedbacks()
             for f in feedbacks:
                 f["can_edit"] = is_dev or (f.get("user_id") == user_id)
@@ -413,22 +485,21 @@ def handle_feedback():
                 "feedbacks": feedbacks,
                 "is_developer": is_dev,
                 "is_signed_in": True,
-                "role": session.get("role", "user")
+                "role": session.get("role", "user"),
             })
         else:
-            # Not logged in yet - prompt to sign in to see community feedback
             return jsonify({
                 "feedbacks": [],
                 "is_developer": False,
                 "is_signed_in": False,
-                "prompt_login": True
+                "prompt_login": True,
             })
 
 
 @app.route("/api/feedback/<fb_id>/edit", methods=["POST", "PUT"])
 @app.route("/api/feedback/<fb_id>", methods=["PUT"])
 def edit_feedback_endpoint(fb_id):
-    """Allow signed-in users to edit their own feedback (or developers to edit any feedback)."""
+    """Allow signed-in users to edit their own feedback."""
     user_id = session.get("user_id")
     if not user_id:
         return jsonify({"error": "Please sign in to edit your feedback.", "auth_required": True}), 401
@@ -439,22 +510,23 @@ def edit_feedback_endpoint(fb_id):
         return jsonify({"error": "Feedback message cannot be empty."}), 400
 
     rating = data.get("rating", 5)
-    is_dev = session.get("role") == "developer"
+    is_dev = session.get("role") in ("developer", "admin")
 
     updated_fb, err = update_feedback_db(fb_id, user_id, rating, message, is_dev=is_dev)
     if err:
         return jsonify({"error": err}), 403
 
-    # Return updated community feedback list
     feedbacks = get_all_feedbacks()
     for f in feedbacks:
         f["can_edit"] = is_dev or (f.get("user_id") == user_id)
+
+    log_activity(action="edit_feedback", details={"fb_id": fb_id})
 
     return jsonify({
         "status": "success",
         "message": "Feedback updated successfully!",
         "feedback": updated_fb,
-        "feedbacks": feedbacks
+        "feedbacks": feedbacks,
     })
 
 
@@ -474,14 +546,13 @@ def diet_profile():
 
         data["user_id"] = user_id
 
-        # Calculate BMR and TDEE based on inputs
         stats = calculate_bmr_and_tdee(
             age=data.get("age"),
             gender=data.get("gender"),
             height_cm=data.get("height_cm"),
             weight_kg=data.get("weight_kg"),
             activity_level=data.get("activity_level", "moderate"),
-            goal=data.get("goal", "maintain")
+            goal=data.get("goal", "maintain"),
         )
 
         data["target_calories"] = int(data.get("target_calories") or stats["target_calories"])
@@ -509,14 +580,14 @@ def diet_profile():
             height_cm=profile.get("height_cm"),
             weight_kg=profile.get("weight_kg"),
             activity_level=profile.get("activity_level"),
-            goal=profile.get("goal")
+            goal=profile.get("goal"),
         )
         return jsonify({"profile": profile, "stats": stats})
 
 
 @app.route("/api/diet/plan/generate", methods=["POST"])
 def generate_plan_endpoint():
-    """Generate a personalized daily diet plan using Groq Cloud API (Meta-Llama-3.1-8B-Instruct)."""
+    """Generate a personalized daily diet plan using Groq Cloud API."""
     user_id = session.get("user_id")
     if not user_id:
         return jsonify({"error": "Please log in to generate your diet plan.", "auth_required": True}), 401
@@ -531,34 +602,33 @@ def generate_plan_endpoint():
     if not current_profile.get("name"):
         current_profile["name"] = session.get("name") or user_id
 
-    # Save latest profile preferences
     try:
         saved_profile = save_user_profile(current_profile)
     except Exception as e:
         app.logger.warning(f"Profile update warning: {e}")
         saved_profile = current_profile
 
-    # Generate plan with Groq Cloud Meta-Llama-3.1-8B-Instruct
     try:
         plan_content = generate_diet_plan(saved_profile)
         plan_id = f"dp-{str(uuid.uuid4())[:8]}"
         plan_name = plan_content.get("plan_title") or f"{saved_profile.get('goal', 'Personalized').title()} Diet Plan"
         target_calories = plan_content.get("target_calories", saved_profile.get("target_calories", 2000))
 
-        # Save to database (Aiven PostgreSQL or SQLite)
         save_diet_plan(
             plan_id=plan_id,
             user_id=user_id,
             plan_name=plan_name,
             target_calories=target_calories,
-            plan_data=plan_content
+            plan_data=plan_content,
         )
+
+        log_activity(action="generate_diet_plan", details={"plan_id": plan_id})
 
         return jsonify({
             "status": "success",
             "plan_id": plan_id,
             "plan": plan_content,
-            "profile": saved_profile
+            "profile": saved_profile,
         })
     except Exception as e:
         app.logger.error(f"Error generating diet plan: {e}", exc_info=True)
@@ -567,7 +637,7 @@ def generate_plan_endpoint():
 
 @app.route("/api/diet/suggest_meal", methods=["POST"])
 def suggest_meal_endpoint():
-    """Suggest 3 meal options using Groq Meta-Llama-3.1-8B based on preferences & remaining calories."""
+    """Suggest 3 meal options based on preferences & remaining calories."""
     user_id = session.get("user_id")
     if not user_id:
         return jsonify({"error": "Please log in to get meal suggestions.", "auth_required": True}), 401
@@ -576,7 +646,6 @@ def suggest_meal_endpoint():
     meal_type = data.get("meal_type", "Lunch")
     craving = data.get("craving", "")
 
-    # Target calories: either explicit or based on remaining calories today
     target_calories = data.get("target_calories")
     if not target_calories:
         today_summary = get_daily_calorie_summary(user_id)
@@ -585,6 +654,7 @@ def suggest_meal_endpoint():
 
     profile = get_user_profile(user_id) or {}
     res = suggest_quick_meal(profile, meal_type=meal_type, target_calories=target_calories, craving=craving)
+    log_activity(action="suggest_meal", details={"meal_type": meal_type})
     return jsonify({"status": "success", "result": res})
 
 
@@ -614,7 +684,7 @@ def get_single_plan(plan_id):
         plan = get_diet_plan(plan_id)
         if not plan:
             return jsonify({"error": "Diet plan not found."}), 404
-        if plan.get("user_id") != user_id and session.get("role") != "developer":
+        if plan.get("user_id") != user_id and session.get("role") not in ("developer", "admin"):
             return jsonify({"error": "Access denied to this diet plan."}), 403
         return jsonify({"plan": plan})
     except Exception as e:
@@ -662,13 +732,13 @@ def log_calorie_meal():
             calories=calories,
             protein_g=protein_g,
             carbs_g=carbs_g,
-            fat_g=fat_g
+            fat_g=fat_g,
         )
         summary = get_daily_calorie_summary(user_id, log_date)
         return jsonify({
             "status": "success",
             "logged_item": logged,
-            "daily_summary": summary
+            "daily_summary": summary,
         })
     except Exception as e:
         app.logger.error(f"Error logging calorie item: {e}", exc_info=True)
@@ -708,13 +778,226 @@ def delete_calorie_log(log_id):
         return jsonify({"error": str(e)}), 500
 
 
+# ── EXISTING /api/auth/* AJAX ENDPOINTS (SYNCHRONIZED WITH FLASK-LOGIN) ────
+
+@app.route("/api/auth/register", methods=["POST"])
+@limiter.limit("10 per minute")
+def auth_register():
+    try:
+        # Check registration enabled
+        if AppSetting.get_setting("registration_enabled", "true") == "false":
+            return jsonify({"error": "Public registration is currently disabled by administrator."}), 403
+
+        data = request.get_json(silent=True) or request.form.to_dict() or {}
+        raw_username = (data.get("username") or data.get("user_id") or "").strip()
+        username = raw_username.lower().replace(" ", "_")
+        password = (data.get("password") or "").strip()
+        name = (data.get("name") or raw_username or username).strip()
+
+        if not username or not password:
+            return jsonify({"error": "User ID and Password are required."}), 400
+        if len(username) < 2:
+            return jsonify({"error": "User ID must be at least 2 characters long."}), 400
+        if len(password) < 4:
+            return jsonify({"error": "Password must be at least 4 characters long."}), 400
+
+        # Enforce server-side role rule: Public registration ALWAYS produces 'user' role
+        role = "user"
+
+        # Check existing User in SQLAlchemy
+        existing = User.query.filter_by(username=username).first()
+        if existing:
+            return jsonify({"error": "User ID already exists. Please choose a different ID or Sign In."}), 400
+
+        # Save to legacy layer
+        user_legacy, err = register_account(username, password, name=name, role=role)
+        if err:
+            return jsonify({"error": err}), 400
+
+        # Sync into SQLAlchemy User
+        sql_user = User(
+            username=username,
+            name=name,
+            role=role,
+            is_active=True,
+        )
+        sql_user.set_password(password)
+        db.session.add(sql_user)
+        db.session.commit()
+
+        # Log in via Flask-Login and session
+        login_user(sql_user)
+        session["user_id"] = sql_user.username
+        session["name"] = sql_user.name
+        session["role"] = sql_user.role
+
+        log_login_event("register", user_id=sql_user.id, email_attempted=username, success=True)
+        log_activity("user_registered", details={"username": username}, user_id=sql_user.id)
+
+        return jsonify({"status": "success", "user": user_legacy})
+    except Exception as e:
+        app.logger.error(f"Error during registration endpoint: {e}", exc_info=True)
+        return jsonify({"error": f"Failed to register: {str(e)}"}), 500
+
+
+@app.route("/api/auth/login", methods=["POST"])
+@limiter.limit("10 per minute")
+def auth_login():
+    try:
+        data = request.get_json(silent=True) or request.form.to_dict() or {}
+        raw_username = (data.get("username") or data.get("user_id") or "").strip()
+        username = raw_username.lower().replace(" ", "_")
+        password = (data.get("password") or "").strip()
+
+        if not username or not password:
+            return jsonify({"error": "Please provide both User ID and Password."}), 400
+
+        # Look up in SQLAlchemy User table
+        user = User.query.filter_by(username=username).first()
+        if not user:
+            # Fallback check in legacy users_auth table
+            user_legacy, err = authenticate_account(username, password)
+            if err or not user_legacy:
+                log_login_event("failed_login", email_attempted=username, success=False)
+                return jsonify({"error": "Invalid User ID or Password."}), 401
+
+            # Migrate / mirror user into SQLAlchemy User
+            user = User(
+                username=user_legacy["user_id"],
+                name=user_legacy["name"],
+                role=user_legacy.get("role", "user"),
+                is_active=True,
+            )
+            user.set_password(password)
+            db.session.add(user)
+            db.session.commit()
+
+        # Check disabled
+        if not user.is_active:
+            log_login_event("failed_login", user_id=user.id, email_attempted=username, success=False)
+            return jsonify({"error": "This account is currently disabled."}), 403
+
+        # Check locked
+        if user.is_locked:
+            minutes = int((user.locked_until - datetime.utcnow()).total_seconds() / 60) + 1
+            log_login_event("locked", user_id=user.id, email_attempted=username, success=False)
+            return jsonify({"error": f"Account temporarily locked. Retry in {minutes} minutes."}), 429
+
+        # Validate password
+        if not user.check_password(password):
+            was_locked = user.record_failed_login()
+            db.session.commit()
+            log_login_event("failed_login", user_id=user.id, email_attempted=username, success=False)
+            if was_locked:
+                return jsonify({"error": "Too many failed attempts. Account locked for 15 minutes."}), 429
+            return jsonify({"error": "Invalid User ID or Password."}), 401
+
+        # Success
+        user.record_successful_login(ip=get_client_ip())
+        db.session.commit()
+
+        login_user(user)
+        session["user_id"] = user.username
+        session["name"] = user.name
+        session["role"] = user.role
+
+        log_login_event("login", user_id=user.id, email_attempted=username, success=True)
+        log_activity("user_login", details={"username": user.username}, user_id=user.id)
+
+        return jsonify({
+            "status": "success",
+            "user": {
+                "user_id": user.username,
+                "name": user.name,
+                "role": user.role,
+            }
+        })
+    except Exception as e:
+        app.logger.error(f"Error during login endpoint: {e}", exc_info=True)
+        return jsonify({"error": f"Failed to log in: {str(e)}"}), 500
+
+
+@app.route("/api/auth/logout", methods=["POST", "GET"])
+def auth_logout():
+    if current_user.is_authenticated:
+        log_login_event("logout", user_id=current_user.id, success=True)
+        logout_user()
+    session.clear()
+    return jsonify({"status": "success", "message": "Logged out successfully."})
+
+
+@app.route("/api/auth/me", methods=["GET"])
+def auth_me():
+    try:
+        if current_user.is_authenticated:
+            return jsonify({
+                "authenticated": True,
+                "user_id": current_user.username,
+                "name": current_user.name,
+                "role": current_user.role,
+                "is_admin": current_user.is_admin,
+                "is_developer": current_user.role in ("developer", "admin"),
+            })
+
+        user_id = session.get("user_id")
+        if not user_id:
+            return jsonify({"authenticated": False})
+        account = get_account(user_id)
+        if not account:
+            session.clear()
+            return jsonify({"authenticated": False})
+        return jsonify({
+            "authenticated": True,
+            "user_id": account["user_id"],
+            "name": account["name"],
+            "role": account.get("role", "user"),
+            "is_admin": account.get("role") == "admin",
+            "is_developer": account.get("role") in ("developer", "admin"),
+        })
+    except Exception as e:
+        app.logger.error(f"Error in auth_me endpoint: {e}", exc_info=True)
+        return jsonify({"authenticated": False, "error": str(e)})
+
+
+# Exempt legacy JSON API endpoints from CSRF
+for _api_func in [
+    auth_register,
+    auth_login,
+    auth_logout,
+    handle_feedback,
+    edit_feedback_endpoint,
+    diet_profile,
+    generate_plan_endpoint,
+    suggest_meal_endpoint,
+    get_user_plans,
+    get_single_plan,
+    log_calorie_meal,
+    get_today_calories,
+    delete_calorie_log,
+]:
+    csrf.exempt(_api_func)
+
+
+# ── ERROR HANDLERS ──────────────────────────────────────────────────────────
+
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({"error": "Resource not found."}), 404
+
+
 @app.errorhandler(413)
 def too_large(e):
     return jsonify({"error": "File too large. Maximum size is 5MB."}), 413
 
 
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    return jsonify({"error": f"Rate limit exceeded: {e.description}"}), 429
+
+
 @app.errorhandler(500)
 def server_error(e):
+    log_error("app", str(e), path=request.path)
     return jsonify({"error": "An internal error occurred. Please try again."}), 500
 
 

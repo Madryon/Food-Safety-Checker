@@ -1,0 +1,227 @@
+{% extends "admin/base_admin.html" %}
+
+{% block title %}User Detail: {{ user.username }} — FoodCheck Admin{% endblock %}
+{% block page_title %}User Detail: {{ user.name }} (@{{ user.username }}){% endblock %}
+
+{% block content %}
+<div style="display: grid; grid-template-columns: 1fr 2fr; gap: 24px; margin-bottom: 24px;">
+    <!-- Profile & Actions Card -->
+    <div class="card" style="margin-bottom: 0;">
+        <div class="card-title">
+            <span>👤 Profile & Status</span>
+            {% if not user.is_active %}
+                <span class="badge badge-danger">Disabled</span>
+            {% elif user.is_locked %}
+                <span class="badge badge-warning">Locked</span>
+            {% else %}
+                <span class="badge badge-success">Active</span>
+            {% endif %}
+        </div>
+
+        <div style="margin-bottom: 18px;">
+            <div style="font-size: 12px; color: var(--muted);">Full Name</div>
+            <div style="font-size: 15px; font-weight: 700;">{{ user.name }}</div>
+        </div>
+
+        <div style="margin-bottom: 18px;">
+            <div style="font-size: 12px; color: var(--muted);">Username</div>
+            <div style="font-family: monospace;">@{{ user.username }}</div>
+        </div>
+
+        <div style="margin-bottom: 18px;">
+            <div style="font-size: 12px; color: var(--muted);">Email Address</div>
+            <div>{{ user.email or 'Not specified' }}</div>
+        </div>
+
+        <div style="margin-bottom: 18px;">
+            <div style="font-size: 12px; color: var(--muted);">System Role</div>
+            <div><span class="badge {% if user.role == 'admin' %}badge-success{% else %}badge-info{% endif %}">{{ user.role }}</span></div>
+        </div>
+
+        <div style="margin-bottom: 18px;">
+            <div style="font-size: 12px; color: var(--muted);">Account Created</div>
+            <div style="font-size: 13px;">{{ user.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</div>
+        </div>
+
+        <div style="margin-bottom: 18px;">
+            <div style="font-size: 12px; color: var(--muted);">Last Login</div>
+            <div style="font-size: 13px;">{{ user.last_login_at.strftime('%Y-%m-%d %H:%M UTC') if user.last_login_at else 'Never' }}</div>
+        </div>
+
+        <div style="margin-bottom: 24px;">
+            <div style="font-size: 12px; color: var(--muted);">Total Logins</div>
+            <div style="font-size: 15px; font-weight: 700;">{{ user.login_count }}</div>
+        </div>
+
+        <!-- Administrative Actions -->
+        <hr style="border: none; border-top: 1px solid var(--border); margin: 20px 0;">
+        <div style="font-size: 13px; font-weight: 700; margin-bottom: 12px;">Admin Controls</div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+            {% if user.is_active %}
+                <form method="POST" action="{{ url_for('admin.user_action', user_id=user.id) }}" onsubmit="return confirm('Are you sure you want to disable this user account?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="disable">
+                    <button type="submit" class="btn btn-secondary btn-sm" style="width: 100%; justify-content: center; color: var(--warn);">
+                        🚫 Disable Account
+                    </button>
+                </form>
+            {% else %}
+                <form method="POST" action="{{ url_for('admin.user_action', user_id=user.id) }}" onsubmit="return confirm('Enable this user account?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="enable">
+                    <button type="submit" class="btn btn-primary btn-sm" style="width: 100%; justify-content: center;">
+                        ✅ Enable Account
+                    </button>
+                </form>
+            {% endif %}
+
+            {% if user.is_locked or user.failed_login_attempts > 0 %}
+                <form method="POST" action="{{ url_for('admin.user_action', user_id=user.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="reset_lockout">
+                    <button type="submit" class="btn btn-secondary btn-sm" style="width: 100%; justify-content: center;">
+                        🔄 Reset Failed Logins & Lockout
+                    </button>
+                </form>
+            {% endif %}
+
+            <form method="POST" action="{{ url_for('admin.user_action', user_id=user.id) }}" onsubmit="return confirm('Revoke all active sessions for this user?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="force_logout">
+                <button type="submit" class="btn btn-secondary btn-sm" style="width: 100%; justify-content: center;">
+                    ⚡ Force Logout (Revoke Sessions)
+                </button>
+            </form>
+
+            <form method="POST" action="{{ url_for('admin.user_action', user_id=user.id) }}" onsubmit="return confirm('DANGER: This will permanently delete this account and all associated scans, diet plans, and session records. Continue?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="action" value="delete">
+                <button type="submit" class="btn btn-danger btn-sm" style="width: 100%; justify-content: center;">
+                    🗑️ Permanently Delete User
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Active Sessions & Recent Activity -->
+    <div style="display: flex; flex-direction: column; gap: 24px;">
+        <!-- Active Sessions -->
+        <div class="card" style="margin-bottom: 0;">
+            <div class="card-title">
+                <span>💻 Active Sessions ({{ active_sessions | length }})</span>
+            </div>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>IP Address</th>
+                            <th>User Agent</th>
+                            <th>Last Active</th>
+                            <th>Created</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for s in active_sessions %}
+                        <tr>
+                            <td style="font-family: monospace; font-size: 12px;">{{ s.ip or 'Unknown' }}</td>
+                            <td style="font-size: 12px; color: var(--muted); max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                {{ s.user_agent }}
+                            </td>
+                            <td style="font-size: 12px;">{{ s.last_seen_at.strftime('%b %d, %H:%M') }}</td>
+                            <td style="font-size: 12px; color: var(--muted);">{{ s.created_at.strftime('%b %d, %H:%M') }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" style="text-align: center; color: var(--muted); padding: 16px;">No currently active sessions.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Recent Scans -->
+        <div class="card" style="margin-bottom: 0;">
+            <div class="card-title">
+                <span>🔍 Recent Product Scans</span>
+            </div>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th>Brand</th>
+                            <th>Verdict</th>
+                            <th>Score</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for sc in recent_scans %}
+                        <tr>
+                            <td><strong>{{ sc.product_name or 'Unknown' }}</strong></td>
+                            <td>{{ sc.brand or '—' }}</td>
+                            <td>
+                                {% if sc.health_verdict in ('safe', 'healthy') %}
+                                    <span class="badge badge-success">Safe</span>
+                                {% elif sc.health_verdict == 'moderate' %}
+                                    <span class="badge badge-warning">Moderate</span>
+                                {% else %}
+                                    <span class="badge badge-danger">Unsafe</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ sc.health_score or '—' }}</td>
+                            <td style="font-size: 12px; color: var(--muted);">{{ sc.created_at.strftime('%b %d, %H:%M') }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="5" style="text-align: center; color: var(--muted); padding: 16px;">No scans recorded for this user yet.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Recent Logins -->
+        <div class="card" style="margin-bottom: 0;">
+            <div class="card-title">
+                <span>🔐 Recent Authentication Events</span>
+            </div>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Event</th>
+                            <th>Success</th>
+                            <th>IP Address</th>
+                            <th>Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ev in recent_logins %}
+                        <tr>
+                            <td><span class="badge badge-info">{{ ev.event_type }}</span></td>
+                            <td>
+                                {% if ev.success %}
+                                    <span style="color: var(--good); font-weight: 700;">✓</span>
+                                {% else %}
+                                    <span style="color: var(--bad); font-weight: 700;">✗</span>
+                                {% endif %}
+                            </td>
+                            <td style="font-family: monospace; font-size: 12px;">{{ ev.ip_address }}</td>
+                            <td style="font-size: 12px; color: var(--muted);">{{ ev.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" style="text-align: center; color: var(--muted); padding: 16px;">No authentication events recorded.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
