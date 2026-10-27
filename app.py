@@ -184,9 +184,10 @@ def set_security_headers(response):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com; "
+        "frame-src 'self' https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/; "
         "img-src 'self' data: blob: https://images.openfoodfacts.org; "
         "connect-src 'self' https://world.openfoodfacts.org; "
         "frame-ancestors 'none';"
@@ -194,14 +195,17 @@ def set_security_headers(response):
     return response
 
 
-# ── CONTEXT PROCESSOR: ANNOUNCEMENT BANNER ──────────────────────────────────
+# ── CONTEXT PROCESSORS: ANNOUNCEMENT BANNER & RECAPTCHA KEY ────────────────
 @app.context_processor
 def inject_global_banner():
     try:
         banner = AppSetting.get_setting("announcement_banner", "")
     except Exception:
         banner = ""
-    return dict(announcement_banner=banner)
+    return dict(
+        announcement_banner=banner,
+        recaptcha_site_key=os.getenv("RECAPTCHA_SITE_KEY", ""),
+    )
 
 
 # ── PUBLIC ROUTES ───────────────────────────────────────────────────────────

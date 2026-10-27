@@ -57,6 +57,17 @@
         {% endfor %}
     </div>
 
+    {# Hidden honeypot field to block automated bot signups #}
+    <div style="display:none !important;" aria-hidden="true">
+        <label for="honeypot">Leave this field blank</label>
+        <input type="text" name="honeypot" id="honeypot" tabindex="-1" autocomplete="off" value="">
+    </div>
+
+    {# Google reCAPTCHA v2 Checkbox Widget #}
+    <div class="form-group" style="display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 18px 0 10px;">
+        <div class="g-recaptcha" data-sitekey="{{ recaptcha_site_key }}"></div>
+    </div>
+
     {{ form.submit(class="btn-submit") }}
 </form>
 

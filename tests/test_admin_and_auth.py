@@ -23,6 +23,7 @@ class AdminAndRoleAuthTest(unittest.TestCase):
         app.config["TESTING"] = True
         app.config["WTF_CSRF_ENABLED"] = False
         app.config["RATELIMIT_ENABLED"] = False
+        app.config["RECAPTCHA_ENABLED"] = False
         from extensions import limiter
         limiter.enabled = False
         with app.app_context():

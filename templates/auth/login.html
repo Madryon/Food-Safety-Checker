@@ -32,6 +32,11 @@
         </label>
     </div>
 
+    {# Google reCAPTCHA v2 Checkbox Widget #}
+    <div class="form-group" style="display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 18px 0 10px;">
+        <div class="g-recaptcha" data-sitekey="{{ recaptcha_site_key }}"></div>
+    </div>
+
     {{ form.submit(class="btn-submit") }}
 </form>
 

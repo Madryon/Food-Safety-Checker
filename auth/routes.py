@@ -1,7 +1,7 @@
 import os
 import secrets
 from datetime import datetime, timedelta
-from flask import render_template, redirect, url_for, flash, request, session, abort
+from flask import render_template, redirect, url_for, flash, request, session, abort, current_app
 from flask_login import login_user, logout_user, login_required, current_user
 from extensions import db, limiter
 from models import User, LoginEvent, UserSession, AppSetting, AdminInviteKey
@@ -14,15 +14,28 @@ from services.activity_tracker import (
     is_suspicious_login,
 )
 from services.database import save_user_profile
+from services.recaptcha import verify_recaptcha
 
 
 @auth_bp.route("/login", methods=["GET", "POST"])
-@limiter.limit("10 per minute")
+@limiter.limit("5 per minute")
 def login():
     if current_user.is_authenticated:
         return redirect(url_for("index"))
 
     form = LoginForm()
+    recaptcha_site_key = os.getenv("RECAPTCHA_SITE_KEY", "")
+
+    if request.method == "POST":
+        # Verify reCAPTCHA before checking password or user existence
+        recaptcha_enabled = current_app.config.get("RECAPTCHA_ENABLED", True)
+        if recaptcha_enabled:
+            token = request.form.get("g-recaptcha-response", "").strip()
+            ip = get_client_ip()
+            if not verify_recaptcha(token, ip):
+                flash("Please complete the reCAPTCHA verification to sign in.", "danger")
+                return render_template("auth/login.html", form=form, recaptcha_site_key=recaptcha_site_key), 400
+
     if form.validate_on_submit():
         identifier = form.username_or_email.data.strip().lower()
         password = form.password.data
@@ -82,7 +95,7 @@ def login():
                 user_agent=ua,
             )
             flash("Invalid username/email or password.", "danger")
-            return render_template("auth/login.html", form=form)
+            return render_template("auth/login.html", form=form, recaptcha_site_key=recaptcha_site_key)
 
         # Check if disabled
         if not user.is_active:
@@ -95,7 +108,7 @@ def login():
                 user_agent=ua,
             )
             flash("This account is currently disabled. Please contact support.", "danger")
-            return render_template("auth/login.html", form=form)
+            return render_template("auth/login.html", form=form, recaptcha_site_key=recaptcha_site_key)
 
         # Check if locked
         if user.is_locked:
@@ -112,7 +125,7 @@ def login():
                 f"Account is temporarily locked due to repeated failed logins. Please retry in {minutes} minutes.",
                 "warning",
             )
-            return render_template("auth/login.html", form=form)
+            return render_template("auth/login.html", form=form, recaptcha_site_key=recaptcha_site_key)
 
         # Validate password
         if not user.check_password(password):
@@ -146,7 +159,7 @@ def login():
                     f"Invalid username/email or password. ({remaining_attempts} attempts remaining)",
                     "danger",
                 )
-            return render_template("auth/login.html", form=form)
+            return render_template("auth/login.html", form=form, recaptcha_site_key=recaptcha_site_key)
 
         # Successful Login
         suspicious = is_suspicious_login(user.id, ip, ua)
@@ -195,11 +208,11 @@ def login():
             next_page = url_for("index")
         return redirect(next_page)
 
-    return render_template("auth/login.html", form=form)
+    return render_template("auth/login.html", form=form, recaptcha_site_key=recaptcha_site_key)
 
 
 @auth_bp.route("/register", methods=["GET", "POST"])
-@limiter.limit("10 per minute")
+@limiter.limit("5 per minute")
 def register():
     if current_user.is_authenticated:
         return redirect(url_for("index"))
@@ -211,76 +224,94 @@ def register():
         return redirect(url_for("auth.login"))
 
     form = RegisterForm()
-    if form.validate_on_submit():
-        clean_user = form.username.data.strip().lower().replace(" ", "_")
-        clean_email = form.email.data.strip().lower() if form.email.data else None
-        name = form.name.data.strip()
+    recaptcha_site_key = os.getenv("RECAPTCHA_SITE_KEY", "")
 
-        # Check collision
-        existing_user = User.query.filter_by(username=clean_user).first()
-        if existing_user:
-            flash("Username is already taken. Please choose another.", "danger")
-            return render_template("auth/register.html", form=form)
+    if request.method == "POST":
+        # 1. Honeypot check: reject if filled by automated bots
+        honeypot = request.form.get("honeypot", "").strip()
+        if honeypot:
+            flash("Bot submission detected. Registration rejected.", "danger")
+            return render_template("auth/register.html", form=form, recaptcha_site_key=recaptcha_site_key), 400
 
-        if clean_email:
-            existing_email = User.query.filter_by(email=clean_email).first()
-            if existing_email:
-                flash("Email is already registered. Please sign in instead.", "danger")
-                return render_template("auth/register.html", form=form)
+        # 2. reCAPTCHA check BEFORE creating user or saving anything to DB
+        recaptcha_enabled = current_app.config.get("RECAPTCHA_ENABLED", True)
+        if recaptcha_enabled:
+            token = request.form.get("g-recaptcha-response", "").strip()
+            ip = get_client_ip()
+            if not verify_recaptcha(token, ip):
+                flash("Please complete the reCAPTCHA verification to create an account.", "danger")
+                return render_template("auth/register.html", form=form, recaptcha_site_key=recaptcha_site_key), 400
 
-        role = "user"
-        if form.admin_invite_key.data:
-            invite_raw = form.admin_invite_key.data.strip()
-            if AdminInviteKey.verify_key(invite_raw):
-                role = "admin"
-            else:
-                flash("Invalid Admin Invite Key. Enter the assigned admin key to register as administrator.", "danger")
-                return render_template("auth/register.html", form=form)
+        if form.validate_on_submit():
+            clean_user = form.username.data.strip().lower().replace(" ", "_")
+            clean_email = form.email.data.strip().lower() if form.email.data else None
+            name = form.name.data.strip()
 
-        # Create user
-        new_user = User(
-            username=clean_user,
-            email=clean_email,
-            name=name,
-            role=role,
-            is_active=True,
-        )
-        new_user.set_password(form.password.data)
-        db.session.add(new_user)
-        db.session.commit()
+            # Check collision
+            existing_user = User.query.filter_by(username=clean_user).first()
+            if existing_user:
+                flash("Username is already taken. Please choose another.", "danger")
+                return render_template("auth/register.html", form=form, recaptcha_site_key=recaptcha_site_key)
 
-        # Initialize user profile for diet planner
-        try:
-            save_user_profile({"user_id": clean_user, "name": name})
-        except Exception:
-            pass
+            if clean_email:
+                existing_email = User.query.filter_by(email=clean_email).first()
+                if existing_email:
+                    flash("Email is already registered. Please sign in instead.", "danger")
+                    return render_template("auth/register.html", form=form, recaptcha_site_key=recaptcha_site_key)
 
-        ip = get_client_ip()
-        ua = request.headers.get("User-Agent", "")
-        log_login_event(
-            event_type="register",
-            user_id=new_user.id,
-            email_attempted=clean_email or clean_user,
-            success=True,
-            ip=ip,
-            user_agent=ua,
-        )
-        log_activity(
-            action="user_register",
-            details={"username": clean_user},
-            user_id=new_user.id,
-        )
+            role = "user"
+            if form.admin_invite_key.data:
+                invite_raw = form.admin_invite_key.data.strip()
+                if AdminInviteKey.verify_key(invite_raw):
+                    role = "admin"
+                else:
+                    flash("Invalid Admin Invite Key. Enter the assigned admin key to register as administrator.", "danger")
+                    return render_template("auth/register.html", form=form, recaptcha_site_key=recaptcha_site_key)
 
-        # Automatically log in
-        login_user(new_user)
-        session["user_id"] = new_user.username
-        session["name"] = new_user.name
-        session["role"] = new_user.role
+            # Create user
+            new_user = User(
+                username=clean_user,
+                email=clean_email,
+                name=name,
+                role=role,
+                is_active=True,
+            )
+            new_user.set_password(form.password.data)
+            db.session.add(new_user)
+            db.session.commit()
 
-        flash(f"Welcome to FoodCheck, {name}! Your account has been created.", "success")
-        return redirect(url_for("index"))
+            # Initialize user profile for diet planner
+            try:
+                save_user_profile({"user_id": clean_user, "name": name})
+            except Exception:
+                pass
 
-    return render_template("auth/register.html", form=form)
+            ip = get_client_ip()
+            ua = request.headers.get("User-Agent", "")
+            log_login_event(
+                event_type="register",
+                user_id=new_user.id,
+                email_attempted=clean_email or clean_user,
+                success=True,
+                ip=ip,
+                user_agent=ua,
+            )
+            log_activity(
+                action="user_register",
+                details={"username": clean_user},
+                user_id=new_user.id,
+            )
+
+            # Automatically log in
+            login_user(new_user)
+            session["user_id"] = new_user.username
+            session["name"] = new_user.name
+            session["role"] = new_user.role
+
+            flash(f"Welcome to FoodCheck, {name}! Your account has been created.", "success")
+            return redirect(url_for("index"))
+
+    return render_template("auth/register.html", form=form, recaptcha_site_key=recaptcha_site_key)
 
 
 @auth_bp.route("/logout", methods=["GET", "POST"])
