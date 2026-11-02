@@ -86,10 +86,21 @@ db_url = (
 if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql://", 1)
 
-if db_url.startswith("postgresql://"):
+if db_url.startswith("postgresql://") or db_url.startswith("postgresql+"):
     if "sslmode=" not in db_url:
         sep = "&" if "?" in db_url else "?"
         db_url += f"{sep}sslmode=require"
+    # SQLAlchemy 2.0+ defaults 'postgresql://' to psycopg (v3).
+    # If psycopg is missing but psycopg2 is present, use postgresql+psycopg2://
+    if db_url.startswith("postgresql://"):
+        try:
+            import psycopg  # noqa: F401
+        except ImportError:
+            try:
+                import psycopg2  # noqa: F401
+                db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+            except ImportError:
+                pass
     app.config["SQLALCHEMY_DATABASE_URI"] = db_url
 else:
     # Local SQLite default in instance/foodcheck.db
