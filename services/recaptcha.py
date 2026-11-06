@@ -75,7 +75,7 @@ def verify_captcha_token(token: str, remote_ip: str = "127.0.0.1") -> Tuple[bool
         return captcha_manager.validate_and_burn_token(token, ip=remote_ip)
 
     # Cloudflare Turnstile
-    provider_name = os.getenv("CAPTCHA_PROVIDER", "custom").strip().lower()
+    provider_name = os.getenv("CAPTCHA_PROVIDER", "recaptcha").strip().lower()
     if provider_name == "turnstile":
         from services.captcha.provider import TurnstileProvider
         return TurnstileProvider().verify_token(token, remote_ip=remote_ip)

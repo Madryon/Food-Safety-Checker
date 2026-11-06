@@ -445,35 +445,41 @@
             tokenInput.id = 'fc-token-input-' + Math.random().toString(36).slice(2, 7);
             if (form) form.appendChild(tokenInput);
 
-            // Fetch provider configuration from backend
-            fetch('/api/captcha/config')
-                .then(function (res) { return res.json(); })
-                .then(function (cfg) {
-                    var provider = cfg.provider || 'custom';
+            function initWidget(cfg) {
+                var provider = (cfg && cfg.provider) || 'recaptcha';
+                var siteKey = (cfg && cfg.siteKey) || '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI';
 
-                    if (provider === 'recaptcha' && cfg.siteKey) {
-                        // Render Google reCAPTCHA v2
-                        renderRecaptcha(container, cfg.siteKey, function (token) {
-                            tokenInput.value = token;
-                            if (submitBtn) submitBtn.disabled = false;
-                            if (options.onVerified) options.onVerified(token);
-                        });
-                    } else if (provider === 'turnstile' && cfg.siteKey) {
-                        // Render Cloudflare Turnstile
-                        renderTurnstile(container, cfg.siteKey, function (token) {
-                            tokenInput.value = token;
-                            if (submitBtn) submitBtn.disabled = false;
-                            if (options.onVerified) options.onVerified(token);
-                        });
-                    } else {
-                        // Render Custom 3x3 / 4x4 CAPTCHA
-                        renderCustomCaptcha();
-                    }
-                })
-                .catch(function () {
-                    // Default fallback to custom captcha
+                if (provider === 'recaptcha' && siteKey) {
+                    // Render official Google reCAPTCHA v2
+                    renderRecaptcha(container, siteKey, function (token) {
+                        tokenInput.value = token;
+                        if (submitBtn) submitBtn.disabled = false;
+                        if (options.onVerified) options.onVerified(token);
+                    });
+                } else if (provider === 'turnstile' && siteKey) {
+                    // Render Cloudflare Turnstile
+                    renderTurnstile(container, siteKey, function (token) {
+                        tokenInput.value = token;
+                        if (submitBtn) submitBtn.disabled = false;
+                        if (options.onVerified) options.onVerified(token);
+                    });
+                } else {
+                    // Render Custom 3x3 / 4x4 CAPTCHA
                     renderCustomCaptcha();
-                });
+                }
+            }
+
+            var pageCfg = window.CAPTCHA_CONFIG || window.FOODCHECK_CAPTCHA_CONFIG;
+            if (pageCfg && pageCfg.provider) {
+                initWidget(pageCfg);
+            } else {
+                fetch('/api/captcha/config')
+                    .then(function (res) { return res.json(); })
+                    .then(function (cfg) { initWidget(cfg); })
+                    .catch(function () {
+                        initWidget({ provider: 'recaptcha', siteKey: '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI' });
+                    });
+            }
 
             function renderCustomCaptcha() {
                 var controller = useCaptcha();
@@ -488,13 +494,60 @@
             }
 
             function renderRecaptcha(targetElem, siteKey, callback) {
-                if (window.grecaptcha && window.grecaptcha.render) {
-                    window.grecaptcha.render(targetElem, {
-                        sitekey: siteKey,
-                        callback: callback
-                    });
+                if (!targetElem) return;
+
+                var isDark = true;
+                try {
+                    var themeVal = localStorage.getItem('foodcheck-theme');
+                    if (themeVal === 'light') isDark = false;
+                } catch (e) {}
+
+                function executeRender() {
+                    if (targetElem.getAttribute('data-recaptcha-widget-id')) {
+                        return; // already rendered
+                    }
+                    if (window.grecaptcha && typeof window.grecaptcha.render === 'function') {
+                        try {
+                            targetElem.innerHTML = '';
+                            var widgetId = window.grecaptcha.render(targetElem, {
+                                sitekey: siteKey,
+                                theme: isDark ? 'dark' : 'light',
+                                callback: function (token) {
+                                    tokenInput.value = token;
+                                    if (submitBtn) submitBtn.disabled = false;
+                                    if (options.onVerified) options.onVerified(token);
+                                    if (callback) callback(token);
+                                },
+                                'expired-callback': function () {
+                                    tokenInput.value = '';
+                                    if (submitBtn) submitBtn.disabled = true;
+                                    if (options.onExpired) options.onExpired();
+                                }
+                            });
+                            targetElem.setAttribute('data-recaptcha-widget-id', String(widgetId));
+                            window._lastRecaptchaWidgetId = widgetId;
+                        } catch (err) {
+                            console.warn('reCAPTCHA render notice:', err);
+                        }
+                    } else {
+                        window._recaptchaQueue = window._recaptchaQueue || [];
+                        window._recaptchaQueue.push(executeRender);
+                        if (!targetElem._rcTimer) {
+                            targetElem._rcTimer = setInterval(function () {
+                                if (window.grecaptcha && typeof window.grecaptcha.render === 'function') {
+                                    clearInterval(targetElem._rcTimer);
+                                    targetElem._rcTimer = null;
+                                    executeRender();
+                                }
+                            }, 100);
+                        }
+                    }
+                }
+
+                if (window.grecaptcha && typeof window.grecaptcha.ready === 'function') {
+                    window.grecaptcha.ready(executeRender);
                 } else {
-                    targetElem.innerHTML = '<div class="g-recaptcha" data-sitekey="' + siteKey + '"></div>';
+                    executeRender();
                 }
             }
 
@@ -512,6 +565,16 @@
             return {
                 getToken: function () { return tokenInput.value; }
             };
+        }
+    };
+
+    window._recaptchaQueue = window._recaptchaQueue || [];
+    window.onGoogleRecaptchaLoad = window.onRecaptchaLoaded = function () {
+        if (window._recaptchaQueue) {
+            while (window._recaptchaQueue.length > 0) {
+                var fn = window._recaptchaQueue.shift();
+                try { fn(); } catch (e) { console.error(e); }
+            }
         }
     };
 

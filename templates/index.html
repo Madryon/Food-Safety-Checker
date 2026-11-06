@@ -7,7 +7,13 @@
     <meta name="theme-color" content="#0b1117">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/captcha.css') }}">
-    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+    <script>
+        window.CAPTCHA_CONFIG = {
+            provider: "{{ captcha_provider }}",
+            siteKey: "{{ recaptcha_site_key }}"
+        };
+    </script>
+    <script src="https://www.google.com/recaptcha/api.js?onload=onGoogleRecaptchaLoad&render=explicit" async defer></script>
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
     <script src="{{ url_for('static', filename='js/captcha.js') }}"></script>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🍽️%3C/text%3E%3C/svg%3E">
@@ -2432,12 +2438,28 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             if (regTab) regTab.classList.remove('active');
             if (loginView) loginView.classList.remove('hidden');
             if (regView) regView.classList.add('hidden');
+            if (!window._modalLoginCaptchaInit && window.FoodCheckCaptcha) {
+                window._modalLoginCaptchaInit = true;
+                FoodCheckCaptcha.init({
+                    containerId: 'modal-captcha-login',
+                    formId: 'form-auth-login',
+                    submitBtnId: 'btn-submit-login'
+                });
+            }
             var u = $('login-username');
             if (u) setTimeout(function () { u.focus(); }, 100);
         } else {
             if (regTab) regTab.classList.add('active');
             if (loginTab) loginTab.classList.remove('active');
             if (regView) regView.classList.remove('hidden');
+            if (!window._modalRegCaptchaInit && window.FoodCheckCaptcha) {
+                window._modalRegCaptchaInit = true;
+                FoodCheckCaptcha.init({
+                    containerId: 'modal-captcha-register',
+                    formId: 'form-auth-register',
+                    submitBtnId: 'btn-submit-register'
+                });
+            }
             if (loginView) loginView.classList.add('hidden');
             var n = $('reg-name');
             if (n) setTimeout(function () { n.focus(); }, 100);
@@ -2490,8 +2512,23 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
         if (btn) { btn.disabled = true; btn.textContent = 'Signing in...'; }
         if (stat) { stat.style.display = 'none'; stat.textContent = ''; }
 
-        var loginTokElem = document.querySelector('#modal-captcha-login input[name="captcha_token"]');
+        var loginTokElem = document.querySelector('#modal-captcha-login input[name="captcha_token"]')
+            || document.querySelector('#form-auth-login input[name="captcha_token"]')
+            || document.querySelector('#modal-captcha-login [name="g-recaptcha-response"]')
+            || document.querySelector('#form-auth-login [name="g-recaptcha-response"]');
         var loginCaptchaToken = loginTokElem ? loginTokElem.value : '';
+        if (!loginCaptchaToken && window.grecaptcha) {
+            var widElem = document.getElementById('modal-captcha-login');
+            var wid = widElem ? widElem.getAttribute('data-recaptcha-widget-id') : null;
+            if (wid !== null && wid !== '') {
+                try { loginCaptchaToken = grecaptcha.getResponse(parseInt(wid, 10)); } catch(e) {}
+            }
+        }
+        if (!loginCaptchaToken) {
+            showLoginError("Please complete the Google reCAPTCHA ('I\'m not a robot') verification.");
+            if (btn) { btn.disabled = false; btn.textContent = isAdmin ? '🛡️ Sign In as Administrator' : '🔓 Sign In to My Account'; }
+            return;
+        }
         var loginHpElem = $('login-honeypot');
         var loginHp = loginHpElem ? loginHpElem.value : '';
 
@@ -2503,6 +2540,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                 password: password,
                 is_admin: isAdmin,
                 captcha_token: loginCaptchaToken,
+                'g-recaptcha-response': loginCaptchaToken,
                 honeypot: loginHp
             })
         })
@@ -2603,8 +2641,23 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
         if (btn) { btn.disabled = true; btn.textContent = 'Creating account...'; }
         if (stat) { stat.style.display = 'none'; stat.textContent = ''; }
 
-        var regTokElem = document.querySelector('#modal-captcha-register input[name="captcha_token"]');
+        var regTokElem = document.querySelector('#modal-captcha-register input[name="captcha_token"]')
+            || document.querySelector('#form-auth-register input[name="captcha_token"]')
+            || document.querySelector('#modal-captcha-register [name="g-recaptcha-response"]')
+            || document.querySelector('#form-auth-register [name="g-recaptcha-response"]');
         var regCaptchaToken = regTokElem ? regTokElem.value : '';
+        if (!regCaptchaToken && window.grecaptcha) {
+            var rwidElem = document.getElementById('modal-captcha-register');
+            var rwid = rwidElem ? rwidElem.getAttribute('data-recaptcha-widget-id') : null;
+            if (rwid !== null && rwid !== '') {
+                try { regCaptchaToken = grecaptcha.getResponse(parseInt(rwid, 10)); } catch(e) {}
+            }
+        }
+        if (!regCaptchaToken) {
+            showRegError("Please complete the Google reCAPTCHA ('I\'m not a robot') verification.");
+            if (btn) { btn.disabled = false; btn.textContent = isRegAdmin ? '🛡️ Create Administrator Account' : '✨ Create Private Account'; }
+            return;
+        }
         var regHpElem = $('reg-honeypot');
         var regHp = regHpElem ? regHpElem.value : '';
 
@@ -2618,6 +2671,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                 is_admin: isRegAdmin,
                 invite_key: adminKey,
                 captcha_token: regCaptchaToken,
+                'g-recaptcha-response': regCaptchaToken,
                 honeypot: regHp
             })
         })

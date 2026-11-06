@@ -54,38 +54,27 @@ class CustomCaptchaProvider(BaseCaptchaProvider):
 
 class RecaptchaProvider(BaseCaptchaProvider):
     VERIFY_URL = "https://www.google.com/recaptcha/api/siteverify"
+    DEFAULT_SITE_KEY = "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"
+    DEFAULT_SECRET_KEY = "6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe"
 
     @property
     def provider_name(self) -> str:
         return "recaptcha"
 
     def get_client_config(self) -> Dict[str, Any]:
+        site_key = os.getenv("RECAPTCHA_SITE_KEY", "").strip() or self.DEFAULT_SITE_KEY
         return {
             "provider": "recaptcha",
-            "siteKey": os.getenv("RECAPTCHA_SITE_KEY", ""),
+            "siteKey": site_key,
         }
 
     def verify_token(self, token: str, remote_ip: str = "127.0.0.1") -> Tuple[bool, str]:
-        secret = os.getenv("RECAPTCHA_SECRET_KEY", "").strip()
-        if not secret:
-            return False, "RECAPTCHA_SECRET_KEY is not configured."
-        if not token:
+        from services.recaptcha import verify_recaptcha
+        if not token or not str(token).strip():
             return False, "reCAPTCHA response token missing."
-
-        payload = {"secret": secret, "response": token}
-        if remote_ip and remote_ip not in ("127.0.0.1", "::1", "localhost"):
-            payload["remoteip"] = remote_ip
-
-        try:
-            resp = requests.post(self.VERIFY_URL, data=payload, timeout=5)
-            if resp.status_code != 200:
-                return False, f"reCAPTCHA verification returned HTTP {resp.status_code}"
-            result = resp.json()
-            if result.get("success") is True:
-                return True, "reCAPTCHA verified successfully."
-            return False, "reCAPTCHA verification failed."
-        except Exception as e:
-            return False, f"reCAPTCHA verification network error: {e}"
+        if verify_recaptcha(token, remote_ip):
+            return True, "reCAPTCHA verified successfully."
+        return False, "reCAPTCHA verification failed."
 
 
 class TurnstileProvider(BaseCaptchaProvider):
@@ -131,6 +120,6 @@ _PROVIDERS = {
 }
 
 def get_captcha_provider() -> BaseCaptchaProvider:
-    """Returns the configured CAPTCHA provider from environment."""
-    provider_name = os.getenv("CAPTCHA_PROVIDER", "custom").strip().lower()
-    return _PROVIDERS.get(provider_name, _PROVIDERS["custom"])
+    """Returns the configured CAPTCHA provider from environment (defaults to recaptcha)."""
+    provider_name = os.getenv("CAPTCHA_PROVIDER", "recaptcha").strip().lower()
+    return _PROVIDERS.get(provider_name, _PROVIDERS["recaptcha"])

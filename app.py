@@ -17,9 +17,11 @@ from flask import (
     abort,
     make_response,
 )
+from dotenv import load_dotenv
+load_dotenv()
+
 from services.captcha import get_captcha_provider, captcha_manager
 from services.recaptcha import verify_captcha_token
-from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 from flask_login import current_user, login_user, logout_user
 
@@ -220,7 +222,7 @@ def inject_global_banner():
     provider = get_captcha_provider()
     return dict(
         announcement_banner=banner,
-        recaptcha_site_key=os.getenv("RECAPTCHA_SITE_KEY", ""),
+        recaptcha_site_key=os.getenv("RECAPTCHA_SITE_KEY", "").strip() or "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI",
         turnstile_site_key=os.getenv("TURNSTILE_SITE_KEY", ""),
         captcha_provider=provider.provider_name,
     )

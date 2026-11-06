@@ -18,10 +18,13 @@ services:
       - key: ADMIN_MASTER_KEY
         sync: false
       - key: CAPTCHA_PROVIDER
+        value: recaptcha
         sync: false
       - key: RECAPTCHA_SITE_KEY
+        value: 6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI
         sync: false
       - key: RECAPTCHA_SECRET_KEY
+        value: 6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe
         sync: false
       - key: TURNSTILE_SITE_KEY
         sync: false
