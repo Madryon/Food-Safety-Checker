@@ -14,24 +14,27 @@ JPEG_QUALITY = 80      # good balance of size vs readability
 
 def _optimize_image(image_path: str) -> Image.Image:
     """Open, resize, and compress an image so Gemini processes it faster."""
-    img = Image.open(image_path)
-
-    # Convert RGBA/P → RGB (JPEG doesn't support alpha)
-    if img.mode in ("RGBA", "P", "LA"):
-        img = img.convert("RGB")
+    with Image.open(image_path) as raw_img:
+        # Convert RGBA/P → RGB (JPEG doesn't support alpha)
+        if raw_img.mode in ("RGBA", "P", "LA"):
+            img = raw_img.convert("RGB")
+        else:
+            img = raw_img.copy()
 
     # Down-scale large images
     w, h = img.size
     if max(w, h) > MAX_DIMENSION:
         ratio = MAX_DIMENSION / max(w, h)
-        img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
+        img = img.resize((int(w * ratio), int(h * ratio)), Image.BILINEAR)
         logger.info(f"📐 Resized image {w}×{h} → {img.size[0]}×{img.size[1]}")
 
     # Re-compress into an in-memory JPEG to shrink payload
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=JPEG_QUALITY, optimize=True)
     buf.seek(0)
-    return Image.open(buf)
+    opt_img = Image.open(buf)
+    opt_img.load()
+    return opt_img
 
 
 def extract(image_path: str) -> dict:

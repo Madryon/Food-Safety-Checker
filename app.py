@@ -132,11 +132,22 @@ if db_url.startswith("postgresql://") or db_url.startswith("postgresql+"):
             except ImportError:
                 pass
     app.config["SQLALCHEMY_DATABASE_URI"] = db_url
+    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+        "pool_pre_ping": True,
+        "pool_recycle": 280,
+        "pool_size": 3,
+        "max_overflow": 2,
+        "pool_timeout": 15,
+    }
 else:
     # Local SQLite default in instance/foodcheck.db
     os.makedirs(app.instance_path, exist_ok=True)
     sqlite_path = os.path.join(app.instance_path, "foodcheck.db")
     app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{sqlite_path}"
+    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+        "pool_pre_ping": True,
+        "connect_args": {"timeout": 20},
+    }
 
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
@@ -196,6 +207,12 @@ def allowed_file(filename: str) -> bool:
 
 # ── MIDDLEWARE: MAINTENANCE MODE & SESSION EXPIRY CHECK ─────────────────────
 _last_auto_purge_time = 0
+_maint_cache = {"val": False, "ts": 0}
+
+@app.route("/healthz", methods=["GET"])
+def healthz():
+    """Ultra-lightweight ping endpoint for Render health checks without database overhead."""
+    return "ok", 200
 
 def _run_daily_purge_if_needed():
     global _last_auto_purge_time
@@ -216,39 +233,56 @@ def _run_daily_purge_if_needed():
 
 @app.before_request
 def check_maintenance_and_session():
-    # 0. Lightweight daily purge (runs at most once every 24 hours)
+    path = request.path
+    # 0. Fast-path: Skip DB operations entirely for static files and health checks
+    if (
+        request.endpoint == "static"
+        or path.startswith("/static")
+        or path in ("/favicon.ico", "/favicon.svg", "/healthz", "/robots.txt")
+    ):
+        return
+
+    # 1. Lightweight daily purge (runs at most once every 24 hours)
     _run_daily_purge_if_needed()
 
-    # 1. Maintenance Mode Enforcement
-    # Admins and static assets are exempt from maintenance screen
-    path = request.path
-    if not path.startswith("/static") and not path.startswith("/admin") and not path.startswith("/login"):
+    # 2. Maintenance Mode Enforcement (cached in-memory for 5s to avoid DB queries on every request)
+    global _maint_cache
+    now = time.time()
+    cache_ttl = 0 if app.config.get("TESTING") else 5
+    if now - _maint_cache["ts"] > cache_ttl:
         try:
-            maint_active = AppSetting.get_setting("maintenance_mode", "false") == "true"
-            if maint_active:
-                if not current_user.is_authenticated or not getattr(current_user, "is_admin", False):
-                    return render_template("maintenance.html"), 503
+            val = AppSetting.get_setting("maintenance_mode", "false")
+            _maint_cache["val"] = (val == "true")
+            _maint_cache["ts"] = now
         except Exception:
-            pass
+            _maint_cache["val"] = False
+            _maint_cache["ts"] = now
 
-    # 2. Session Revocation & Last Seen Tracking
+    if _maint_cache["val"] and not path.startswith("/admin") and not path.startswith("/login"):
+        if not current_user.is_authenticated or not getattr(current_user, "is_admin", False):
+            return render_template("maintenance.html"), 503
+
+    # 3. Session Revocation & Last Seen Tracking (throttled to at most once per 60s per user)
     if current_user.is_authenticated:
-        current_user.last_seen_at = datetime.utcnow()
-        auth_token = session.get("auth_token")
-        if auth_token:
-            token_hash = UserSession.hash_token(auth_token)
-            user_sess = UserSession.query.filter_by(session_token_hash=token_hash).first()
-            if user_sess and user_sess.revoked:
-                logout_user()
-                session.clear()
-                flash("Your session was terminated by an administrator.", "warning")
-                return redirect(url_for("auth.login"))
-            elif user_sess:
-                user_sess.last_seen_at = datetime.utcnow()
-        try:
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
+        sess_last_sync = session.get("_last_seen_sync", 0)
+        if now - sess_last_sync > 60:
+            session["_last_seen_sync"] = now
+            try:
+                current_user.last_seen_at = datetime.utcnow()
+                auth_token = session.get("auth_token")
+                if auth_token:
+                    token_hash = UserSession.hash_token(auth_token)
+                    user_sess = UserSession.query.filter_by(session_token_hash=token_hash).first()
+                    if user_sess and user_sess.revoked:
+                        logout_user()
+                        session.clear()
+                        flash("Your session was terminated by an administrator.", "warning")
+                        return redirect(url_for("auth.login"))
+                    elif user_sess:
+                        user_sess.last_seen_at = datetime.utcnow()
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
 
 
 # ── MIDDLEWARE: SECURITY HEADERS ────────────────────────────────────────────
@@ -265,7 +299,7 @@ def set_security_headers(response):
         "frame-src 'self' https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/ https://challenges.cloudflare.com; "
         "media-src 'self' data: blob:; "
         "img-src 'self' data: blob: https://images.openfoodfacts.org; "
-        "connect-src 'self' https://world.openfoodfacts.org; "
+        "connect-src 'self' https://world.openfoodfacts.org https://www.google.com https://challenges.cloudflare.com; "
         "frame-ancestors 'none';"
     )
     return response

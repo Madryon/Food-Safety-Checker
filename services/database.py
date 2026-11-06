@@ -33,14 +33,14 @@ if DB_URL.startswith("postgresql://"):
             separator = "&" if "?" in DB_URL else "?"
             DB_URL += f"{separator}sslmode=require"
 
-        # Initialize connection pool
-        pg_pool = psycopg2.pool.SimpleConnectionPool(
+        # Initialize thread-safe connection pool for multi-threaded Gunicorn
+        pg_pool = psycopg2.pool.ThreadedConnectionPool(
             minconn=1,
-            maxconn=10,
+            maxconn=5,
             dsn=DB_URL,
         )
         USE_POSTGRES = True
-        logger.info("Connected to Aiven PostgreSQL database successfully.")
+        logger.info("Connected to PostgreSQL database successfully (ThreadedConnectionPool).")
     except Exception as e:
         logger.warning(
             f"Could not connect to PostgreSQL ({e}). Falling back to local SQLite for diet data."
@@ -57,7 +57,7 @@ SQLITE_DB_PATH = os.path.join(
 
 
 def get_or_create_pg_pool():
-    """Retrieve existing PG pool or initialize a fresh pool if needed."""
+    """Retrieve existing thread-safe PG pool or initialize a fresh pool if needed."""
     global pg_pool, USE_POSTGRES
     if not DB_URL or not DB_URL.startswith("postgresql://"):
         return None
@@ -70,7 +70,7 @@ def get_or_create_pg_pool():
         if "sslmode=" not in url:
             sep = "&" if "?" in url else "?"
             url += f"{sep}sslmode=require"
-        pg_pool = psycopg2.pool.SimpleConnectionPool(minconn=1, maxconn=10, dsn=url)
+        pg_pool = psycopg2.pool.ThreadedConnectionPool(minconn=1, maxconn=5, dsn=url)
         USE_POSTGRES = True
         return pg_pool
     except Exception as e:
@@ -104,8 +104,8 @@ class DatabaseConnection:
                 logger.warning(f"PostgreSQL connection acquisition failed ({e}). Falling back to SQLite.")
                 self.is_pg = False
 
-        # SQLite fallback
-        self.conn = sqlite3.connect(SQLITE_DB_PATH)
+        # SQLite fallback with concurrency-safe timeout
+        self.conn = sqlite3.connect(SQLITE_DB_PATH, timeout=20.0)
         self.conn.row_factory = sqlite3.Row
         self.is_pg = False
         return self.conn, False
@@ -123,8 +123,9 @@ class DatabaseConnection:
 
                 try:
                     is_broken = exc_type is not None or getattr(self.conn, "closed", 0) != 0
-                    if pg_pool:
-                        pg_pool.putconn(self.conn, close=is_broken)
+                    pool_inst = get_or_create_pg_pool()
+                    if pool_inst:
+                        pool_inst.putconn(self.conn, close=is_broken)
                 except Exception as e:
                     logger.warning(f"Error putting PG connection back to pool: {e}")
             else:

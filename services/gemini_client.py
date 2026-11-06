@@ -16,12 +16,9 @@ logger = logging.getLogger(__name__)
 # • gemini-1.5-flash-8b    — 15 RPM, lightweight & fast
 # • gemini-1.5-pro         — 2 RPM, heavy fallback
 DEFAULT_MODEL_FALLBACK_LIST = [
-    "gemini-3.5-flash",
-    "gemini-3.1-flash",
     "gemini-2.5-flash",
     "gemini-2.0-flash",
-    
-    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash-lite",
     "gemini-1.5-flash",
     "gemini-1.5-flash-8b",
     "gemini-1.5-pro",
@@ -53,15 +50,13 @@ def discover_available_models(api_key: str) -> list[str]:
         if discovered:
             # Prioritize non-reasoning flash-lite models for instantaneous response (<2s)
             speed_rank = [
-                "gemini-2.5-flash-lite",
-                "gemini-flash-lite-latest",
-                "gemini-flash-latest",
-                "gemini-3.5-flash-lite",
                 "gemini-2.5-flash",
-                "gemini-3.5-flash",
-                "gemini-3.8-flash",
-                "gemini-3.7-flash",
-                "gemini-3.6-flash",
+                "gemini-2.0-flash",
+                "gemini-2.0-flash-lite",
+                "gemini-flash-latest",
+                "gemini-1.5-flash",
+                "gemini-1.5-flash-8b",
+                "gemini-1.5-pro",
             ]
             ranked = [m for m in speed_rank if m in discovered]
             others = [m for m in discovered if m not in ranked]
