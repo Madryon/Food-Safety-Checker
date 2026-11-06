@@ -76,6 +76,7 @@ class AdminExportForm(FlaskForm):
             ("users", "Registered Users"),
             ("scans", "Food Safety Scans"),
             ("login_events", "Authentication & Login Events"),
+            ("feedbacks", "Community Reviews & Feedback"),
             ("error_logs", "System Error Logs"),
         ],
         validators=[DataRequired()]

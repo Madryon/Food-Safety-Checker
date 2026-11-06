@@ -215,6 +215,7 @@ def init_db():
                     name VARCHAR(150) NOT NULL,
                     rating INT DEFAULT 5,
                     message TEXT NOT NULL,
+                    is_hidden BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
@@ -290,9 +291,16 @@ def init_db():
                     name TEXT NOT NULL,
                     rating INTEGER DEFAULT 5,
                     message TEXT NOT NULL,
+                    is_hidden INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
+
+            # Add is_hidden column if upgrading existing SQLite schema
+            try:
+                cursor.execute("ALTER TABLE feedbacks ADD COLUMN is_hidden INTEGER DEFAULT 0;")
+            except Exception:
+                pass
 
         # Ensure default developer account exists
         dev_pass = os.getenv("DEV_PASSWORD", "developer123")
@@ -913,27 +921,43 @@ def get_user_feedbacks(user_id):
     return results
 
 
-def get_developer_feedbacks():
-    """Fetch ALL feedbacks across all users (Developer view only)."""
+def get_developer_feedbacks(include_hidden=True):
+    """Fetch ALL feedbacks across all users (Developer/Admin view)."""
     results = []
     with DatabaseConnection() as (conn, is_pg):
         if is_pg:
             from psycopg2.extras import RealDictCursor
             cursor = conn.cursor(cursor_factory=RealDictCursor)
-            cursor.execute("""
-                SELECT id, user_id, name, rating, message, created_at
-                FROM feedbacks
-                ORDER BY created_at DESC;
-            """, ())
+            if include_hidden:
+                cursor.execute("""
+                    SELECT id, user_id, name, rating, message, is_hidden, created_at
+                    FROM feedbacks
+                    ORDER BY created_at DESC;
+                """)
+            else:
+                cursor.execute("""
+                    SELECT id, user_id, name, rating, message, is_hidden, created_at
+                    FROM feedbacks
+                    WHERE is_hidden IS NOT TRUE
+                    ORDER BY created_at DESC;
+                """)
             rows = cursor.fetchall()
             cursor.close()
         else:
             cursor = conn.cursor()
-            cursor.execute("""
-                SELECT id, user_id, name, rating, message, created_at
-                FROM feedbacks
-                ORDER BY created_at DESC;
-            """)
+            if include_hidden:
+                cursor.execute("""
+                    SELECT id, user_id, name, rating, message, is_hidden, created_at
+                    FROM feedbacks
+                    ORDER BY created_at DESC;
+                """)
+            else:
+                cursor.execute("""
+                    SELECT id, user_id, name, rating, message, is_hidden, created_at
+                    FROM feedbacks
+                    WHERE is_hidden = 0 OR is_hidden IS NULL
+                    ORDER BY created_at DESC;
+                """)
             rows = cursor.fetchall()
             cursor.close()
 
@@ -943,13 +967,14 @@ def get_developer_feedbacks():
                 item["date"] = item["created_at"].strftime("%b %d, %I:%M %p")
             else:
                 item["date"] = "Recently"
+            item["is_hidden"] = bool(item.get("is_hidden"))
             results.append(item)
     return results
 
 
-def get_all_feedbacks():
-    """Fetch ALL feedbacks across all users."""
-    return get_developer_feedbacks()
+def get_all_feedbacks(include_hidden=False):
+    """Fetch feedbacks. Defaults to visible only for public users, all for admin."""
+    return get_developer_feedbacks(include_hidden=include_hidden)
 
 
 def update_feedback_db(fb_id, user_id, rating, message, is_dev=False):
@@ -1041,5 +1066,61 @@ def delete_feedback_db(fb_id, user_id=None, is_admin=False):
             deleted = cursor.rowcount > 0
         cursor.close()
     return deleted
+
+
+def hide_feedback_db(fb_id, hide=True):
+    """Toggle hide / restore on a feedback entry."""
+    fb_id = str(fb_id).strip()
+    val = True if hide else False
+    updated = False
+    with DatabaseConnection() as (conn, is_pg):
+        cursor = conn.cursor()
+        if is_pg:
+            cursor.execute("UPDATE feedbacks SET is_hidden = %s WHERE id = %s;", (val, fb_id))
+        else:
+            cursor.execute("UPDATE feedbacks SET is_hidden = ? WHERE id = ?;", (1 if val else 0, fb_id))
+        updated = cursor.rowcount > 0
+        cursor.close()
+    return updated
+
+
+def get_feedbacks_count_and_avg():
+    """Return total feedback count and average rating."""
+    with DatabaseConnection() as (conn, is_pg):
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*), AVG(rating) FROM feedbacks;")
+        row = cursor.fetchone()
+        cursor.close()
+    count = row[0] if row and row[0] is not None else 0
+    avg_r = round(float(row[1]), 1) if row and row[1] is not None else 5.0
+    return count, avg_r
+
+
+def get_total_diet_plans_count():
+    """Return aggregate count of generated diet plans."""
+    with DatabaseConnection() as (conn, is_pg):
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM diet_plans;")
+        row = cursor.fetchone()
+        cursor.close()
+    return row[0] if row and row[0] is not None else 0
+
+
+def delete_user_data(user_id):
+    """Permanently delete user profile, diet plans, calorie logs, and auth from database."""
+    user_id = str(user_id).strip().lower()
+    with DatabaseConnection() as (conn, is_pg):
+        cursor = conn.cursor()
+        if is_pg:
+            cursor.execute("DELETE FROM calorie_logs WHERE user_id = %s;", (user_id,))
+            cursor.execute("DELETE FROM diet_plans WHERE user_id = %s;", (user_id,))
+            cursor.execute("DELETE FROM user_profiles WHERE user_id = %s;", (user_id,))
+            cursor.execute("DELETE FROM users_auth WHERE user_id = %s;", (user_id,))
+        else:
+            cursor.execute("DELETE FROM calorie_logs WHERE user_id = ?;", (user_id,))
+            cursor.execute("DELETE FROM diet_plans WHERE user_id = ?;", (user_id,))
+            cursor.execute("DELETE FROM user_profiles WHERE user_id = ?;", (user_id,))
+            cursor.execute("DELETE FROM users_auth WHERE user_id = ?;", (user_id,))
+        cursor.close()
 
 

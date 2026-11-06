@@ -483,6 +483,13 @@
             document.documentElement.setAttribute('data-theme', t);
             localStorage.setItem('foodcheck-theme', t);
             updatePillActive();
+            try {
+                fetch('/api/activity/theme', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ theme: t })
+                }).catch(function() {});
+            } catch(e) {}
         }
         function updatePillActive() {
             var cur = document.documentElement.getAttribute('data-theme') || 'dark';

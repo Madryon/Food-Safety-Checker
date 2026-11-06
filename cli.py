@@ -96,8 +96,9 @@ def register_cli_commands(app):
             click.echo(f"Error: A user with username '{clean_user}' or email '{clean_email}' already exists.")
             return
 
-        if len(password) < 8:
-            click.echo("Error: Password must be at least 8 characters long.")
+        import re
+        if len(password) < 8 or not re.search(r"[A-Za-z]", password) or not re.search(r"\d", password):
+            click.echo("Error: Password must be at least 8 characters long and contain both letters and numbers.")
             return
 
         admin = User(

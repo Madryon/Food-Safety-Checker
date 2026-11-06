@@ -33,7 +33,14 @@ from services.activity_tracker import (
     get_client_ip,
     is_suspicious_login,
 )
-from services.database import get_all_feedbacks, delete_feedback_db
+from services.database import (
+    get_all_feedbacks,
+    delete_feedback_db,
+    hide_feedback_db,
+    get_feedbacks_count_and_avg,
+    get_total_diet_plans_count,
+    delete_user_data,
+)
 
 # Optional TOTP 2FA
 ADMIN_2FA_ENABLED = os.getenv("ADMIN_2FA_ENABLED", "false").lower() in ("true", "1", "yes")
@@ -61,74 +68,55 @@ def admin_login():
         # Generic error message to never disclose user existence or role
         generic_err = "Invalid administrator credentials or access denied."
 
-        # Check Master Admin Password
-        if User.is_master_admin_password(password):
-            if not user:
-                clean_user = identifier.replace(" ", "_").split("@")[0]
-                user = User(
-                    username=clean_user,
-                    name=clean_user.capitalize(),
-                    role="admin",
-                    is_active=True,
-                )
-                user.set_password(password)
-                db.session.add(user)
-                db.session.commit()
-            else:
-                user.role = "admin"
-                user.is_active = True
-                user.reset_failed_logins()
-                db.session.commit()
-        else:
-            if not user or user.role != "admin":
-                log_login_event(
-                    event_type="failed_login",
-                    email_attempted=identifier,
-                    success=False,
-                    ip=ip,
-                    user_agent=ua,
-                )
-                flash(generic_err, "danger")
-                return render_template("admin/login.html", form=form)
+        if not user or user.role != "admin":
+            log_login_event(
+                event_type="failed_login",
+                email_attempted=identifier,
+                success=False,
+                ip=ip,
+                user_agent=ua,
+            )
+            flash(generic_err, "danger")
+            return render_template("admin/login.html", form=form)
 
-            if not user.is_active:
-                log_login_event(
-                    event_type="failed_login",
-                    user_id=user.id,
-                    email_attempted=identifier,
-                    success=False,
-                    ip=ip,
-                    user_agent=ua,
-                )
-                flash("Administrator account is disabled.", "danger")
-                return render_template("admin/login.html", form=form)
+        if not user.is_active:
+            log_login_event(
+                event_type="failed_login",
+                user_id=user.id,
+                email_attempted=identifier,
+                success=False,
+                ip=ip,
+                user_agent=ua,
+            )
+            flash("Administrator account is disabled.", "danger")
+            return render_template("admin/login.html", form=form)
 
-            if user.is_locked:
-                minutes = int((user.locked_until - datetime.utcnow()).total_seconds() / 60) + 1
-                log_login_event(
-                    event_type="locked",
-                    user_id=user.id,
-                    email_attempted=identifier,
-                    success=False,
-                    ip=ip,
-                    user_agent=ua,
-                )
-                flash(f"Account locked. Try again in {minutes} minutes.", "warning")
-                return render_template("admin/login.html", form=form)
+        if user.is_locked:
+            minutes = int((user.locked_until - datetime.utcnow()).total_seconds() / 60) + 1
+            log_login_event(
+                event_type="locked",
+                user_id=user.id,
+                email_attempted=identifier,
+                success=False,
+                ip=ip,
+                user_agent=ua,
+            )
+            flash(f"Account locked. Try again in {minutes} minutes.", "warning")
+            return render_template("admin/login.html", form=form)
 
-            if not user.check_password(password):
-                user.record_failed_login()
-                db.session.commit()
-                log_login_event(
-                    event_type="failed_login",
-                    user_id=user.id,
-                    email_attempted=identifier,
-                    success=False,
-                    ip=ip,
-                    user_agent=ua,
-                )
-                flash(generic_err, "danger")
-                return render_template("admin/login.html", form=form)
+        if not user.check_password(password):
+            user.record_failed_login()
+            db.session.commit()
+            log_login_event(
+                event_type="failed_login",
+                user_id=user.id,
+                email_attempted=identifier,
+                success=False,
+                ip=ip,
+                user_agent=ua,
+            )
+            flash(generic_err, "danger")
+            return render_template("admin/login.html", form=form)
 
         # Optional TOTP 2FA Verification
         if ADMIN_2FA_ENABLED and user.totp_enabled:
@@ -180,15 +168,10 @@ def admin_register():
     form = AdminRegisterForm()
     if form.validate_on_submit():
         raw_key = form.invite_key.data.strip()
-        is_master_key = User.is_master_admin_password(raw_key)
-
-        invite = None
-        if not is_master_key:
-            key_hash = AdminInviteKey.hash_key(raw_key)
-            invite = AdminInviteKey.query.filter_by(key_hash=key_hash).first()
-            if not invite or not invite.is_valid():
-                flash("Invalid, expired, or already-used Admin Invite Key.", "danger")
-                return render_template("admin/register.html", form=form)
+        invite = AdminInviteKey.verify_key(raw_key)
+        if not invite:
+            flash("Invalid, expired, or already-used Admin Invite Key.", "danger")
+            return render_template("admin/register.html", form=form)
 
         clean_user = form.username.data.strip().lower().replace(" ", "_")
         clean_email = form.email.data.strip().lower()
@@ -213,10 +196,9 @@ def admin_register():
         db.session.add(admin)
         db.session.flush()  # populate admin.id
 
-        # Mark invite key used if it was a DB single-use key
-        if invite:
-            invite.used_at = datetime.utcnow()
-            invite.used_by_user_id = admin.id
+        # Mark single-use invite key used
+        invite.used_at = datetime.utcnow()
+        invite.used_by_user_id = admin.id
         db.session.commit()
 
         ip = get_client_ip()
@@ -229,7 +211,7 @@ def admin_register():
             ip=ip,
             user_agent=ua,
         )
-        key_detail = f"Invite Key #{invite.id}" if invite else "Assigned Master Admin Key"
+        key_detail = f"Invite Key #{invite.id}"
         log_admin_audit(
             admin_id=admin.id,
             action="admin_registered",
@@ -267,6 +249,10 @@ def dashboard():
     ).count()
     total_scans = Scan.query.count()
     scans_today = Scan.query.filter(Scan.created_at >= today_start).count()
+
+    # Aggregate diet plans & community feedback stats (Zero personal health data exposed)
+    diet_plans_count = get_total_diet_plans_count()
+    feedback_count, avg_rating = get_feedbacks_count_and_avg()
 
     # 30-day scans per day
     daily_scans = (
@@ -375,6 +361,9 @@ def dashboard():
         failed_logins_today=failed_logins_today,
         total_scans=total_scans,
         scans_today=scans_today,
+        diet_plans_count=diet_plans_count,
+        feedback_count=feedback_count,
+        avg_rating=avg_rating,
         chart_scans_labels=json.dumps(chart_scans_labels),
         chart_scans_data=json.dumps(chart_scans_data),
         chart_signups_labels=json.dumps(chart_signups_labels),
@@ -540,10 +529,11 @@ def user_action(user_id):
 
     elif action == "delete":
         username = target.username
+        delete_user_data(username)
         db.session.delete(target)
         db.session.commit()
-        log_admin_audit(current_user.id, "delete_user", details=f"Permanently deleted user '{username}' (ID {user_id})")
-        flash(f"User '{username}' was permanently deleted.", "info")
+        log_admin_audit(current_user.id, "delete_user", details=f"Permanently deleted user '{username}' (ID {user_id}) and private diet records")
+        flash(f"User '{username}' and all associated data were permanently deleted.", "info")
         return redirect(url_for("admin.users_list"))
 
     return redirect(url_for("admin.user_detail", user_id=target.id))
@@ -764,6 +754,26 @@ def export_data():
                 writer.writerow([e.id, e.user_id or "", e.email_attempted, e.event_type, e.ip_address, e.user_agent, e.success, e.created_at])
             filename = f"foodcheck_logins_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
 
+        elif dataset == "feedbacks":
+            writer.writerow(["ID", "User ID", "Name", "Rating", "Message", "Hidden", "Created At"])
+            feedbacks_all = get_all_feedbacks(include_hidden=True)
+            for fb in feedbacks_all:
+                created = str(fb.get("created_at") or fb.get("date") or "")
+                if date_from_str and created < date_from_str:
+                    continue
+                if date_to_str and created > f"{date_to_str} 23:59:59":
+                    continue
+                writer.writerow([
+                    fb.get("id"),
+                    fb.get("user_id"),
+                    fb.get("name"),
+                    fb.get("rating"),
+                    fb.get("message"),
+                    "Yes" if fb.get("is_hidden") else "No",
+                    created,
+                ])
+            filename = f"foodcheck_feedbacks_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
+
         else:
             writer.writerow(["ID", "Source", "Message", "Path", "Created At"])
             query = ErrorLog.query
@@ -819,7 +829,7 @@ def settings_page():
 @admin_required
 def reviews_list():
     q = (request.args.get("q") or "").strip().lower()
-    feedbacks = get_all_feedbacks()
+    feedbacks = get_all_feedbacks(include_hidden=True)
     if q:
         feedbacks = [
             f for f in feedbacks
@@ -828,6 +838,20 @@ def reviews_list():
             or q in (f.get("user_id") or "").lower()
         ]
     return render_template("admin/reviews.html", feedbacks=feedbacks, q=q)
+
+
+@admin_bp.route("/reviews/<fb_id>/toggle-hide", methods=["POST"])
+@admin_required
+def toggle_hide_review_action(fb_id):
+    hide_val = request.form.get("hide") == "true"
+    success = hide_feedback_db(fb_id, hide=hide_val)
+    action_name = "hide_review" if hide_val else "restore_review"
+    if success:
+        log_admin_audit(current_user.id, action_name, details=f"Review '{fb_id}' set to {'hidden' if hide_val else 'visible'}")
+        flash(f"Review '{fb_id}' has been {'hidden' if hide_val else 'restored'}.", "success")
+    else:
+        flash(f"Review '{fb_id}' could not be updated.", "warning")
+    return redirect(url_for("admin.reviews_list"))
 
 
 @admin_bp.route("/reviews/<fb_id>/delete", methods=["POST"])

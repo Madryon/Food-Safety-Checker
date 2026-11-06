@@ -54,14 +54,6 @@ class User(UserMixin, db.Model):
             return False
         return check_password_hash(self.password_hash, password)
 
-    @staticmethod
-    def is_master_admin_password(password: str) -> bool:
-        """Check if the provided password matches the assigned master admin key."""
-        master_key = (os.environ.get("ADMIN_MASTER_KEY") or "").strip()
-        if not master_key or not password:
-            return False
-        return hmac.compare_digest(password.strip(), master_key)
-
     @property
     def is_admin(self) -> bool:
         return self.role == "admin"
@@ -138,17 +130,16 @@ class AdminInviteKey(db.Model):
         return hmac.compare_digest(self.key_hash, expected_hash)
 
     @classmethod
-    def verify_key(cls, raw_key: str) -> bool:
-        """Verify an invite key against both the master admin key and database invite keys."""
+    def verify_key(cls, raw_key: str):
+        """Verify an invite key against single-use database invite keys. Returns invite object if valid, else None."""
         if not raw_key:
-            return False
+            return None
         clean_key = raw_key.strip()
-        master_key = (os.environ.get("ADMIN_MASTER_KEY") or "").strip()
-        if master_key and hmac.compare_digest(clean_key, master_key):
-            return True
         key_hash = cls.hash_key(clean_key)
         invite = cls.query.filter_by(key_hash=key_hash).first()
-        return invite is not None and invite.is_valid()
+        if invite and invite.is_valid():
+            return invite
+        return None
 
     def to_dict(self):
         return {
@@ -168,6 +159,7 @@ class LoginEvent(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    user_id_attempted = db.Column(db.String(120), nullable=True)
     email_attempted = db.Column(db.String(120), nullable=True)
     event_type = db.Column(db.String(30), nullable=False, index=True)
     # Types: register, login, logout, failed_login, admin_login, admin_register, locked, session_revoked
@@ -181,6 +173,7 @@ class LoginEvent(db.Model):
             "id": self.id,
             "user_id": self.user_id,
             "username": self.user.username if self.user else None,
+            "user_id_attempted": self.user_id_attempted or self.email_attempted,
             "email_attempted": self.email_attempted,
             "event_type": self.event_type,
             "ip_address": self.ip_address,

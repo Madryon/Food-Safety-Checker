@@ -67,12 +67,14 @@ def log_login_event(
     event_type: str,
     user_id=None,
     email_attempted: str = None,
+    user_id_attempted: str = None,
     success: bool = True,
     ip: str = None,
     user_agent: str = None,
 ):
     """Log an authentication event (register, login, failed_login, locked, etc.)."""
     try:
+        attempted = user_id_attempted or email_attempted
         client_ip = ip or get_client_ip()
         ua = user_agent or (request.headers.get("User-Agent") if has_request_context() else "")
         if ua and len(ua) > 250:
@@ -80,7 +82,8 @@ def log_login_event(
 
         event = LoginEvent(
             user_id=user_id,
-            email_attempted=email_attempted,
+            user_id_attempted=attempted,
+            email_attempted=attempted,
             event_type=event_type,
             ip_address=client_ip,
             user_agent=ua,

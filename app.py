@@ -1,4 +1,5 @@
 import os
+import re
 import secrets
 import uuid
 import shutil
@@ -25,6 +26,7 @@ load_dotenv()
 from services.captcha import get_captcha_provider, captcha_manager
 from services.recaptcha import verify_captcha_token
 from werkzeug.utils import secure_filename
+from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_login import current_user, login_user, logout_user
 
 from extensions import db, migrate, login_manager, csrf, limiter
@@ -79,6 +81,7 @@ from services.diet_generator import generate_diet_plan, calculate_bmr_and_tdee, 
 load_dotenv()
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5MB upload limit
 def _get_or_create_secret_key():
     env_key = (os.environ.get("SECRET_KEY") or "").strip()
@@ -180,8 +183,30 @@ def allowed_file(filename: str) -> bool:
 
 
 # ── MIDDLEWARE: MAINTENANCE MODE & SESSION EXPIRY CHECK ─────────────────────
+_last_auto_purge_time = 0
+
+def _run_daily_purge_if_needed():
+    global _last_auto_purge_time
+    now = time.time()
+    if now - _last_auto_purge_time < 86400:
+        return
+    _last_auto_purge_time = now
+    try:
+        cutoff = datetime.utcnow() - timedelta(days=90)
+        ActivityLog.query.filter(ActivityLog.created_at < cutoff).delete()
+        LoginEvent.query.filter(LoginEvent.created_at < cutoff).delete()
+        ErrorLog.query.filter(ErrorLog.created_at < cutoff).delete()
+        from models import AdminAuditLog
+        AdminAuditLog.query.filter(AdminAuditLog.created_at < cutoff).delete()
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
 @app.before_request
 def check_maintenance_and_session():
+    # 0. Lightweight daily purge (runs at most once every 24 hours)
+    _run_daily_purge_if_needed()
+
     # 1. Maintenance Mode Enforcement
     # Admins and static assets are exempt from maintenance screen
     path = request.path
@@ -725,6 +750,7 @@ def generate_plan_endpoint():
             plan_data=plan_content,
         )
 
+        log_activity(action="diet_plan_generated", details={"plan_id": plan_id})
         log_activity(action="generate_diet_plan", details={"plan_id": plan_id})
 
         return jsonify({
@@ -757,6 +783,7 @@ def suggest_meal_endpoint():
 
     profile = get_user_profile(user_id) or {}
     res = suggest_quick_meal(profile, meal_type=meal_type, target_calories=target_calories, craving=craving)
+    log_activity(action="meal_suggest", details={"meal_type": meal_type})
     log_activity(action="suggest_meal", details={"meal_type": meal_type})
     return jsonify({"status": "success", "result": res})
 
@@ -838,6 +865,7 @@ def log_calorie_meal():
             fat_g=fat_g,
         )
         summary = get_daily_calorie_summary(user_id, log_date)
+        log_activity("calorie_log_added", details={"meal_type": meal_type})
         return jsonify({
             "status": "success",
             "logged_item": logged,
@@ -1045,16 +1073,20 @@ def auth_register():
             return jsonify({"error": "User ID and Password are required."}), 400
         if len(username) < 2:
             return jsonify({"error": "User ID must be at least 2 characters long."}), 400
-        if len(password) < 4:
-            return jsonify({"error": "Password must be at least 4 characters long."}), 400
+        if len(password) < 8 or not re.search(r"[A-Za-z]", password) or not re.search(r"\d", password):
+            return jsonify({"error": "Password must be at least 8 characters long and contain both letters and numbers."}), 400
 
         # Handle Admin Registration with invite key
+        invite = None
         if is_admin_req or invite_key:
-            if AdminInviteKey.verify_key(invite_key):
+            invite = AdminInviteKey.verify_key(invite_key)
+            if invite:
                 role = "admin"
             else:
-                return jsonify({"error": "Invalid Admin Invite Key. Enter the assigned admin key to register as administrator."}), 400
+                return jsonify({"error": "Invalid Admin Invite Key. Enter a valid developer-issued invite key to register as administrator."}), 400
         else:
+            if AppSetting.get_setting("registration_enabled", "true") == "false":
+                return jsonify({"error": "Public registration is currently disabled by administrator."}), 403
             role = "user"
 
         # Check existing User in SQLAlchemy
@@ -1077,6 +1109,12 @@ def auth_register():
         sql_user.set_password(password)
         db.session.add(sql_user)
         db.session.commit()
+
+        # Mark single-use invite key as consumed
+        if invite:
+            invite.used_at = datetime.utcnow()
+            invite.used_by_user_id = sql_user.id
+            db.session.commit()
 
         # Log in via Flask-Login and session
         login_user(sql_user)
@@ -1164,91 +1202,48 @@ def auth_login():
         if not username or not password:
             return jsonify({"error": "Please provide both User ID and Password."}), 400
 
-        # Check Master Admin Password
-        is_master_pass = User.is_master_admin_password(password)
-
-        if login_as_admin or is_master_pass:
-            if is_master_pass:
-                # User provided the Master Admin Password!
-                user = User.query.filter_by(username=username).first()
-                if not user:
-                    # Auto-create admin user if doesn't exist yet
-                    user = User(
-                        username=username,
-                        name=raw_username.capitalize() or username,
-                        role="admin",
-                        is_active=True,
-                    )
-                    user.set_password(password)
-                    db.session.add(user)
-                    db.session.commit()
-                    try:
-                        register_account(username, password, name=user.name, role="admin")
-                    except Exception:
-                        pass
-                else:
-                    # Promote/ensure role is admin
-                    user.role = "admin"
-                    user.is_active = True
-                    user.reset_failed_logins()
-                    db.session.commit()
-
-                user.record_successful_login(ip=get_client_ip())
-                db.session.commit()
-
-                captcha_manager.record_successful_login(get_client_ip())
-                login_user(user)
-                session["user_id"] = user.username
-                session["name"] = user.name
-                session["role"] = user.role
-                session["admin_last_active"] = datetime.utcnow().timestamp()
-
-                log_login_event("admin_login", user_id=user.id, email_attempted=username, success=True)
-                log_activity("admin_login", details={"username": user.username}, user_id=user.id)
-
-                return jsonify({
-                    "status": "success",
-                    "user": {
-                        "user_id": user.username,
-                        "name": user.name,
-                        "role": user.role,
-                        "is_admin": True,
-                    }
-                })
-
-            # If user checked 'Log in as Admin' but password is NOT master password:
-            # Check if user already exists, is an admin, and their personal password matches
+        if login_as_admin:
             user = User.query.filter_by(username=username).first()
-            if user and user.is_admin and user.check_password(password):
-                if not user.is_active:
-                    return jsonify({"error": "This admin account is currently disabled."}), 403
-                if user.is_locked:
-                    minutes = int((user.locked_until - datetime.utcnow()).total_seconds() / 60) + 1
-                    return jsonify({"error": f"Account temporarily locked. Retry in {minutes} minutes."}), 429
+            if not user or not user.is_admin:
+                log_login_event("failed_login", email_attempted=username, success=False)
+                return jsonify({"error": "Invalid Administrator credentials or access denied."}), 401
 
-                user.record_successful_login(ip=get_client_ip())
+            if not user.is_active:
+                log_login_event("failed_login", user_id=user.id, email_attempted=username, success=False)
+                return jsonify({"error": "This administrator account is disabled."}), 403
+
+            if user.is_locked:
+                minutes = int((user.locked_until - datetime.utcnow()).total_seconds() / 60) + 1
+                log_login_event("locked", user_id=user.id, email_attempted=username, success=False)
+                return jsonify({"error": f"Account temporarily locked. Retry in {minutes} minutes."}), 429
+
+            if not user.check_password(password):
+                user.record_failed_login()
                 db.session.commit()
-                login_user(user)
-                session["user_id"] = user.username
-                session["name"] = user.name
-                session["role"] = user.role
-                session["admin_last_active"] = datetime.utcnow().timestamp()
+                log_login_event("failed_login", user_id=user.id, email_attempted=username, success=False)
+                return jsonify({"error": "Invalid Administrator credentials or access denied."}), 401
 
-                log_login_event("admin_login", user_id=user.id, email_attempted=username, success=True)
-                log_activity("admin_login", details={"username": user.username}, user_id=user.id)
+            user.record_successful_login(ip=get_client_ip())
+            db.session.commit()
+            captcha_manager.record_successful_login(get_client_ip())
+            login_user(user)
+            session["user_id"] = user.username
+            session["name"] = user.name
+            session["role"] = user.role
+            session["admin_last_active"] = datetime.utcnow().timestamp()
 
-                return jsonify({
-                    "status": "success",
-                    "user": {
-                        "user_id": user.username,
-                        "name": user.name,
-                        "role": user.role,
-                        "is_admin": True,
-                    }
-                })
+            log_login_event("admin_login", user_id=user.id, email_attempted=username, success=True)
+            log_activity("admin_login", details={"username": user.username}, user_id=user.id)
 
-            log_login_event("failed_login", email_attempted=username, success=False)
-            return jsonify({"error": "Invalid Administrator credentials or Master Password."}), 401
+            return jsonify({
+                "status": "success",
+                "user": {
+                    "user_id": user.username,
+                    "name": user.name,
+                    "role": user.role,
+                    "is_admin": True,
+                }
+            })
 
         # Standard User Login
         user = User.query.filter_by(username=username).first()
@@ -1361,6 +1356,14 @@ def auth_me():
         return jsonify({"authenticated": False, "error": str(e)})
 
 
+@app.route("/api/activity/theme", methods=["POST"])
+def log_theme_activity():
+    data = request.get_json(silent=True) or {}
+    theme = (data.get("theme") or "").strip()[:20]
+    log_activity(action="theme_change", details={"theme": theme})
+    return jsonify({"status": "ok"})
+
+
 # Exempt legacy JSON API endpoints from CSRF
 for _api_func in [
     auth_register,
@@ -1382,6 +1385,7 @@ for _api_func in [
     api_captcha_verify,
     app_register,
     app_login,
+    log_theme_activity,
 ]:
     csrf.exempt(_api_func)
 

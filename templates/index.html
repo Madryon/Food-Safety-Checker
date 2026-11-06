@@ -1152,8 +1152,8 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                         </div>
                         <div class="fb-field">
                             <label for="reg-password">Password <span class="req">*</span></label>
-                            <input type="password" id="reg-password" class="fb-input" placeholder="Create a password (min 4 characters)" autocomplete="new-password" minlength="4" required>
-                            <div style="font-size:0.76rem; color:var(--muted); margin-top:3px;">Must be at least 4 characters long.</div>
+                            <input type="password" id="reg-password" class="fb-input" placeholder="Create a password (min 8 characters with letters & numbers)" autocomplete="new-password" minlength="8" required>
+                            <div style="font-size:0.76rem; color:var(--muted); margin-top:3px;">Must be at least 8 characters long (including letters and numbers).</div>
                         </div>
                         <div class="fb-field" style="margin: 10px 0; padding: 8px 12px; background: rgba(0,0,0,0.03); border: 1px solid var(--border); border-radius: 8px; display: flex; align-items: center; justify-content: space-between;">
                             <label for="reg-is-admin" style="margin: 0; font-size: 0.88rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; color: var(--text);">
@@ -1162,7 +1162,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                             <input type="checkbox" id="reg-is-admin" style="width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer;">
                         </div>
                         <div id="reg-admin-key-container" class="fb-field hidden" style="margin-bottom: 12px;">
-                            <label for="reg-admin-key">Admin Invite Key / Master Password <span class="req">*</span></label>
+                            <label for="reg-admin-key">Admin Invite Key <span class="req">*</span></label>
                             <input type="password" id="reg-admin-key" class="fb-input" placeholder="Enter assigned admin key">
                             <div style="font-size:0.76rem; color:var(--muted); margin-top:3px;">Enter the pre-assigned admin key to create an Administrator account.</div>
                         </div>
@@ -1631,7 +1631,16 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
         root.setAttribute('data-theme', name);
         if (slider) slider.value = THEMES.indexOf(name);
         if (meta) meta.setAttribute('content', COLORS[name]);
-        if (save) { try { localStorage.setItem(KEY, name); } catch (e) {} }
+        if (save) {
+            try { localStorage.setItem(KEY, name); } catch (e) {}
+            try {
+                fetch('/api/activity/theme', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ theme: name })
+                }).catch(function() {});
+            } catch (e) {}
+        }
     }
 
     var saved = null;
@@ -2666,8 +2675,8 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             if (uInp) uInp.focus();
             return;
         }
-        if (!password || password.length < 4) {
-            showRegError('Password must be at least 4 characters long.');
+        if (!password || password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+            showRegError('Password must be at least 8 characters long and contain both letters and numbers.');
             if (pInp) pInp.focus();
             return;
         }

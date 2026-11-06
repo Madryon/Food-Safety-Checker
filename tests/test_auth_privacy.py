@@ -229,14 +229,14 @@ class FoodCheckPrivateAuthTest(unittest.TestCase):
         self.assertEqual(res_empty.status_code, 400)
         self.assertIn('required', res_empty.get_json()['error'].lower())
 
-        # 2. Short password (< 4 chars)
+        # 2. Short password (< 8 chars or missing numbers/letters)
         res_short_pw = self.client.post('/api/auth/register', json={
             'username': 'user_valid',
             'password': '123',
             'name': 'Short Password User'
         })
         self.assertEqual(res_short_pw.status_code, 400)
-        self.assertIn('4 characters', res_short_pw.get_json()['error'])
+        self.assertIn('8 characters', res_short_pw.get_json()['error'])
 
         # 3. Short username (< 2 chars)
         res_short_u = self.client.post('/api/auth/register', json={
@@ -265,7 +265,7 @@ class FoodCheckPrivateAuthTest(unittest.TestCase):
         # 5. Duplicate username registration returns 400 with clear error
         res_dup = self.client.post('/api/auth/register', json={
             'username': expected_u,
-            'password': 'anotherpassword',
+            'password': 'anotherpassword123',
             'name': 'Deepak Again'
         })
         self.assertEqual(res_dup.status_code, 400)
@@ -276,7 +276,7 @@ class FoodCheckPrivateAuthTest(unittest.TestCase):
         with self.client:
             res_reg = self.client.post('/api/auth/register', json={
                 'username': charlie_u,
-                'password': 'charlie_password',
+                'password': 'charlie_password123',
                 'name': 'Charlie Brown'
             })
             self.assertEqual(res_reg.status_code, 200)
