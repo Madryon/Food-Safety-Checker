@@ -2486,8 +2486,33 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
     var fbLoginLink = $('feedback-login-link');
     if (fbLoginLink) fbLoginLink.addEventListener('click', function (e) { e.preventDefault(); openAuthModal('login'); });
 
+    function resetRecaptchaWidget(containerId) {
+        var el = document.getElementById(containerId);
+        if (el) {
+            var tokInputs = el.querySelectorAll('input[name="captcha_token"]');
+            tokInputs.forEach(function (inp) { inp.value = ''; });
+            var form = el.closest ? el.closest('form') : null;
+            if (form) {
+                var formTok = form.querySelectorAll('input[name="captcha_token"]');
+                formTok.forEach(function (inp) { inp.value = ''; });
+            }
+            var wid = el.getAttribute('data-recaptcha-widget-id');
+            if (window.grecaptcha && typeof window.grecaptcha.reset === 'function') {
+                try {
+                    if (wid !== null && wid !== '') {
+                        window.grecaptcha.reset(parseInt(wid, 10));
+                    } else {
+                        window.grecaptcha.reset();
+                    }
+                } catch (e) {}
+            }
+        }
+    }
+
+    var _loginInFlight = false;
     function handleLoginSubmit(e) {
         if (e && e.preventDefault) e.preventDefault();
+        if (_loginInFlight) return;
         var uInp = $('login-username'), pInp = $('login-password'), stat = $('login-status-msg'), btn = $('btn-submit-login');
         var rawUsername = uInp ? uInp.value.trim() : '';
         var username = rawUsername.toLowerCase().replace(/\s+/g, '_');
@@ -2496,12 +2521,14 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
         var isAdmin = chkAdmin ? chkAdmin.checked : false;
 
         function showLoginError(msg) {
+            _loginInFlight = false;
             if (btn) { btn.disabled = false; btn.textContent = isAdmin ? '🛡️ Sign In as Administrator' : '🔓 Sign In to My Account'; }
             if (stat) {
                 stat.style.display = 'block';
                 stat.className = 'fb-status-msg error';
                 stat.textContent = '⚠️ ' + msg;
             }
+            resetRecaptchaWidget('modal-captcha-login');
         }
 
         if (!username || !password) {
@@ -2509,6 +2536,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             return;
         }
 
+        _loginInFlight = true;
         if (btn) { btn.disabled = true; btn.textContent = 'Signing in...'; }
         if (stat) { stat.style.display = 'none'; stat.textContent = ''; }
 
@@ -2556,6 +2584,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                 showLoginError(res.data && res.data.error ? res.data.error : ('Sign in failed (' + res.status + ')'));
                 return;
             }
+            _loginInFlight = false;
             if (btn) { btn.disabled = false; btn.textContent = isAdmin ? '🛡️ Sign In as Administrator' : '🔓 Sign In to My Account'; }
             if (stat) {
                 stat.style.display = 'block';
@@ -2584,19 +2613,12 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
     if (formLogin) {
         formLogin.addEventListener('submit', handleLoginSubmit);
     }
-    var btnLogin = $('btn-submit-login');
-    if (btnLogin) {
-        btnLogin.addEventListener('click', function (e) {
-            if (formLogin && formLogin.checkValidity && !formLogin.checkValidity()) {
-                if (formLogin.reportValidity) formLogin.reportValidity();
-                return;
-            }
-            handleLoginSubmit(e);
-        });
-    }
+    // Native button submit event triggers formLogin submit listener; no duplicate click handler needed
 
+    var _regInFlight = false;
     function handleRegisterSubmit(e) {
         if (e && e.preventDefault) e.preventDefault();
+        if (_regInFlight) return;
         var nInp = $('reg-name'), uInp = $('reg-username'), pInp = $('reg-password'), stat = $('reg-status-msg'), btn = $('btn-submit-register');
         var chkRegAdmin = $('reg-is-admin');
         var isRegAdmin = chkRegAdmin ? chkRegAdmin.checked : false;
@@ -2609,12 +2631,14 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
         var password = pInp ? pInp.value.trim() : '';
 
         function showRegError(msg) {
+            _regInFlight = false;
             if (btn) { btn.disabled = false; btn.textContent = isRegAdmin ? '🛡️ Create Administrator Account' : '✨ Create Private Account'; }
             if (stat) {
                 stat.style.display = 'block';
                 stat.className = 'fb-status-msg error';
                 stat.textContent = '⚠️ ' + msg;
             }
+            resetRecaptchaWidget('modal-captcha-register');
         }
 
         if (!name) {
@@ -2638,6 +2662,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             return;
         }
 
+        _regInFlight = true;
         if (btn) { btn.disabled = true; btn.textContent = 'Creating account...'; }
         if (stat) { stat.style.display = 'none'; stat.textContent = ''; }
 
@@ -2687,6 +2712,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                 showRegError(res.data && res.data.error ? res.data.error : ('Registration failed (' + res.status + ')'));
                 return;
             }
+            _regInFlight = false;
             if (btn) { btn.disabled = false; btn.textContent = isRegAdmin ? '🛡️ Create Administrator Account' : '✨ Create Private Account'; }
             if (stat) {
                 stat.style.display = 'block';
@@ -2757,16 +2783,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
     if (formReg) {
         formReg.addEventListener('submit', handleRegisterSubmit);
     }
-    var btnReg = $('btn-submit-register');
-    if (btnReg) {
-        btnReg.addEventListener('click', function (e) {
-            if (formReg && formReg.checkValidity && !formReg.checkValidity()) {
-                if (formReg.reportValidity) formReg.reportValidity();
-                return;
-            }
-            handleRegisterSubmit(e);
-        });
-    }
+    // Native button submit event triggers formReg submit listener; no duplicate click handler needed
 
     /* ---------- 3-Dot Account Menu Controller ---------- */
     var btnThreeDots = $('btn-three-dots');
