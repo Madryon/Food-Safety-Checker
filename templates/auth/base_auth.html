@@ -8,7 +8,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/captcha.css') }}">
     <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    <script src="{{ url_for('static', filename='js/captcha.js') }}"></script>
     <script>
         (function() {
             var t = localStorage.getItem('foodcheck-theme') || 'dark';
@@ -203,5 +206,6 @@
         }
         updatePillActive();
     </script>
+    {% block scripts %}{% endblock %}
 </body>
 </html>

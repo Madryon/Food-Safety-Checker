@@ -1,0 +1,430 @@
+/**
+ * FoodCheck Custom Image-Selection CAPTCHA Styles
+ * Uses project CSS variables for seamless theme compatibility:
+ *   --bg, --surface, --surface-2, --border, --text, --muted,
+ *   --accent, --accent-2, --on-accent, --good, --warn, --bad, --radius, --shadow
+ * Strictly respects prefers-reduced-motion.
+ */
+
+/* ==========================================================================
+   CHECKBOX WIDGET
+   ========================================================================== */
+.fc-captcha-widget {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    width: min(320px, 100%);
+    min-height: 74px;
+    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+    user-select: none;
+    box-sizing: border-box;
+    font-family: inherit;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.fc-captcha-widget:hover {
+    border-color: var(--accent);
+}
+
+.fc-captcha-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    cursor: pointer;
+}
+
+.fc-checkbox-box {
+    width: 26px;
+    height: 26px;
+    border: 2px solid var(--muted);
+    border-radius: 6px;
+    background: var(--surface-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    outline: none;
+}
+
+.fc-checkbox-box:focus-visible {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 40%, transparent);
+    border-color: var(--accent);
+}
+
+.fc-checkbox-box.loading {
+    border-color: var(--accent);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: fc-spin 0.8s linear infinite;
+}
+
+.fc-checkbox-box.verified {
+    background: var(--good);
+    border-color: var(--good);
+}
+
+.fc-checkbox-box.verified svg {
+    stroke: var(--on-accent, #ffffff);
+    stroke-width: 3;
+    display: block;
+    width: 18px;
+    height: 18px;
+}
+
+.fc-captcha-label {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--text);
+    cursor: pointer;
+}
+
+.fc-captcha-badge {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    opacity: 0.8;
+}
+
+.fc-badge-icon {
+    width: 26px;
+    height: 26px;
+    color: var(--accent);
+}
+
+.fc-badge-text {
+    font-size: 0.65rem;
+    color: var(--muted);
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+/* ==========================================================================
+   MODAL OVERLAY & CARD
+   ========================================================================== */
+.fc-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 99999;
+    padding: 16px;
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.fc-modal-overlay.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.fc-modal-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    width: min(390px, 96vw);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: fc-pop 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Modal Header */
+.fc-modal-header {
+    background: var(--surface-2);
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+}
+
+.fc-instruction-prefix {
+    font-size: 0.82rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    font-weight: 700;
+}
+
+.fc-instruction-target {
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: var(--accent);
+    margin: 4px 0 2px;
+    line-height: 1.2;
+}
+
+.fc-instruction-hint {
+    font-size: 0.76rem;
+    color: var(--muted);
+}
+
+/* Status / Alert Banner */
+.fc-alert-banner {
+    padding: 8px 16px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-align: center;
+    background: color-mix(in srgb, var(--bad) 15%, transparent);
+    color: var(--bad);
+    border-bottom: 1px solid color-mix(in srgb, var(--bad) 25%, transparent);
+    display: none;
+}
+
+.fc-alert-banner.visible {
+    display: block;
+}
+
+/* ==========================================================================
+   IMAGE GRID (3x3 or 4x4)
+   ========================================================================== */
+.fc-grid-container {
+    padding: 8px;
+    background: var(--bg);
+}
+
+.fc-grid {
+    display: grid;
+    gap: 6px;
+}
+
+.fc-grid.grid-3x3 {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+.fc-grid.grid-4x4 {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+}
+
+.fc-tile {
+    position: relative;
+    aspect-ratio: 1;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    background: var(--surface-2);
+    border: 2px solid transparent;
+    transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    outline: none;
+}
+
+.fc-tile:focus-visible {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 40%, transparent);
+    z-index: 2;
+}
+
+.fc-tile img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    user-select: none;
+    pointer-events: none;
+    transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.fc-tile.selected {
+    border-color: var(--accent);
+}
+
+.fc-tile.selected img {
+    transform: scale(0.92);
+    filter: brightness(0.85);
+}
+
+.fc-tile-check {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--on-accent, #000);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    z-index: 3;
+}
+
+.fc-tile.selected .fc-tile-check {
+    display: flex;
+}
+
+.fc-tile-check svg {
+    width: 15px;
+    height: 15px;
+    stroke-width: 3.5;
+}
+
+/* ==========================================================================
+   AUDIO ALTERNATIVE VIEW
+   ========================================================================== */
+.fc-audio-view {
+    padding: 24px 20px;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    background: var(--bg);
+}
+
+.fc-audio-view.active {
+    display: flex;
+}
+
+.fc-audio-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 20px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text);
+    font-size: 0.92rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.fc-audio-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.fc-audio-input {
+    width: min(200px, 100%);
+    padding: 10px 16px;
+    font-size: 1.25rem;
+    text-align: center;
+    letter-spacing: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s ease;
+}
+
+.fc-audio-input:focus {
+    border-color: var(--accent);
+}
+
+/* ==========================================================================
+   MODAL FOOTER & TOOLBAR
+   ========================================================================== */
+.fc-modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 18px;
+    background: var(--surface-2);
+    border-top: 1px solid var(--border);
+}
+
+.fc-tools-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.fc-tool-btn {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s ease, background 0.15s ease;
+    outline: none;
+}
+
+.fc-tool-btn:hover, .fc-tool-btn:focus-visible {
+    color: var(--text);
+    background: var(--surface);
+}
+
+.fc-tool-btn.active {
+    color: var(--accent);
+    background: var(--surface);
+}
+
+.fc-verify-btn {
+    padding: 10px 24px;
+    font-size: 0.88rem;
+    font-weight: 800;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    background: var(--accent);
+    color: var(--on-accent, #04261b);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: opacity 0.2s ease, transform 0.1s ease;
+}
+
+.fc-verify-btn:hover {
+    opacity: 0.92;
+    transform: translateY(-1px);
+}
+
+.fc-verify-btn:active {
+    transform: translateY(0);
+}
+
+.fc-verify-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ==========================================================================
+   ANIMATIONS & REDUCED MOTION
+   ========================================================================== */
+@keyframes fc-spin {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes fc-pop {
+    from {
+        opacity: 0;
+        transform: scale(0.94);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .fc-captcha-widget,
+    .fc-checkbox-box,
+    .fc-modal-overlay,
+    .fc-modal-card,
+    .fc-tile,
+    .fc-tile img,
+    .fc-verify-btn {
+        transition: none !important;
+        animation: none !important;
+    }
+}

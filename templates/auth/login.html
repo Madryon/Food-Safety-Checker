@@ -4,8 +4,15 @@
 {% block subtitle %}Sign in to your FoodCheck account{% endblock %}
 
 {% block content %}
-<form method="POST" action="{{ url_for('auth.login', next=request.args.get('next')) }}">
+<form method="POST" id="login-form" action="{{ url_for('auth.login', next=request.args.get('next')) }}">
     {{ form.hidden_tag() }}
+
+    {# Hidden honeypot field #}
+    <div style="display:none !important;" aria-hidden="true">
+        <label for="honeypot">Leave blank</label>
+        <input type="text" name="honeypot" id="honeypot" tabindex="-1" autocomplete="off" value="">
+        <input type="hidden" name="form_rendered_at" id="login_rendered_at" value="">
+    </div>
 
     <div class="form-group">
         <label class="form-label" for="username_or_email">Username or Email</label>
@@ -32,15 +39,30 @@
         </label>
     </div>
 
-    {# Google reCAPTCHA v2 Checkbox Widget #}
-    <div class="form-group" style="display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 18px 0 10px;">
-        <div class="g-recaptcha" data-sitekey="{{ recaptcha_site_key }}"></div>
+    {# Interactive CAPTCHA Widget Container #}
+    <div class="form-group" style="display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 18px 0 12px;">
+        <div id="captcha-login"></div>
     </div>
 
-    {{ form.submit(class="btn-submit") }}
+    {{ form.submit(id="login-submit-btn", class="btn-submit") }}
 </form>
 
 <div class="auth-footer">
     Don't have an account? <a href="{{ url_for('auth.register') }}">Create one for free</a>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var rInput = document.getElementById('login_rendered_at');
+        if (rInput) rInput.value = (Date.now() / 1000).toString();
+
+        FoodCheckCaptcha.init({
+            containerId: 'captcha-login',
+            formId: 'login-form',
+            submitBtnId: 'login-submit-btn'
+        });
+    });
+</script>
 {% endblock %}

@@ -14,7 +14,9 @@ from services.activity_tracker import (
     is_suspicious_login,
 )
 from services.database import save_user_profile
-from services.recaptcha import verify_recaptcha
+import time
+from services.recaptcha import verify_recaptcha, verify_captcha_token
+from services.captcha import captcha_manager
 
 
 @auth_bp.route("/login", methods=["GET", "POST"])
@@ -27,12 +29,38 @@ def login():
     recaptcha_site_key = os.getenv("RECAPTCHA_SITE_KEY", "")
 
     if request.method == "POST":
-        # Verify reCAPTCHA before checking password or user existence
-        recaptcha_enabled = current_app.config.get("RECAPTCHA_ENABLED", True)
-        if recaptcha_enabled:
-            token = request.form.get("g-recaptcha-response", "").strip()
+        # 1. Honeypot check
+        honeypot = request.form.get("honeypot", "").strip()
+        if honeypot:
+            flash("Bot submission detected. Request rejected.", "danger")
+            return render_template("auth/login.html", form=form, recaptcha_site_key=recaptcha_site_key), 400
+
+        # 2. Minimum 2-second time-to-submit check
+        rendered_at = request.form.get("form_rendered_at")
+        if rendered_at:
+            try:
+                if time.time() - float(rendered_at) < 2.0:
+                    flash("Submission was too fast. Bot activity detected.", "danger")
+                    return render_template("auth/login.html", form=form, recaptcha_site_key=recaptcha_site_key), 400
+            except ValueError:
+                pass
+
+        # 3. CAPTCHA verification
+        captcha_enabled = True
+        if current_app.config.get("TESTING"):
+            captcha_enabled = current_app.config.get("CAPTCHA_ENABLED", False) or current_app.config.get("RECAPTCHA_ENABLED", False)
+
+        if captcha_enabled:
+            token = (
+                request.form.get("captcha_token")
+                or request.form.get("captchaToken")
+                or request.form.get("g-recaptcha-response")
+                or request.form.get("cf-turnstile-response")
+                or ""
+            ).strip()
             ip = get_client_ip()
-            if not verify_recaptcha(token, ip):
+            ok, msg = verify_captcha_token(token, ip)
+            if not ok:
                 flash("Please complete the reCAPTCHA verification to sign in.", "danger")
                 return render_template("auth/login.html", form=form, recaptcha_site_key=recaptcha_site_key), 400
 
@@ -159,9 +187,11 @@ def login():
                     f"Invalid username/email or password. ({remaining_attempts} attempts remaining)",
                     "danger",
                 )
+            captcha_manager.record_failed_login(ip)
             return render_template("auth/login.html", form=form, recaptcha_site_key=recaptcha_site_key)
 
         # Successful Login
+        captcha_manager.record_successful_login(ip)
         suspicious = is_suspicious_login(user.id, ip, ua)
         user.record_successful_login(ip=ip)
 
@@ -233,12 +263,32 @@ def register():
             flash("Bot submission detected. Registration rejected.", "danger")
             return render_template("auth/register.html", form=form, recaptcha_site_key=recaptcha_site_key), 400
 
-        # 2. reCAPTCHA check BEFORE creating user or saving anything to DB
-        recaptcha_enabled = current_app.config.get("RECAPTCHA_ENABLED", True)
-        if recaptcha_enabled:
-            token = request.form.get("g-recaptcha-response", "").strip()
+        # 2. Minimum 2-second time-to-submit check
+        rendered_at = request.form.get("form_rendered_at")
+        if rendered_at:
+            try:
+                if time.time() - float(rendered_at) < 2.0:
+                    flash("Submission was too fast. Bot activity detected.", "danger")
+                    return render_template("auth/register.html", form=form, recaptcha_site_key=recaptcha_site_key), 400
+            except ValueError:
+                pass
+
+        # 3. CAPTCHA check BEFORE creating user or saving anything to DB
+        captcha_enabled = True
+        if current_app.config.get("TESTING"):
+            captcha_enabled = current_app.config.get("CAPTCHA_ENABLED", False) or current_app.config.get("RECAPTCHA_ENABLED", False)
+
+        if captcha_enabled:
+            token = (
+                request.form.get("captcha_token")
+                or request.form.get("captchaToken")
+                or request.form.get("g-recaptcha-response")
+                or request.form.get("cf-turnstile-response")
+                or ""
+            ).strip()
             ip = get_client_ip()
-            if not verify_recaptcha(token, ip):
+            ok, msg = verify_captcha_token(token, ip)
+            if not ok:
                 flash("Please complete the reCAPTCHA verification to create an account.", "danger")
                 return render_template("auth/register.html", form=form, recaptcha_site_key=recaptcha_site_key), 400
 

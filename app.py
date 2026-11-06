@@ -15,7 +15,10 @@ from flask import (
     url_for,
     flash,
     abort,
+    make_response,
 )
+from services.captcha import get_captcha_provider, captcha_manager
+from services.recaptcha import verify_captcha_token
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 from flask_login import current_user, login_user, logout_user
@@ -195,10 +198,11 @@ def set_security_headers(response):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/ https://challenges.cloudflare.com; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com; "
-        "frame-src 'self' https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/; "
+        "frame-src 'self' https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/ https://challenges.cloudflare.com; "
+        "media-src 'self' data: blob:; "
         "img-src 'self' data: blob: https://images.openfoodfacts.org; "
         "connect-src 'self' https://world.openfoodfacts.org; "
         "frame-ancestors 'none';"
@@ -213,9 +217,12 @@ def inject_global_banner():
         banner = AppSetting.get_setting("announcement_banner", "")
     except Exception:
         banner = ""
+    provider = get_captcha_provider()
     return dict(
         announcement_banner=banner,
         recaptcha_site_key=os.getenv("RECAPTCHA_SITE_KEY", ""),
+        turnstile_site_key=os.getenv("TURNSTILE_SITE_KEY", ""),
+        captcha_provider=provider.provider_name,
     )
 
 
@@ -837,6 +844,65 @@ def delete_calorie_log(log_id):
         return jsonify({"error": str(e)}), 500
 
 
+# ── CAPTCHA ENDPOINTS (CUSTOM / TURNSTILE / RECAPTCHA) ─────────────────────
+
+@app.route("/api/captcha/config", methods=["GET"])
+def api_captcha_config():
+    provider = get_captcha_provider()
+    return jsonify(provider.get_client_config())
+
+@app.route("/api/captcha/challenge", methods=["GET"])
+def api_captcha_challenge():
+    ip = get_client_ip()
+    ch_data, error_msg, status_code = captcha_manager.create_challenge(ip)
+    if error_msg:
+        return jsonify({"success": False, "message": error_msg}), status_code
+    return jsonify({"success": True, **ch_data})
+
+@app.route("/api/captcha/image/<challenge_id>/<int:img_idx>", methods=["GET"])
+def api_captcha_image(challenge_id, img_idx):
+    img_bytes = captcha_manager.get_image_bytes(challenge_id, img_idx)
+    if not img_bytes:
+        abort(404)
+    resp = make_response(img_bytes)
+    resp.headers["Content-Type"] = "image/jpeg"
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return resp
+
+@app.route("/api/captcha/audio/<challenge_id>", methods=["GET"])
+def api_captcha_audio(challenge_id):
+    audio_bytes = captcha_manager.get_audio_bytes(challenge_id)
+    if not audio_bytes:
+        abort(404)
+    resp = make_response(audio_bytes)
+    resp.headers["Content-Type"] = "audio/wav"
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return resp
+
+@app.route("/api/captcha/verify", methods=["POST"])
+def api_captcha_verify():
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    challenge_id = data.get("challengeId") or data.get("challenge_id")
+    if not challenge_id:
+        return jsonify({"success": False, "message": "Missing challengeId."}), 400
+
+    selected_indexes = data.get("selectedIndexes")
+    if selected_indexes is None:
+        selected_indexes = data.get("selected_indexes")
+    audio_answer = data.get("audioAnswer") or data.get("audio_answer")
+    ip = get_client_ip()
+
+    success, token, err_msg, status_code = captcha_manager.verify_challenge(
+        challenge_id=challenge_id,
+        selected_indexes=selected_indexes,
+        audio_answer=audio_answer,
+        ip=ip
+    )
+    if not success:
+        return jsonify({"success": False, "message": err_msg}), status_code
+    return jsonify({"success": True, "token": token, "captchaToken": token})
+
+
 # ── EXISTING /api/auth/* AJAX ENDPOINTS (SYNCHRONIZED WITH FLASK-LOGIN) ────
 
 @app.route("/api/auth/register", methods=["POST"])
@@ -848,6 +914,27 @@ def auth_register():
             return jsonify({"error": "Public registration is currently disabled by administrator."}), 403
 
         data = request.get_json(silent=True) or request.form.to_dict() or {}
+
+        # Honeypot check
+        honeypot = (data.get("honeypot") or "").strip()
+        if honeypot:
+            return jsonify({"error": "Bot activity detected. Registration rejected."}), 400
+
+        # CAPTCHA verification
+        captcha_enabled = app.config.get("CAPTCHA_ENABLED", app.config.get("RECAPTCHA_ENABLED", not app.config.get("TESTING", False)))
+        if captcha_enabled:
+            token = (
+                data.get("captcha_token")
+                or data.get("captchaToken")
+                or data.get("g-recaptcha-response")
+                or data.get("cf-turnstile-response")
+                or ""
+            ).strip()
+            ip = get_client_ip()
+            ok, msg = verify_captcha_token(token, ip)
+            if not ok:
+                return jsonify({"error": f"CAPTCHA verification failed: {msg}"}), 400
+
         raw_username = (data.get("username") or data.get("user_id") or "").strip()
         username = raw_username.lower().replace(" ", "_")
         password = (data.get("password") or "").strip()
@@ -923,6 +1010,27 @@ def auth_register():
 def auth_login():
     try:
         data = request.get_json(silent=True) or request.form.to_dict() or {}
+
+        # Honeypot check
+        honeypot = (data.get("honeypot") or "").strip()
+        if honeypot:
+            return jsonify({"error": "Bot activity detected. Login rejected."}), 400
+
+        # CAPTCHA verification
+        captcha_enabled = app.config.get("CAPTCHA_ENABLED", app.config.get("RECAPTCHA_ENABLED", not app.config.get("TESTING", False)))
+        if captcha_enabled:
+            token = (
+                data.get("captcha_token")
+                or data.get("captchaToken")
+                or data.get("g-recaptcha-response")
+                or data.get("cf-turnstile-response")
+                or ""
+            ).strip()
+            ip = get_client_ip()
+            ok, msg = verify_captcha_token(token, ip)
+            if not ok:
+                return jsonify({"error": f"CAPTCHA verification failed: {msg}"}), 400
+
         raw_username = (data.get("username") or data.get("user_id") or "").strip()
         username = raw_username.lower().replace(" ", "_")
         password = (data.get("password") or "").strip()
@@ -963,6 +1071,7 @@ def auth_login():
                 user.record_successful_login(ip=get_client_ip())
                 db.session.commit()
 
+                captcha_manager.record_successful_login(get_client_ip())
                 login_user(user)
                 session["user_id"] = user.username
                 session["name"] = user.name
@@ -1143,6 +1252,7 @@ for _api_func in [
     get_today_calories,
     delete_calorie_log,
     delete_feedback_endpoint,
+    api_captcha_verify,
 ]:
     csrf.exempt(_api_func)
 

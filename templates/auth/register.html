@@ -4,8 +4,15 @@
 {% block subtitle %}Start tracking your food health and diet history{% endblock %}
 
 {% block content %}
-<form method="POST" action="{{ url_for('auth.register') }}">
+<form method="POST" id="register-form" action="{{ url_for('auth.register') }}">
     {{ form.hidden_tag() }}
+
+    {# Hidden honeypot field #}
+    <div style="display:none !important;" aria-hidden="true">
+        <label for="honeypot">Leave blank</label>
+        <input type="text" name="honeypot" id="honeypot" tabindex="-1" autocomplete="off" value="">
+        <input type="hidden" name="form_rendered_at" id="register_rendered_at" value="">
+    </div>
 
     <div class="form-group">
         <label class="form-label" for="name">Full Name</label>
@@ -57,21 +64,30 @@
         {% endfor %}
     </div>
 
-    {# Hidden honeypot field to block automated bot signups #}
-    <div style="display:none !important;" aria-hidden="true">
-        <label for="honeypot">Leave this field blank</label>
-        <input type="text" name="honeypot" id="honeypot" tabindex="-1" autocomplete="off" value="">
+    {# Interactive CAPTCHA Widget Container #}
+    <div class="form-group" style="display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 18px 0 12px;">
+        <div id="captcha-register"></div>
     </div>
 
-    {# Google reCAPTCHA v2 Checkbox Widget #}
-    <div class="form-group" style="display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 18px 0 10px;">
-        <div class="g-recaptcha" data-sitekey="{{ recaptcha_site_key }}"></div>
-    </div>
-
-    {{ form.submit(class="btn-submit") }}
+    {{ form.submit(id="register-submit-btn", class="btn-submit") }}
 </form>
 
 <div class="auth-footer">
     Already have an account? <a href="{{ url_for('auth.login') }}">Sign In</a>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var rInput = document.getElementById('register_rendered_at');
+        if (rInput) rInput.value = (Date.now() / 1000).toString();
+
+        FoodCheckCaptcha.init({
+            containerId: 'captcha-register',
+            formId: 'register-form',
+            submitBtnId: 'register-submit-btn'
+        });
+    });
+</script>
 {% endblock %}

@@ -17,9 +17,15 @@ services:
         sync: false
       - key: ADMIN_MASTER_KEY
         sync: false
+      - key: CAPTCHA_PROVIDER
+        sync: false
       - key: RECAPTCHA_SITE_KEY
         sync: false
       - key: RECAPTCHA_SECRET_KEY
+        sync: false
+      - key: TURNSTILE_SITE_KEY
+        sync: false
+      - key: TURNSTILE_SECRET_KEY
         sync: false
       - key: SECRET_KEY
         sync: false
