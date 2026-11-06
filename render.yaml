@@ -15,6 +15,8 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
+      - key: ADMIN_MASTER_KEY
+        sync: false
       - key: CAPTCHA_PROVIDER
         value: custom
         sync: false

