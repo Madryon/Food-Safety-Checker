@@ -18,7 +18,7 @@ services:
       - key: ADMIN_MASTER_KEY
         sync: false
       - key: CAPTCHA_PROVIDER
-        value: recaptcha
+        value: custom
         sync: false
       - key: RECAPTCHA_SITE_KEY
         value: 6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI

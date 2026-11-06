@@ -80,7 +80,27 @@ load_dotenv()
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5MB upload limit
-app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
+def _get_or_create_secret_key():
+    env_key = (os.environ.get("SECRET_KEY") or "").strip()
+    if env_key:
+        return env_key
+    inst_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "instance")
+    key_file = os.path.join(inst_dir, ".secret_key")
+    try:
+        os.makedirs(inst_dir, exist_ok=True)
+        if os.path.exists(key_file):
+            with open(key_file, "r", encoding="utf-8") as f:
+                k = f.read().strip()
+                if k:
+                    return k
+        new_key = secrets.token_hex(32)
+        with open(key_file, "w", encoding="utf-8") as f:
+            f.write(new_key)
+        return new_key
+    except Exception:
+        return "foodcheck-production-stable-fallback-secret-2026"
+
+app.secret_key = _get_or_create_secret_key()
 
 # ── DATABASE CONFIGURATION (SQLite default / PostgreSQL override) ───────────
 db_url = (
@@ -1346,6 +1366,8 @@ for _api_func in [
     auth_register,
     auth_login,
     auth_logout,
+    analyze_vision,
+    analyze_health,
     handle_feedback,
     edit_feedback_endpoint,
     diet_profile,
@@ -1365,6 +1387,14 @@ for _api_func in [
 
 
 # ── ERROR HANDLERS ──────────────────────────────────────────────────────────
+
+@app.errorhandler(400)
+def bad_request(e):
+    desc = getattr(e, "description", None) or str(e)
+    if "400 Bad Request:" in desc:
+        desc = desc.replace("400 Bad Request:", "").strip()
+    return jsonify({"error": desc, "message": desc}), 400
+
 
 @app.errorhandler(404)
 def not_found(e):

@@ -1,3 +1,111 @@
+import sqlite3
+import json
+
+def _serialize_challenge(val):
+    c = dict(val)
+    if isinstance(c.get("correct_indexes"), (set, tuple)):
+        c["correct_indexes"] = list(c["correct_indexes"])
+    return json.dumps(c)
+
+def _deserialize_challenge(raw):
+    c = json.loads(raw)
+    if "correct_indexes" in c and isinstance(c["correct_indexes"], list):
+        c["correct_indexes"] = set(c["correct_indexes"])
+    return c
+
+def _serialize_token(val):
+    return json.dumps(val)
+
+def _deserialize_token(raw):
+    return json.loads(raw)
+
+class CaptchaDict(dict):
+    """A thread-safe, SQLite-backed dictionary for sharing challenges/tokens across Gunicorn workers."""
+    def __init__(self, db_path, table_name, serializer, deserializer, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.db_path = db_path
+        self.table_name = table_name
+        self.serializer = serializer
+        self.deserializer = deserializer
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        try:
+            with sqlite3.connect(self.db_path, timeout=5.0) as conn:
+                conn.execute(
+                    f"INSERT OR REPLACE INTO {self.table_name} (key, val) VALUES (?, ?)",
+                    (str(key), self.serializer(value))
+                )
+                conn.commit()
+        except Exception:
+            pass
+
+    def __getitem__(self, key):
+        if super().__contains__(key):
+            return super().__getitem__(key)
+        val = self._load_from_db(key)
+        if val is not None:
+            super().__setitem__(key, val)
+            return val
+        raise KeyError(key)
+
+    def get(self, key, default=None):
+        if super().__contains__(key):
+            return super().get(key, default)
+        val = self._load_from_db(key)
+        if val is not None:
+            super().__setitem__(key, val)
+            return val
+        return default
+
+    def __contains__(self, key):
+        if super().__contains__(key):
+            return True
+        return self._load_from_db(key) is not None
+
+    def pop(self, key, *args):
+        has_mem = super().__contains__(key)
+        mem_val = super().pop(key) if has_mem else None
+        db_val = self._pop_from_db(key)
+        if has_mem:
+            return mem_val
+        if db_val is not None:
+            return db_val
+        if args:
+            return args[0]
+        raise KeyError(key)
+
+    def clear(self):
+        super().clear()
+        try:
+            with sqlite3.connect(self.db_path, timeout=5.0) as conn:
+                conn.execute(f"DELETE FROM {self.table_name}")
+                conn.commit()
+        except Exception:
+            pass
+
+    def _load_from_db(self, key):
+        try:
+            with sqlite3.connect(self.db_path, timeout=5.0) as conn:
+                row = conn.execute(f"SELECT val FROM {self.table_name} WHERE key = ?", (str(key),)).fetchone()
+                if row and row[0]:
+                    return self.deserializer(row[0])
+        except Exception:
+            pass
+        return None
+
+    def _pop_from_db(self, key):
+        try:
+            with sqlite3.connect(self.db_path, timeout=5.0) as conn:
+                row = conn.execute(f"SELECT val FROM {self.table_name} WHERE key = ?", (str(key),)).fetchone()
+                if row:
+                    conn.execute(f"DELETE FROM {self.table_name} WHERE key = ?", (str(key),))
+                    conn.commit()
+                    return self.deserializer(row[0])
+        except Exception:
+            pass
+        return None
+
 """
 services/captcha/manager.py
 Server-side Custom CAPTCHA state manager:
@@ -39,11 +147,31 @@ from services.captcha.image_processor import process_captcha_image
 from services.captcha.audio import generate_captcha_audio_wav
 
 class CustomCaptchaManager:
-    def __init__(self):
+    def __init__(self, db_path=None):
         self._lock = threading.Lock()
-        # In-memory storage with thread-safe locks
-        self.challenges: Dict[str, Dict[str, Any]] = {}
-        self.tokens: Dict[str, Dict[str, Any]] = {}
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        inst_dir = os.path.join(base_dir, "instance")
+        os.makedirs(inst_dir, exist_ok=True)
+        self.db_path = db_path or os.path.join(inst_dir, "captcha_store.db")
+        self._init_sqlite()
+
+        # Shared SQLite-backed dictionaries (fully cross-process and thread-safe)
+        self.challenges: Dict[str, Dict[str, Any]] = CaptchaDict(
+            self.db_path, "captcha_challenges", _serialize_challenge, _deserialize_challenge
+        )
+        self.tokens: Dict[str, Dict[str, Any]] = CaptchaDict(
+            self.db_path, "captcha_tokens", _serialize_token, _deserialize_token
+        )
+    def _init_sqlite(self):
+        try:
+            with sqlite3.connect(self.db_path, timeout=10.0) as conn:
+                conn.execute("PRAGMA journal_mode=WAL;")
+                conn.execute("CREATE TABLE IF NOT EXISTS captcha_challenges (key TEXT PRIMARY KEY, val TEXT);")
+                conn.execute("CREATE TABLE IF NOT EXISTS captcha_tokens (key TEXT PRIMARY KEY, val TEXT);")
+                conn.commit()
+        except Exception:
+            pass
+
         # Rate limiting structures: {ip: [timestamps]}
         self.challenge_requests: Dict[str, List[float]] = {}
         self.failed_verifications: Dict[str, List[float]] = {}
@@ -367,6 +495,7 @@ class CustomCaptchaManager:
 
             # Burn the token!
             tok_record["used"] = True
+            self.tokens[token_id] = tok_record
 
         return True, "Token successfully validated and consumed."
 

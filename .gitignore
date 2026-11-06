@@ -8,3 +8,4 @@ uploads/*
 venv/
 .venv/
 *.db
+instance/

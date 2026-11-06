@@ -1129,7 +1129,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                             ✨ Admin mode: Enter your User ID and assigned Admin Password.
                         </div>
                        
-                        <div style="display:none !important;" aria-hidden="true"><input type="text" id="login-honeypot" tabindex="-1" autocomplete="off" value=""></div>
+                        <div style="opacity:0;position:absolute;top:-9999px;left:-9999px;height:0;width:0;z-index:-1;overflow:hidden;" aria-hidden="true"><input type="text" id="login-honeypot" name="login_anti_bot_check" tabindex="-1" autocomplete="new-password" value=""></div>
                         <div style="display:flex; justify-content:center; margin:14px 0 10px;"><div id="modal-captcha-login"></div></div>
                         <button type="submit" id="btn-submit-login" class="fb-submit-btn" disabled>
                             🔓 Sign In to My Account
@@ -1166,7 +1166,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                             <input type="password" id="reg-admin-key" class="fb-input" placeholder="Enter assigned admin key">
                             <div style="font-size:0.76rem; color:var(--muted); margin-top:3px;">Enter the pre-assigned admin key to create an Administrator account.</div>
                         </div>
-                        <div style="display:none !important;" aria-hidden="true"><input type="text" id="reg-honeypot" tabindex="-1" autocomplete="off" value=""></div>
+                        <div style="opacity:0;position:absolute;top:-9999px;left:-9999px;height:0;width:0;z-index:-1;overflow:hidden;" aria-hidden="true"><input type="text" id="reg-honeypot" name="reg_anti_bot_check" tabindex="-1" autocomplete="new-password" value=""></div>
                         <div style="display:flex; justify-content:center; margin:14px 0 10px;"><div id="modal-captcha-register"></div></div>
                         <button type="submit" id="btn-submit-register" class="fb-submit-btn" style="margin-top:14px;" disabled>
                              Create Private Account
@@ -1716,7 +1716,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
         opts = opts || {}; opts.signal = ctl.signal;
         return fetch(url, opts).then(function (r) {
             return r.json().catch(function () { return {}; }).then(function (j) {
-                if (!r.ok) throw new Error(j.error || 'Server error (' + r.status + ')');
+                if (!r.ok) throw new Error(j.error || j.message || ('Server error (' + r.status + ')'));
                 return j;
             });
         }).catch(function (e) {
@@ -2591,7 +2591,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             return res.json().then(function (d) {
                 return { ok: res.ok, status: res.status, data: d };
             }).catch(function () {
-                return { ok: res.ok, status: res.status, data: { error: 'Server error (' + res.status + ')' } };
+                return { ok: res.ok, status: res.status, data: { error: 'Request rejected (' + res.status + '). Please try again.' } };
             });
         })
         .then(function (res) {
@@ -2722,7 +2722,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             return res.json().then(function (d) {
                 return { ok: res.ok, status: res.status, data: d };
             }).catch(function () {
-                return { ok: res.ok, status: res.status, data: { error: 'Server error (' + res.status + ')' } };
+                return { ok: res.ok, status: res.status, data: { error: 'Request rejected (' + res.status + '). Please try again.' } };
             });
         })
         .then(function (res) {
