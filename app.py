@@ -151,6 +151,18 @@ app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
 db.init_app(app)
 migrate.init_app(app, db)
 login_manager.init_app(app)
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    try:
+        from models import User
+        try:
+            return User.query.get(int(user_id))
+        except (ValueError, TypeError):
+            return User.query.filter_by(username=str(user_id)).first()
+    except Exception:
+        return None
 csrf.init_app(app)
 limiter.init_app(app)
 

@@ -298,173 +298,203 @@ def dashboard():
     unhealthy_products = []
     controversial_brands = []
 
-    # KPI stats (safely wrapped)
     try:
-        total_users = User.query.count()
-        new_users_today = User.query.filter(User.created_at >= today_start).count()
-        users_online_now = User.query.filter(User.last_seen_at >= five_min_ago).count()
-    except Exception as e:
-        print(f"[!] Dashboard user stats warning: {e}")
+        # KPI stats (safely wrapped)
+        try:
+            total_users = User.query.count()
+            new_users_today = User.query.filter(User.created_at >= today_start).count()
+            users_online_now = User.query.filter(User.last_seen_at >= five_min_ago).count()
+        except Exception as e:
+            print(f"[!] Dashboard user stats warning: {e}")
 
-    try:
-        logins_today = LoginEvent.query.filter(
-            LoginEvent.created_at >= today_start,
-            LoginEvent.event_type.in_(["login", "admin_login"]),
-            LoginEvent.success == True
-        ).count()
-        failed_logins_today = LoginEvent.query.filter(
-            LoginEvent.created_at >= today_start,
-            LoginEvent.event_type == "failed_login"
-        ).count()
-    except Exception as e:
-        print(f"[!] Dashboard login stats warning: {e}")
+        try:
+            logins_today = LoginEvent.query.filter(
+                LoginEvent.created_at >= today_start,
+                LoginEvent.event_type.in_(["login", "admin_login"]),
+                LoginEvent.success == True
+            ).count()
+            failed_logins_today = LoginEvent.query.filter(
+                LoginEvent.created_at >= today_start,
+                LoginEvent.event_type == "failed_login"
+            ).count()
+        except Exception as e:
+            print(f"[!] Dashboard login stats warning: {e}")
 
-    try:
-        total_scans = Scan.query.count()
-        scans_today = Scan.query.filter(Scan.created_at >= today_start).count()
-    except Exception as e:
-        print(f"[!] Dashboard scan stats warning: {e}")
+        try:
+            total_scans = Scan.query.count()
+            scans_today = Scan.query.filter(Scan.created_at >= today_start).count()
+        except Exception as e:
+            print(f"[!] Dashboard scan stats warning: {e}")
 
-    try:
-        diet_plans_count = get_total_diet_plans_count()
-        feedback_count, avg_rating = get_feedbacks_count_and_avg()
-    except Exception as e:
-        print(f"[!] Dashboard diet/feedback stats warning: {e}")
+        try:
+            diet_plans_count = get_total_diet_plans_count()
+            feedback_count, avg_rating = get_feedbacks_count_and_avg()
+        except Exception as e:
+            print(f"[!] Dashboard diet/feedback stats warning: {e}")
 
-    # 30-day scans per day (cross-database PostgreSQL and SQLite compatible)
-    try:
-        daily_scans_map = collections.defaultdict(int)
-        for (ts,) in Scan.query.with_entities(Scan.created_at).filter(Scan.created_at >= thirty_days_ago).all():
-            if ts:
-                d_str = ts.strftime("%Y-%m-%d") if hasattr(ts, "strftime") else str(ts)[:10]
-                daily_scans_map[d_str] += 1
-        sorted_scans = sorted(daily_scans_map.keys())
-        chart_scans_labels = sorted_scans
-        chart_scans_data = [daily_scans_map[d] for d in sorted_scans]
-    except Exception as e:
-        print(f"[!] Dashboard daily scans chart warning: {e}")
+        # 30-day scans per day (cross-database PostgreSQL and SQLite compatible)
+        try:
+            daily_scans_map = collections.defaultdict(int)
+            for (ts,) in Scan.query.with_entities(Scan.created_at).filter(Scan.created_at >= thirty_days_ago).all():
+                if ts:
+                    d_str = ts.strftime("%Y-%m-%d") if hasattr(ts, "strftime") else str(ts)[:10]
+                    daily_scans_map[d_str] += 1
+            sorted_scans = sorted(daily_scans_map.keys())
+            chart_scans_labels = sorted_scans
+            chart_scans_data = [daily_scans_map[d] for d in sorted_scans]
+        except Exception as e:
+            print(f"[!] Dashboard daily scans chart warning: {e}")
 
-    # 30-day signups per day (cross-database PostgreSQL and SQLite compatible)
-    try:
-        daily_signups_map = collections.defaultdict(int)
-        for (ts,) in User.query.with_entities(User.created_at).filter(User.created_at >= thirty_days_ago).all():
-            if ts:
-                d_str = ts.strftime("%Y-%m-%d") if hasattr(ts, "strftime") else str(ts)[:10]
-                daily_signups_map[d_str] += 1
-        sorted_signups = sorted(daily_signups_map.keys())
-        chart_signups_labels = sorted_signups
-        chart_signups_data = [daily_signups_map[d] for d in sorted_signups]
-    except Exception as e:
-        print(f"[!] Dashboard daily signups chart warning: {e}")
+        # 30-day signups per day (cross-database PostgreSQL and SQLite compatible)
+        try:
+            daily_signups_map = collections.defaultdict(int)
+            for (ts,) in User.query.with_entities(User.created_at).filter(User.created_at >= thirty_days_ago).all():
+                if ts:
+                    d_str = ts.strftime("%Y-%m-%d") if hasattr(ts, "strftime") else str(ts)[:10]
+                    daily_signups_map[d_str] += 1
+            sorted_signups = sorted(daily_signups_map.keys())
+            chart_signups_labels = sorted_signups
+            chart_signups_data = [daily_signups_map[d] for d in sorted_signups]
+        except Exception as e:
+            print(f"[!] Dashboard daily signups chart warning: {e}")
 
-    # Health verdict distribution
-    try:
-        verdict_counts = (
-            db.session.query(Scan.health_verdict, func.count(Scan.id))
-            .filter(Scan.health_verdict.isnot(None))
-            .group_by(Scan.health_verdict)
-            .all()
-        )
-        for v, c in verdict_counts:
-            v_clean = (v or "").lower().replace("healthy", "safe").replace("unhealthy", "unsafe")
-            if v_clean in verdict_map:
-                verdict_map[v_clean] += c
-    except Exception as e:
-        print(f"[!] Dashboard verdicts warning: {e}")
-
-    # Top 10 scanned products
-    try:
-        top_products = (
-            db.session.query(Scan.product_name, func.count(Scan.id).label("c"))
-            .filter(Scan.product_name.isnot(None), Scan.product_name != "Unknown Product")
-            .group_by(Scan.product_name)
-            .order_by(desc(func.count(Scan.id)))
-            .limit(10)
-            .all()
-        )
-    except Exception as e:
-        print(f"[!] Dashboard top products warning: {e}")
-
-    # Top 10 brands
-    try:
-        top_brands = (
-            db.session.query(Scan.brand, func.count(Scan.id).label("c"))
-            .filter(Scan.brand.isnot(None), Scan.brand != "Unknown", Scan.brand != "Unknown Brand")
-            .group_by(Scan.brand)
-            .order_by(desc(func.count(Scan.id)))
-            .limit(10)
-            .all()
-        )
-    except Exception as e:
-        print(f"[!] Dashboard top brands warning: {e}")
-
-    # Leaderboard: Most Unhealthy Products
-    try:
-        unhealthy_products = (
-            db.session.query(
-                Scan.product_name,
-                Scan.brand,
-                func.count(Scan.id).label("times_flagged"),
-                func.avg(Scan.health_score).label("avg_score")
+        # Health verdict distribution
+        try:
+            verdict_counts = (
+                db.session.query(Scan.health_verdict, func.count(Scan.id))
+                .filter(Scan.health_verdict.isnot(None))
+                .group_by(Scan.health_verdict)
+                .all()
             )
-            .filter(
-                Scan.health_verdict.in_(["unsafe", "unhealthy", "moderate"]),
-                Scan.product_name.isnot(None),
-                Scan.product_name != "Unknown Product"
-            )
-            .group_by(Scan.product_name, Scan.brand)
-            .order_by(desc(func.count(Scan.id)))
-            .limit(5)
-            .all()
-        )
-    except Exception as e:
-        print(f"[!] Dashboard unhealthy products warning: {e}")
+            for v, c in verdict_counts:
+                v_clean = (v or "").lower().replace("healthy", "safe").replace("unhealthy", "unsafe")
+                if v_clean in verdict_map:
+                    verdict_map[v_clean] += c
+        except Exception as e:
+            print(f"[!] Dashboard verdicts warning: {e}")
 
-    # Leaderboard: Most Controversial Brands
+        # Top 10 scanned products
+        try:
+            top_products = (
+                db.session.query(Scan.product_name, func.count(Scan.id).label("c"))
+                .filter(Scan.product_name.isnot(None), Scan.product_name != "Unknown Product")
+                .group_by(Scan.product_name)
+                .order_by(desc(func.count(Scan.id)))
+                .limit(10)
+                .all()
+            )
+        except Exception as e:
+            print(f"[!] Dashboard top products warning: {e}")
+
+        # Top 10 brands
+        try:
+            top_brands = (
+                db.session.query(Scan.brand, func.count(Scan.id).label("c"))
+                .filter(Scan.brand.isnot(None), Scan.brand != "Unknown", Scan.brand != "Unknown Brand")
+                .group_by(Scan.brand)
+                .order_by(desc(func.count(Scan.id)))
+                .limit(10)
+                .all()
+            )
+        except Exception as e:
+            print(f"[!] Dashboard top brands warning: {e}")
+
+        # Leaderboard: Most Unhealthy Products
+        try:
+            unhealthy_products = (
+                db.session.query(
+                    Scan.product_name,
+                    Scan.brand,
+                    func.count(Scan.id).label("times_flagged"),
+                    func.avg(Scan.health_score).label("avg_score")
+                )
+                .filter(
+                    Scan.health_verdict.in_(["unsafe", "unhealthy", "moderate"]),
+                    Scan.product_name.isnot(None),
+                    Scan.product_name != "Unknown Product"
+                )
+                .group_by(Scan.product_name, Scan.brand)
+                .order_by(desc(func.count(Scan.id)))
+                .limit(5)
+                .all()
+            )
+        except Exception as e:
+            print(f"[!] Dashboard unhealthy products warning: {e}")
+
+        # Leaderboard: Most Controversial Brands
+        try:
+            controversial_brands = (
+                db.session.query(
+                    Scan.brand,
+                    func.count(Scan.id).label("flagged_count"),
+                    func.avg(Scan.health_score).label("avg_score")
+                )
+                .filter(
+                    Scan.health_verdict.in_(["unsafe", "unhealthy"]),
+                    Scan.brand.isnot(None),
+                    Scan.brand != "Unknown"
+                )
+                .group_by(Scan.brand)
+                .order_by(desc(func.count(Scan.id)))
+                .limit(5)
+                .all()
+            )
+        except Exception as e:
+            print(f"[!] Dashboard controversial brands warning: {e}")
+    except Exception as outer_e:
+        print(f"[!] Dashboard outer query error: {outer_e}")
+
     try:
-        controversial_brands = (
-            db.session.query(
-                Scan.brand,
-                func.count(Scan.id).label("flagged_count"),
-                func.avg(Scan.health_score).label("avg_score")
-            )
-            .filter(
-                Scan.health_verdict.in_(["unsafe", "unhealthy"]),
-                Scan.brand.isnot(None),
-                Scan.brand != "Unknown"
-            )
-            .group_by(Scan.brand)
-            .order_by(desc(func.count(Scan.id)))
-            .limit(5)
-            .all()
+        return render_template(
+            "admin/dashboard.html",
+            total_users=total_users,
+            new_users_today=new_users_today,
+            users_online_now=users_online_now,
+            logins_today=logins_today,
+            failed_logins_today=failed_logins_today,
+            total_scans=total_scans,
+            scans_today=scans_today,
+            diet_plans_count=diet_plans_count,
+            feedback_count=feedback_count,
+            avg_rating=avg_rating,
+            chart_scans_labels=json.dumps(chart_scans_labels),
+            chart_scans_data=json.dumps(chart_scans_data),
+            chart_signups_labels=json.dumps(chart_signups_labels),
+            chart_signups_data=json.dumps(chart_signups_data),
+            chart_verdicts_data=json.dumps([verdict_map["safe"], verdict_map["moderate"], verdict_map["unsafe"]]),
+            chart_top_products_labels=json.dumps([(p[0] or "")[:20] for p in top_products if p and p[0]]),
+            chart_top_products_data=json.dumps([p[1] for p in top_products if p]),
+            chart_top_brands_labels=json.dumps([(b[0] or "")[:20] for b in top_brands if b and b[0]]),
+            chart_top_brands_data=json.dumps([b[1] for b in top_brands if b]),
+            unhealthy_products=unhealthy_products,
+            controversial_brands=controversial_brands,
         )
-    except Exception as e:
-        print(f"[!] Dashboard controversial brands warning: {e}")
-
-    return render_template(
-        "admin/dashboard.html",
-        total_users=total_users,
-        new_users_today=new_users_today,
-        users_online_now=users_online_now,
-        logins_today=logins_today,
-        failed_logins_today=failed_logins_today,
-        total_scans=total_scans,
-        scans_today=scans_today,
-        diet_plans_count=diet_plans_count,
-        feedback_count=feedback_count,
-        avg_rating=avg_rating,
-        chart_scans_labels=json.dumps(chart_scans_labels),
-        chart_scans_data=json.dumps(chart_scans_data),
-        chart_signups_labels=json.dumps(chart_signups_labels),
-        chart_signups_data=json.dumps(chart_signups_data),
-        chart_verdicts_data=json.dumps([verdict_map["safe"], verdict_map["moderate"], verdict_map["unsafe"]]),
-        chart_top_products_labels=json.dumps([(p[0] or "")[:20] for p in top_products if p and p[0]]),
-        chart_top_products_data=json.dumps([p[1] for p in top_products if p]),
-        chart_top_brands_labels=json.dumps([(b[0] or "")[:20] for b in top_brands if b and b[0]]),
-        chart_top_brands_data=json.dumps([b[1] for b in top_brands if b]),
-        unhealthy_products=unhealthy_products,
-        controversial_brands=controversial_brands,
-    )
+    except Exception as render_e:
+        print(f"[!] Dashboard render error fallback: {render_e}")
+        return render_template(
+            "admin/dashboard.html",
+            total_users=total_users,
+            new_users_today=new_users_today,
+            users_online_now=users_online_now,
+            logins_today=logins_today,
+            failed_logins_today=failed_logins_today,
+            total_scans=total_scans,
+            scans_today=scans_today,
+            diet_plans_count=diet_plans_count,
+            feedback_count=feedback_count,
+            avg_rating=avg_rating,
+            chart_scans_labels="[]",
+            chart_scans_data="[]",
+            chart_signups_labels="[]",
+            chart_signups_data="[]",
+            chart_verdicts_data="[0, 0, 0]",
+            chart_top_products_labels="[]",
+            chart_top_products_data="[]",
+            chart_top_brands_labels="[]",
+            chart_top_brands_data="[]",
+            unhealthy_products=[],
+            controversial_brands=[],
+        )
 
 
 # ── LIVE ACTIVITY FEED ──────────────────────────────────────────────────────
@@ -539,13 +569,19 @@ def users_list():
 
     pagination = query.order_by(User.created_at.desc()).paginate(page=page, per_page=15, error_out=False)
 
-    # Attach scan counts
-    user_scan_counts = dict(
-        db.session.query(Scan.user_id, func.count(Scan.id))
-        .filter(Scan.user_id.in_([u.id for u in pagination.items]))
-        .group_by(Scan.user_id)
-        .all()
-    )
+    # Attach scan counts safely
+    user_scan_counts = {}
+    item_ids = [u.id for u in pagination.items if u and getattr(u, 'id', None)]
+    if item_ids:
+        try:
+            user_scan_counts = dict(
+                db.session.query(Scan.user_id, func.count(Scan.id))
+                .filter(Scan.user_id.in_(item_ids))
+                .group_by(Scan.user_id)
+                .all()
+            )
+        except Exception as e:
+            print(f"[!] User scan counts warning: {e}")
 
     return render_template(
         "admin/users.html",
@@ -764,11 +800,17 @@ def system_health():
     gemini_total = Scan.query.filter(Scan.gemini_used == True).count()
     gemini_success = Scan.query.filter(Scan.gemini_used == True, Scan.success == True).count()
     gemini_failed = Scan.query.filter(Scan.gemini_used == True, Scan.success == False).count()
-    gemini_avg_time = (
-        db.session.query(func.avg(Scan.response_time_ms))
-        .filter(Scan.gemini_used == True, Scan.response_time_ms.isnot(None))
-        .scalar()
-    ) or 0
+    gemini_avg_time = 0.0
+    try:
+        raw_avg = (
+            db.session.query(func.avg(Scan.response_time_ms))
+            .filter(Scan.gemini_used == True, Scan.response_time_ms.isnot(None))
+            .scalar()
+        )
+        if raw_avg is not None:
+            gemini_avg_time = round(float(raw_avg), 1)
+    except Exception as e:
+        print(f"[!] Health gemini avg time warning: {e}")
 
     # Open Food Facts metrics
     off_hits = Scan.query.filter(Scan.barcode.isnot(None)).count()

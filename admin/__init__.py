@@ -1,7 +1,7 @@
 from functools import wraps
 from datetime import datetime
 from flask import Blueprint, abort, session, redirect, url_for, flash
-from flask_login import current_user
+from flask_login import current_user, login_user
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -13,6 +13,19 @@ def admin_required(f):
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # 1. Fallback: if current_user is not loaded yet, rehydrate from session
+        if not current_user.is_authenticated:
+            sess_uid = session.get("user_id")
+            if sess_uid:
+                try:
+                    from models import User
+                    u = User.query.filter_by(username=str(sess_uid).strip().lower()).first()
+                    if u and u.is_admin and u.is_active and not u.is_locked:
+                        login_user(u)
+                except Exception:
+                    pass
+
+        # 2. Check admin privileges
         if not current_user.is_authenticated or not getattr(current_user, "is_admin", False):
             # Obscure admin panel existence
             abort(404)

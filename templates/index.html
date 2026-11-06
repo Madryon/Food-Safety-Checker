@@ -826,6 +826,9 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             <button type="button" class="nav-tab-btn" id="nav-diet-mode">
                 <span>🥗</span> Diet &amp; Calorie Plan
             </button>
+            <a href="{{ url_for('admin.dashboard') }}" id="nav-admin-link" class="nav-tab-btn {% if not (current_user.is_authenticated and current_user.is_admin) %}hidden{% endif %}" style="text-decoration: none; color: var(--accent); border: 1.5px solid var(--accent); background: rgba(52, 211, 153, 0.12); font-weight: 700; {% if current_user.is_authenticated and current_user.is_admin %}display: inline-flex;{% endif %}">
+                <span>🛡️</span> Admin Console
+            </a>
         </div>
         <div class="top-bar-right">
             <!-- 3-Dot Account Menu (User Details, Login & Logout) -->
@@ -862,11 +865,9 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                         <button type="button" id="menu-feedback-link" class="dropdown-item-btn">
                             <span>💬</span> Community Reviews
                         </button>
-                        {% if current_user.is_authenticated and current_user.is_admin %}
-                        <a href="{{ url_for('admin.dashboard') }}" id="menu-admin-link" class="dropdown-item-btn" style="color: var(--accent); text-decoration: none;">
+                        <a href="{{ url_for('admin.dashboard') }}" id="menu-admin-link" class="dropdown-item-btn {% if not (current_user.is_authenticated and current_user.is_admin) %}hidden{% endif %}" style="color: var(--accent); text-decoration: none; font-weight: 700; {% if current_user.is_authenticated and current_user.is_admin %}display: flex;{% endif %}">
                             <span>🛡️</span> Admin Console
                         </a>
-                        {% endif %}
                         <div class="dropdown-divider"></div>
                         <button type="button" id="btn-menu-logout" class="dropdown-item-btn logout-item">
                             <span>🚪</span> Logout
@@ -2353,12 +2354,25 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                 }
             }
 
+            var isAdmin = Boolean(user && (user.is_admin || user.role === 'admin'));
             var menuAdminLink = $('menu-admin-link');
             if (menuAdminLink) {
-                if (user.is_admin) {
+                if (isAdmin) {
                     menuAdminLink.classList.remove('hidden');
+                    menuAdminLink.style.display = 'flex';
                 } else {
                     menuAdminLink.classList.add('hidden');
+                    menuAdminLink.style.display = 'none';
+                }
+            }
+            var navAdminLink = $('nav-admin-link');
+            if (navAdminLink) {
+                if (isAdmin) {
+                    navAdminLink.classList.remove('hidden');
+                    navAdminLink.style.display = 'inline-flex';
+                } else {
+                    navAdminLink.classList.add('hidden');
+                    navAdminLink.style.display = 'none';
                 }
             }
 
@@ -2381,6 +2395,18 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             if (fbNameInp && !fbNameInp.value) fbNameInp.value = fullName;
             if (dietNameInp && !dietNameInp.value) dietNameInp.value = fullName;
         } else {
+            // Hide admin links
+            var menuAdminLink = $('menu-admin-link');
+            if (menuAdminLink) {
+                menuAdminLink.classList.add('hidden');
+                menuAdminLink.style.display = 'none';
+            }
+            var navAdminLink = $('nav-admin-link');
+            if (navAdminLink) {
+                navAdminLink.classList.add('hidden');
+                navAdminLink.style.display = 'none';
+            }
+
             // Navbar 3-dot trigger preview
             if (navUserPrev) navUserPrev.classList.add('hidden');
             if (navGuestPrev) navGuestPrev.classList.remove('hidden');
