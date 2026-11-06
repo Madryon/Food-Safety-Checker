@@ -20,11 +20,14 @@ def admin_required(f):
         # Check admin session inactivity timeout (30 minutes)
         last_activity = session.get("admin_last_active")
         now = datetime.utcnow().timestamp()
-        if last_activity:
-            if now - last_activity > 1800:  # 30 minutes
-                session.pop("admin_last_active", None)
-                flash("Admin session expired due to 30 minutes of inactivity. Please log in again.", "warning")
-                return redirect(url_for("admin.admin_login"))
+        if last_activity is not None:
+            try:
+                if now - float(last_activity) > 1800:  # 30 minutes
+                    session.pop("admin_last_active", None)
+                    flash("Admin session expired due to 30 minutes of inactivity. Please log in again.", "warning")
+                    return redirect(url_for("admin.admin_login"))
+            except (ValueError, TypeError):
+                pass
         session["admin_last_active"] = now
 
         return f(*args, **kwargs)

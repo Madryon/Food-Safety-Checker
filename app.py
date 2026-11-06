@@ -1466,7 +1466,16 @@ def ratelimit_handler(e):
 
 @app.errorhandler(500)
 def server_error(e):
-    log_error("app", str(e), path=request.path)
+    app.logger.error(f"Internal server error on {request.path}: {e}", exc_info=True)
+    try:
+        log_error("app", str(e), path=request.path)
+    except Exception:
+        pass
+    if request.accept_mimetypes.accept_html and not request.is_json and not request.path.startswith("/api/"):
+        try:
+            return render_template("maintenance.html"), 500
+        except Exception:
+            pass
     return jsonify({"error": "An internal error occurred. Please try again."}), 500
 
 
