@@ -58,10 +58,30 @@ def login():
                 or request.form.get("cf-turnstile-response")
                 or ""
             ).strip()
+            session_token = session.get("captcha_verified_token")
             ip = get_client_ip()
-            ok, msg = verify_captcha_token(token, ip)
-            if not ok:
-                flash("Please complete the reCAPTCHA verification to sign in.", "danger")
+
+            valid = False
+            msg = ""
+            if session_token and (not token or token == session_token):
+                sess_verified_at = session.get("captcha_verified_at", 0)
+                if time.time() - sess_verified_at <= 300:
+                    captcha_manager.validate_and_burn_token(session_token, ip)
+                    valid = True
+                    msg = "Verified via session."
+                else:
+                    msg = "CAPTCHA session token expired."
+
+            if not valid and token:
+                valid, msg = verify_captcha_token(token, ip)
+
+            session.pop("captcha_verified_token", None)
+            session.pop("captcha_verified_at", None)
+            session.pop("captcha_challenge_id", None)
+            session.pop("captcha_expires_at", None)
+
+            if not valid:
+                flash("Please complete the visual reCAPTCHA verification to sign in.", "danger")
                 return render_template("auth/login.html", form=form, recaptcha_site_key=recaptcha_site_key), 400
 
     if form.validate_on_submit():
@@ -286,10 +306,30 @@ def register():
                 or request.form.get("cf-turnstile-response")
                 or ""
             ).strip()
+            session_token = session.get("captcha_verified_token")
             ip = get_client_ip()
-            ok, msg = verify_captcha_token(token, ip)
-            if not ok:
-                flash("Please complete the reCAPTCHA verification to create an account.", "danger")
+
+            valid = False
+            msg = ""
+            if session_token and (not token or token == session_token):
+                sess_verified_at = session.get("captcha_verified_at", 0)
+                if time.time() - sess_verified_at <= 300:
+                    captcha_manager.validate_and_burn_token(session_token, ip)
+                    valid = True
+                    msg = "Verified via session."
+                else:
+                    msg = "CAPTCHA session token expired."
+
+            if not valid and token:
+                valid, msg = verify_captcha_token(token, ip)
+
+            session.pop("captcha_verified_token", None)
+            session.pop("captcha_verified_at", None)
+            session.pop("captcha_challenge_id", None)
+            session.pop("captcha_expires_at", None)
+
+            if not valid:
+                flash("Please complete the visual reCAPTCHA verification to create an account.", "danger")
                 return render_template("auth/register.html", form=form, recaptcha_site_key=recaptcha_site_key), 400
 
         if form.validate_on_submit():

@@ -66,7 +66,7 @@
                 state.selectedIndexes.clear();
                 emit();
 
-                fetch('/api/captcha/challenge')
+                fetch('/api/captcha/generate')
                     .then(function (res) {
                         return res.json().then(function (data) {
                             return { ok: res.ok, status: res.status, data: data };
@@ -446,7 +446,7 @@
             if (form) form.appendChild(tokenInput);
 
             function initWidget(cfg) {
-                var provider = (cfg && cfg.provider) || 'recaptcha';
+                var provider = (cfg && cfg.provider) || 'custom';
                 var siteKey = (cfg && cfg.siteKey) || '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI';
 
                 if (provider === 'recaptcha' && siteKey) {
@@ -477,20 +477,22 @@
                     .then(function (res) { return res.json(); })
                     .then(function (cfg) { initWidget(cfg); })
                     .catch(function () {
-                        initWidget({ provider: 'recaptcha', siteKey: '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI' });
+                        initWidget({ provider: 'custom' });
                     });
             }
 
+            var customController = null;
+            var customModalInstance = null;
             function renderCustomCaptcha() {
-                var controller = useCaptcha();
-                var modal = CaptchaModal(controller, {
+                customController = useCaptcha();
+                customModalInstance = CaptchaModal(customController, {
                     onVerified: function (token) {
                         tokenInput.value = token;
                         if (submitBtn) submitBtn.disabled = false;
                         if (options.onVerified) options.onVerified(token);
                     }
                 });
-                CaptchaCheckbox(container, controller, modal);
+                CaptchaCheckbox(container, customController, customModalInstance);
             }
 
             function renderRecaptcha(targetElem, siteKey, callback) {
@@ -563,7 +565,15 @@
             }
 
             return {
-                getToken: function () { return tokenInput.value; }
+                getToken: function () { return tokenInput.value; },
+                openModal: function () {
+                    if (customModalInstance) customModalInstance.open();
+                },
+                reset: function () {
+                    if (customController) customController.reset();
+                    tokenInput.value = '';
+                    if (submitBtn) submitBtn.disabled = true;
+                }
             };
         }
     };

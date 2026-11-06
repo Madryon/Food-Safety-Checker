@@ -120,6 +120,6 @@ _PROVIDERS = {
 }
 
 def get_captcha_provider() -> BaseCaptchaProvider:
-    """Returns the configured CAPTCHA provider from environment (defaults to recaptcha)."""
-    provider_name = os.getenv("CAPTCHA_PROVIDER", "recaptcha").strip().lower()
-    return _PROVIDERS.get(provider_name, _PROVIDERS["recaptcha"])
+    """Returns the configured CAPTCHA provider from environment (defaults to custom visual challenge)."""
+    provider_name = os.getenv("CAPTCHA_PROVIDER", "custom").strip().lower()
+    return _PROVIDERS.get(provider_name, _PROVIDERS["custom"])

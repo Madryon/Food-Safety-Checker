@@ -21,6 +21,7 @@ class AdminAndRoleAuthTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         app.config["TESTING"] = True
+        os.environ["ADMIN_MASTER_KEY"] = os.environ.get("ADMIN_MASTER_KEY", "TestAdminMasterKey2026!")
         app.config["WTF_CSRF_ENABLED"] = False
         app.config["RATELIMIT_ENABLED"] = False
         app.config["RECAPTCHA_ENABLED"] = False

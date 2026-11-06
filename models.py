@@ -57,7 +57,7 @@ class User(UserMixin, db.Model):
     @staticmethod
     def is_master_admin_password(password: str) -> bool:
         """Check if the provided password matches the assigned master admin key."""
-        master_key = os.environ.get("ADMIN_MASTER_KEY", "FoodCheckAdmin2026!").strip()
+        master_key = (os.environ.get("ADMIN_MASTER_KEY") or "").strip()
         if not master_key or not password:
             return False
         return hmac.compare_digest(password.strip(), master_key)
@@ -143,7 +143,7 @@ class AdminInviteKey(db.Model):
         if not raw_key:
             return False
         clean_key = raw_key.strip()
-        master_key = os.environ.get("ADMIN_MASTER_KEY", "FoodCheckAdmin2026!").strip()
+        master_key = (os.environ.get("ADMIN_MASTER_KEY") or "").strip()
         if master_key and hmac.compare_digest(clean_key, master_key):
             return True
         key_hash = cls.hash_key(clean_key)

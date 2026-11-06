@@ -1,4 +1,5 @@
 import os
+import secrets
 import uuid
 import shutil
 import json
@@ -16,6 +17,7 @@ from flask import (
     flash,
     abort,
     make_response,
+    send_from_directory,
 )
 from dotenv import load_dotenv
 load_dotenv()
@@ -78,7 +80,7 @@ load_dotenv()
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5MB upload limit
-app.secret_key = os.getenv("SECRET_KEY", "foodcheck-dev-secret-key-change-in-prod-xyz789")
+app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 
 # ── DATABASE CONFIGURATION (SQLite default / PostgreSQL override) ───────────
 db_url = (
@@ -222,13 +224,18 @@ def inject_global_banner():
     provider = get_captcha_provider()
     return dict(
         announcement_banner=banner,
-        recaptcha_site_key=os.getenv("RECAPTCHA_SITE_KEY", "").strip() or "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI",
+        recaptcha_site_key=os.getenv("RECAPTCHA_SITE_KEY", "").strip(),
         turnstile_site_key=os.getenv("TURNSTILE_SITE_KEY", ""),
         captcha_provider=provider.provider_name,
     )
 
 
 # ── PUBLIC ROUTES ───────────────────────────────────────────────────────────
+
+@app.route("/favicon.ico")
+def favicon():
+    return send_from_directory(os.path.join(app.root_path, "static"), "favicon.svg", mimetype="image/svg+xml")
+
 
 @app.route("/")
 def index():
@@ -333,6 +340,10 @@ def analyze_vision():
             "scan_id": scan_id,
         })
 
+    except (requests.exceptions.Timeout, TimeoutError) as te:
+        app.logger.warning(f"Vision analysis timeout: {te}")
+        log_error("gemini_timeout", str(te), path=request.path)
+        return jsonify({"error": "Vision analysis timed out. The server is under heavy load or the image was too large. Please retry with a smaller photo."}), 504
     except Exception as e:
         app.logger.error(f"Vision error: {e}", exc_info=True)
         log_error("gemini", str(e), path=request.path)
@@ -421,9 +432,13 @@ def news_endpoint():
             NEWS_CACHE[brand_key] = articles_list
         log_activity(action="news_fetch", details={"brand": brand, "count": len(articles_list)})
         return jsonify({"articles": articles_list})
+    except (requests.exceptions.Timeout, TimeoutError) as te:
+        app.logger.warning(f"News fetch timed out for brand '{brand}': {te}")
+        log_error("news_timeout", str(te), path=request.path)
+        return jsonify({"articles": [], "notice": "News search timed out gracefully."}), 200
     except Exception as e:
         log_error("news", str(e), path=request.path)
-        return jsonify({"articles": []})
+        return jsonify({"articles": []}), 200
 
 
 @app.route("/health")
@@ -853,13 +868,22 @@ def api_captcha_config():
     provider = get_captcha_provider()
     return jsonify(provider.get_client_config())
 
+@app.route("/api/captcha/generate", methods=["GET"])
 @app.route("/api/captcha/challenge", methods=["GET"])
-def api_captcha_challenge():
+def api_captcha_generate():
     ip = get_client_ip()
     ch_data, error_msg, status_code = captcha_manager.create_challenge(ip)
     if error_msg:
         return jsonify({"success": False, "message": error_msg}), status_code
+
+    # Store challenge info in Flask session with 2-minute expiry
+    session["captcha_challenge_id"] = ch_data["challengeId"]
+    session["captcha_expires_at"] = time.time() + 120
+    session["captcha_label"] = ch_data.get("label", "")
+
     return jsonify({"success": True, **ch_data})
+
+api_captcha_challenge = api_captcha_generate
 
 @app.route("/api/captcha/image/<challenge_id>/<int:img_idx>", methods=["GET"])
 def api_captcha_image(challenge_id, img_idx):
@@ -884,7 +908,7 @@ def api_captcha_audio(challenge_id):
 @app.route("/api/captcha/verify", methods=["POST"])
 def api_captcha_verify():
     data = request.get_json(silent=True) or request.form.to_dict() or {}
-    challenge_id = data.get("challengeId") or data.get("challenge_id")
+    challenge_id = data.get("challengeId") or data.get("challenge_id") or session.get("captcha_challenge_id")
     if not challenge_id:
         return jsonify({"success": False, "message": "Missing challengeId."}), 400
 
@@ -894,6 +918,13 @@ def api_captcha_verify():
     audio_answer = data.get("audioAnswer") or data.get("audio_answer")
     ip = get_client_ip()
 
+    # Session expiry check if session has captcha_expires_at
+    sess_exp = session.get("captcha_expires_at")
+    if sess_exp and time.time() > sess_exp:
+        session.pop("captcha_challenge_id", None)
+        session.pop("captcha_expires_at", None)
+        return jsonify({"success": False, "message": "CAPTCHA challenge expired (2 minute validity). Please refresh."}), 400
+
     success, token, err_msg, status_code = captcha_manager.verify_challenge(
         challenge_id=challenge_id,
         selected_indexes=selected_indexes,
@@ -902,10 +933,30 @@ def api_captcha_verify():
     )
     if not success:
         return jsonify({"success": False, "message": err_msg}), status_code
+
+    # Store verified token in session
+    session["captcha_verified_token"] = token
+    session["captcha_verified_at"] = time.time()
+    session.pop("captcha_challenge_id", None)
+    session.pop("captcha_expires_at", None)
+
     return jsonify({"success": True, "token": token, "captchaToken": token})
 
 
 # ── EXISTING /api/auth/* AJAX ENDPOINTS (SYNCHRONIZED WITH FLASK-LOGIN) ────
+
+@app.route("/register", methods=["GET", "POST"])
+def app_register():
+    if request.method == "POST":
+        return auth_register()
+    return redirect(url_for("auth.register"))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def app_login():
+    if request.method == "POST":
+        return auth_login()
+    return redirect(url_for("auth.login"))
 
 @app.route("/api/auth/register", methods=["POST"])
 @limiter.limit("10 per minute")
@@ -932,9 +983,35 @@ def auth_register():
                 or data.get("cf-turnstile-response")
                 or ""
             ).strip()
+            session_token = session.get("captcha_verified_token")
             ip = get_client_ip()
-            ok, msg = verify_captcha_token(token, ip)
-            if not ok:
+
+            if not token and not session_token:
+                session.pop("captcha_verified_token", None)
+                session.pop("captcha_verified_at", None)
+                return jsonify({"error": "CAPTCHA verification failed: Missing verification token. Please complete the image verification."}), 400
+
+            valid = False
+            msg = ""
+            if session_token and (not token or token == session_token):
+                sess_verified_at = session.get("captcha_verified_at", 0)
+                if time.time() - sess_verified_at <= 300:
+                    captcha_manager.validate_and_burn_token(session_token, ip)
+                    valid = True
+                    msg = "Verified via session token."
+                else:
+                    msg = "CAPTCHA session token expired."
+
+            if not valid and token:
+                valid, msg = verify_captcha_token(token, ip)
+
+            # Invalidate session token immediately to prevent replay attacks
+            session.pop("captcha_verified_token", None)
+            session.pop("captcha_verified_at", None)
+            session.pop("captcha_challenge_id", None)
+            session.pop("captcha_expires_at", None)
+
+            if not valid:
                 return jsonify({"error": f"CAPTCHA verification failed: {msg}"}), 400
 
         raw_username = (data.get("username") or data.get("user_id") or "").strip()
@@ -1028,9 +1105,35 @@ def auth_login():
                 or data.get("cf-turnstile-response")
                 or ""
             ).strip()
+            session_token = session.get("captcha_verified_token")
             ip = get_client_ip()
-            ok, msg = verify_captcha_token(token, ip)
-            if not ok:
+
+            if not token and not session_token:
+                session.pop("captcha_verified_token", None)
+                session.pop("captcha_verified_at", None)
+                return jsonify({"error": "CAPTCHA verification failed: Missing verification token. Please complete the image verification."}), 400
+
+            valid = False
+            msg = ""
+            if session_token and (not token or token == session_token):
+                sess_verified_at = session.get("captcha_verified_at", 0)
+                if time.time() - sess_verified_at <= 300:
+                    captcha_manager.validate_and_burn_token(session_token, ip)
+                    valid = True
+                    msg = "Verified via session token."
+                else:
+                    msg = "CAPTCHA session token expired."
+
+            if not valid and token:
+                valid, msg = verify_captcha_token(token, ip)
+
+            # Invalidate session token immediately to prevent replay attacks
+            session.pop("captcha_verified_token", None)
+            session.pop("captcha_verified_at", None)
+            session.pop("captcha_challenge_id", None)
+            session.pop("captcha_expires_at", None)
+
+            if not valid:
                 return jsonify({"error": f"CAPTCHA verification failed: {msg}"}), 400
 
         raw_username = (data.get("username") or data.get("user_id") or "").strip()
@@ -1255,6 +1358,8 @@ for _api_func in [
     delete_calorie_log,
     delete_feedback_endpoint,
     api_captcha_verify,
+    app_register,
+    app_login,
 ]:
     csrf.exempt(_api_func)
 
