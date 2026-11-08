@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import requests
+from services.ai_provider import get_groq_api_keys
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,8 @@ def generate_diet_plan(user_profile):
     """Generate a personalized daily diet plan using Groq Cloud API (Meta-Llama-3.1-8B-Instruct).
     Falls back gracefully to a calculated nutritional diet plan if API key is not yet set.
     """
-    groq_api_key = os.getenv("GROQ_API_KEY", "").strip()
+    groq_keys = get_groq_api_keys()
+    groq_api_key = groq_keys[0] if groq_keys else ""
     model = os.getenv("GROQ_MODEL", DEFAULT_GROQ_MODEL).strip() or "llama-3.1-8b-instant"
 
     # Calculate baseline nutritional targets
@@ -331,7 +333,8 @@ def suggest_quick_meal(user_profile, meal_type="Lunch", target_calories=450, cra
     """Suggest 3 healthy, tailored meal options based on user's dietary preferences,
     calorie budget, and optional cravings using Groq Meta-Llama-3.1-8B.
     """
-    groq_api_key = os.getenv("GROQ_API_KEY", "").strip()
+    groq_keys = get_groq_api_keys()
+    groq_api_key = groq_keys[0] if groq_keys else ""
     model = os.getenv("GROQ_MODEL", DEFAULT_GROQ_MODEL).strip() or "llama-3.1-8b-instant"
 
     diet_pref = user_profile.get("diet_pref", "Vegetarian")

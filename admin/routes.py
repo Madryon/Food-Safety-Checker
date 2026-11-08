@@ -1054,6 +1054,9 @@ def revoke_key(key_id):
 def system_health():
     errors = ErrorLog.query.order_by(ErrorLog.created_at.desc()).limit(50).all()
 
+    from services.ai_provider import get_ai_status_summary
+    ai_summary = get_ai_status_summary()
+
     # Gemini API metrics
     gemini_total = Scan.query.filter(Scan.gemini_used == True).count()
     gemini_success = Scan.query.filter(Scan.gemini_used == True, Scan.success == True).count()
@@ -1077,6 +1080,7 @@ def system_health():
     return render_template(
         "admin/health.html",
         errors=errors,
+        ai_summary=ai_summary,
         gemini_total=gemini_total,
         gemini_success=gemini_success,
         gemini_failed=gemini_failed,

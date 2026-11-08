@@ -47,6 +47,12 @@ from services.vision_extractor import extract
 from services.product_lookup import search
 from services.health_analyzer import analyze
 from services.news_fetcher import get_news
+from services.ai_provider import (
+    get_ai_status_summary,
+    get_gemini_api_keys,
+    get_groq_api_keys,
+)
+from services.gemini_client import discover_available_models
 from services.activity_tracker import (
     log_activity,
     log_scan,
@@ -567,36 +573,35 @@ def news_endpoint():
 
 @app.route("/health")
 def health_check():
-    return jsonify({"status": "ok", "version": "v2.0.0-admin-secured"})
+    ai_status = get_ai_status_summary()
+    return jsonify({
+        "status": "ok",
+        "version": "v2.1.0-multi-provider",
+        "ai": ai_status,
+    })
 
 
 @app.route("/debug/models")
 def debug_models():
-    """Diagnostic endpoint to inspect active models and key validity."""
-    import google.generativeai as genai
-    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        return jsonify({"error": "No GEMINI_API_KEY set in environment."}), 500
+    """Diagnostic endpoint to inspect active models and key validity across all providers."""
+    ai_summary = get_ai_status_summary()
+    gemini_keys = get_gemini_api_keys()
 
-    masked_key = api_key[:6] + "..." + api_key[-4:] if len(api_key) > 10 else "too_short"
-    try:
-        genai.configure(api_key=api_key)
-        available = []
-        for m in genai.list_models():
-            methods = getattr(m, "supported_generation_methods", []) or []
-            if "generateContent" in methods:
-                available.append(m.name)
-        return jsonify({
-            "key_preview": masked_key,
-            "total_supported": len(available),
-            "models": available,
+    key_details = []
+    for idx, k in enumerate(gemini_keys):
+        masked = k[:6] + "..." + k[-4:] if len(k) > 10 else f"key_{idx+1}"
+        models = discover_available_models(k)
+        key_details.append({
+            "key_index": idx + 1,
+            "preview": masked,
+            "models_count": len(models),
+            "priority_models": models[:4],
         })
-    except Exception as e:
-        return jsonify({
-            "key_preview": masked_key,
-            "error": str(e),
-            "error_type": type(e).__name__,
-        }), 500
+
+    return jsonify({
+        "ai_engine": ai_summary,
+        "gemini_keys": key_details,
+    })
 
 
 # ── COMMUNITY FEEDBACK & EDIT ROUTES ────────────────────────────────────────

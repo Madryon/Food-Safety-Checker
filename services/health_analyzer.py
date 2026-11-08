@@ -1,128 +1,24 @@
-import json
 import logging
-from services.gemini_client import generate_content_with_retry
+from typing import Optional, Dict, Any
+from services.ai_provider import analyze_food_health
 
 logger = logging.getLogger(__name__)
 
 
-def analyze(ingredients_text: str, nutrition_facts: dict | None, product_name: str = "") -> dict:
-    """Send ingredients and nutrition to Gemini for health/safety scoring.
-    Uses automatic multi-model fallback to recover from 429 quota exhaustion.
-
+def analyze(ingredients_text: str, nutrition_facts: Optional[Dict[str, Any]], product_name: str = "") -> dict:
+    """Analyze packaged food product using multi-provider AI architecture.
+    
+    Fast generation & extended limit features:
+    - Automatically uses Groq LPU (Llama-3.3-70B) for ultra-fast (~300ms) scoring if GROQ_API_KEY is present.
+    - Cascades to Google Gemini Multi-Key Pool (GEMINI_API_KEYS / GEMINI_API_KEY_1..5) with auto 429 key rotation.
+    - Fallback to OpenRouter / OpenAI if quotas are exhausted.
+    
     Returns:
         dict with keys: score (0-100), verdict (safe/moderate/unsafe),
         flags (list), reasoning (str), alternatives (list)
     """
-    nutrition_str = json.dumps(nutrition_facts, indent=2) if nutrition_facts else "Not available"
-
-    prompt = f"""You are a food safety and health analyst specializing in the Indian market (FSSAI regulations).
-
-Analyze the following packaged food product and provide a health/safety assessment.
-
-Product Name: {product_name}
-
-Ingredients:
-{ingredients_text}
-
-Nutrition Facts (per 100g):
-{nutrition_str}
-
-=== SCORING RULES ===
-Score from 0 to 100, where 100 is healthiest.
-
-Flag and explain if ANY of the following are present:
-1. Added sugar or total sugar > 10g per 100g — flag as HIGH SUGAR
-2. Palm oil or palm kernel oil — flag as PALM OIL (environmental and health concern)
-3. Hydrogenated oil or trans fat > 0g — flag as TRANS FAT / HYDROGENATED OIL
-4. Artificial colors or preservatives (INS codes like INS 110, INS 211, etc.) — flag as ARTIFICIAL ADDITIVES
-5. Protein content misleading vs. product's health claims — flag as MISLEADING CLAIMS
-6. Allergens present (nuts, dairy, gluten, soy) — flag as ALLERGEN with specifics
-7. High sodium (> 500mg per 100g) — flag as HIGH SODIUM
-8. Ultra-processed indicators (long ingredient list with many chemical additives) — flag as ULTRA-PROCESSED
-
-=== VERDICT MAPPING ===
-- Score 70-100: verdict = "safe"
-- Score 40-69: verdict = "moderate" 
-- Score 0-39: verdict = "unsafe"
-
-=== ALTERNATIVES SUGGESTION ===
-Suggest 2 to 3 healthier or cleaner alternative products or food options available in the Indian market for this specific product or category.
-
-=== OUTPUT FORMAT ===
-Return ONLY valid JSON with exactly these keys:
-{{
-  "score": <integer 0-100>,
-  "verdict": "<safe|moderate|unsafe>",
-  "flags": [
-    {{
-      "type": "<FLAG_TYPE>",
-      "severity": "<high|medium|low>",
-      "explanation": "<brief explanation>"
-    }}
-  ],
-  "reasoning": "<2-3 sentence overall assessment>",
-  "alternatives": [
-    {{
-      "name": "<Name of healthier alternative brand/product or swap>",
-      "category": "<Healthier Swap|Clean Label Brand|Natural Whole Food>",
-      "why_better": "<1-2 sentence explanation of why it is significantly healthier>"
-    }}
-  ]
-}}
-
-Do NOT wrap in markdown code blocks. Return raw JSON only.
-"""
-
-    try:
-        text = generate_content_with_retry(prompt)
-        
-        # Clean up potential markdown wrapping
-        if text.startswith("```json"):
-            text = text[7:]
-        if text.startswith("```"):
-            text = text[3:]
-        if text.endswith("```"):
-            text = text[:-3]
-        text = text.strip()
-        
-        result = json.loads(text)
-        
-        # Validate required keys
-        required = {"score", "verdict", "flags", "reasoning"}
-        if not required.issubset(result.keys()):
-            missing = required - set(result.keys())
-            return _fallback_response(f"AI response missing keys: {missing}")
-        
-        # Ensure score is int and verdict is valid
-        result["score"] = int(result["score"])
-        if result["verdict"] not in ("safe", "moderate", "unsafe"):
-            if result["score"] >= 70:
-                result["verdict"] = "safe"
-            elif result["score"] >= 40:
-                result["verdict"] = "moderate"
-            else:
-                result["verdict"] = "unsafe"
-        
-        # Ensure alternatives is a list
-        if "alternatives" not in result or not isinstance(result["alternatives"], list):
-            result["alternatives"] = []
-
-        return result
-    
-    except json.JSONDecodeError:
-        logger.error("JSON decode error parsing Gemini output.")
-        return _fallback_response("Could not parse AI health analysis response. Please retry in a few moments.")
-    except Exception as e:
-        logger.error(f"Health analysis failed: {e}")
-        return _fallback_response(str(e))
-
-
-def _fallback_response(error_msg: str) -> dict:
-    """Return a safe fallback when analysis fails."""
-    return {
-        "score": None,
-        "verdict": "unknown",
-        "flags": [],
-        "alternatives": [],
-        "reasoning": error_msg,
-    }
+    return analyze_food_health(
+        ingredients_text=ingredients_text,
+        nutrition_facts=nutrition_facts,
+        product_name=product_name,
+    )
