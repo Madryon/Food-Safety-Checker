@@ -419,8 +419,8 @@
 
         <div class="sidebar-footer">
             <div class="admin-profile">
-                <div class="admin-avatar">{{ current_user.name[0] | upper if current_user.name else 'A' }}</div>
-                <div class="admin-name">{{ current_user.name }}</div>
+                <div class="admin-avatar">{{ current_user.name[0] | upper if (current_user and current_user.is_authenticated and current_user.name) else 'A' }}</div>
+                <div class="admin-name">{{ current_user.name if (current_user and current_user.is_authenticated and current_user.name) else (session.get('name') or 'Administrator') }}</div>
             </div>
             <a href="{{ url_for('admin.admin_logout') }}" class="btn btn-secondary btn-sm" title="Sign Out">🚪</a>
         </div>

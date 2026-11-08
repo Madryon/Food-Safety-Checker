@@ -598,68 +598,78 @@ def debug_models():
 
 @app.route("/api/feedback", methods=["GET", "POST"])
 def handle_feedback():
-    user_id = session.get("user_id")
-    if not user_id and session.get("_user_id") and current_user.is_authenticated:
-        user_id = current_user.username
+    try:
+        user_id = session.get("user_id")
+        if not user_id and session.get("_user_id") and current_user.is_authenticated:
+            user_id = current_user.username
 
-    curr_uname = getattr(current_user, "username", None) if (current_user.is_authenticated and session.get("_user_id")) else None
-    is_curr_admin = getattr(current_user, "is_admin", False) and (curr_uname == user_id)
-    role = session.get("role") or (current_user.role if curr_uname == user_id else "user")
-    is_admin = (role == "admin") or is_curr_admin
-    is_dev = (role in ("developer", "admin")) or is_curr_admin
+        curr_uname = getattr(current_user, "username", None) if (current_user.is_authenticated and session.get("_user_id")) else None
+        is_curr_admin = getattr(current_user, "is_admin", False) and (curr_uname == user_id)
+        role = session.get("role") or (current_user.role if curr_uname == user_id else "user")
+        is_admin = (role == "admin") or is_curr_admin
+        is_dev = (role in ("developer", "admin")) or is_curr_admin
 
-    if request.method == "POST":
-        data = request.get_json(silent=True) or request.form.to_dict()
-        if not data:
-            return jsonify({"error": "No data received."}), 400
+        if request.method == "POST":
+            data = request.get_json(silent=True) or request.form.to_dict()
+            if not data:
+                return jsonify({"error": "No data received."}), 400
 
-        # Mandatory authentication: user must sign in or register to submit feedback
-        if not user_id or str(user_id).strip().lower() in ("anonymous", "none", ""):
+            # Mandatory authentication: user must sign in or register to submit feedback
+            if not user_id or str(user_id).strip().lower() in ("anonymous", "none", ""):
+                return jsonify({
+                    "error": "Please sign in or create an account to submit your feedback.",
+                    "auth_required": True
+                }), 401
+
+            name = (data.get("name") or session.get("name") or (current_user.name if current_user.is_authenticated else "") or user_id).strip()
+            message = (data.get("message") or "").strip()
+            rating = data.get("rating", 5)
+
+            if not message:
+                return jsonify({"error": "Please write your feedback message."}), 400
+
+            fb_id = f"fb-{str(uuid.uuid4())[:8]}"
+            saved_fb = save_feedback_db(fb_id, user_id, name, rating, message)
+
+            feedbacks = get_all_feedbacks()
+            for f in feedbacks:
+                f["can_edit"] = is_dev or (f.get("user_id") == user_id)
+                f["can_delete"] = is_admin
+
+            log_activity(action="submit_feedback", details={"rating": rating, "fb_id": fb_id})
+
             return jsonify({
-                "error": "Please sign in or create an account to submit your feedback.",
-                "auth_required": True
-            }), 401
+                "status": "success",
+                "feedback": saved_fb,
+                "feedbacks": feedbacks,
+                "is_developer": is_dev,
+                "is_admin": is_admin,
+                "is_signed_in": True,
+            })
 
-        name = (data.get("name") or session.get("name") or (current_user.name if current_user.is_authenticated else "") or user_id).strip()
-        message = (data.get("message") or "").strip()
-        rating = data.get("rating", 5)
+        else:
+            # GET: Community reviews are visible to all visitors and users
+            feedbacks = get_all_feedbacks()
+            for f in feedbacks:
+                f["can_edit"] = bool(user_id and (is_dev or f.get("user_id") == user_id))
+                f["can_delete"] = bool(user_id and is_admin)
 
-        if not message:
-            return jsonify({"error": "Please write your feedback message."}), 400
-
-        fb_id = f"fb-{str(uuid.uuid4())[:8]}"
-        saved_fb = save_feedback_db(fb_id, user_id, name, rating, message)
-
-        feedbacks = get_all_feedbacks()
-        for f in feedbacks:
-            f["can_edit"] = is_dev or (f.get("user_id") == user_id)
-            f["can_delete"] = is_admin
-
-        log_activity(action="submit_feedback", details={"rating": rating, "fb_id": fb_id})
-
+            return jsonify({
+                "feedbacks": feedbacks,
+                "is_developer": is_dev,
+                "is_admin": is_admin,
+                "is_signed_in": bool(user_id),
+                "role": role if user_id else "guest",
+                "prompt_login": not bool(user_id),
+            })
+    except Exception as e:
+        app.logger.error(f"Error in handle_feedback: {e}", exc_info=True)
         return jsonify({
-            "status": "success",
-            "feedback": saved_fb,
-            "feedbacks": feedbacks,
-            "is_developer": is_dev,
-            "is_admin": is_admin,
-            "is_signed_in": True,
-        })
-
-    else:
-        # GET: Community reviews are visible to all visitors and users
-        feedbacks = get_all_feedbacks()
-        for f in feedbacks:
-            f["can_edit"] = bool(user_id and (is_dev or f.get("user_id") == user_id))
-            f["can_delete"] = bool(user_id and is_admin)
-
-        return jsonify({
-            "feedbacks": feedbacks,
-            "is_developer": is_dev,
-            "is_admin": is_admin,
-            "is_signed_in": bool(user_id),
-            "role": role if user_id else "guest",
-            "prompt_login": not bool(user_id),
+            "feedbacks": get_all_feedbacks(),
+            "is_developer": False,
+            "is_admin": False,
+            "is_signed_in": False,
+            "prompt_login": True,
         })
 
 
@@ -1531,8 +1541,15 @@ def bad_request(e):
     return jsonify({"error": desc, "message": desc}), 400
 
 
+@app.route("/admin")
+def admin_root_redirect():
+    return redirect(url_for("admin.dashboard"))
+
+
 @app.errorhandler(404)
 def not_found(e):
+    if request.path.startswith("/admin"):
+        return redirect(url_for("admin.dashboard"))
     if request.accept_mimetypes.accept_html and not request.is_json and not request.path.startswith("/api/"):
         return redirect(url_for("index"))
     return jsonify({"error": "Resource not found."}), 404

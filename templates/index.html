@@ -827,7 +827,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                             <span>💬</span> Community Reviews
                         </button>
                         <a href="{{ url_for('admin.dashboard') }}" id="menu-admin-link" class="dropdown-item-btn {% if not (current_user.is_authenticated and (current_user.is_admin or current_user.role in ('admin', 'developer'))) %}hidden{% endif %}" style="color: var(--accent); text-decoration: none; font-weight: 700; {% if current_user.is_authenticated and (current_user.is_admin or current_user.role in ('admin', 'developer')) %}display: flex;{% endif %}">
-                            <span>🛡️</span> Admin Console
+                            <span>🛡️</span> Admin Dashboard
                         </a>
                         <div class="dropdown-divider"></div>
                         <button type="button" id="btn-menu-logout" class="dropdown-item-btn logout-item">
@@ -2378,15 +2378,29 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             if (menuUserId) menuUserId.textContent = '@' + (user.user_id || 'user');
 
             if (menuRoleBadge) {
-                if (user.is_admin) {
+                if (user.is_admin || user.role === 'admin') {
                     menuRoleBadge.className = 'role-badge dev';
                     menuRoleBadge.textContent = '🛡️ Admin';
-                } else if (user.is_developer) {
+                    menuRoleBadge.style.cursor = 'pointer';
+                    menuRoleBadge.title = 'Open Admin Dashboard';
+                    menuRoleBadge.onclick = function(e) {
+                        e.stopPropagation();
+                        window.location.href = '/admin/dashboard';
+                    };
+                } else if (user.is_developer || user.role === 'developer') {
                     menuRoleBadge.className = 'role-badge dev';
                     menuRoleBadge.textContent = '🛠️ Developer';
+                    menuRoleBadge.style.cursor = 'pointer';
+                    menuRoleBadge.title = 'Open Admin Dashboard';
+                    menuRoleBadge.onclick = function(e) {
+                        e.stopPropagation();
+                        window.location.href = '/admin/dashboard';
+                    };
                 } else {
                     menuRoleBadge.className = 'role-badge user';
                     menuRoleBadge.textContent = '👤 User';
+                    menuRoleBadge.style.cursor = 'default';
+                    menuRoleBadge.onclick = null;
                 }
             }
 

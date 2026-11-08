@@ -277,6 +277,20 @@ def admin_register():
     return render_template("admin/register.html", form=form)
 
 
+def _safe_format_dt(val, fmt="%Y-%m-%d %H:%M"):
+    if not val:
+        return "—"
+    if isinstance(val, datetime):
+        return val.strftime(fmt)
+    try:
+        s = str(val).strip()
+        if len(s) >= 19 and ("-" in s or ":" in s):
+            return s[:19] if "%S" in fmt else s[:16]
+        return s[:16] if len(s) > 16 else s
+    except Exception:
+        return "—"
+
+
 # ── DASHBOARD & USER ANALYTICS ──────────────────────────────────────────────
 
 @admin_bp.route("/")
@@ -304,133 +318,138 @@ def dashboard():
     search_q = request.args.get("q", "").strip()
 
     try:
-        total_users = User.query.count()
-        new_users_today = User.query.filter(User.created_at >= today_start).count()
-        users_online_now = User.query.filter(User.last_seen_at >= five_min_ago).count()
-    except Exception as e:
-        db.session.rollback()
-        print(f"[!] Dashboard user stats warning: {e}")
+        try:
+            total_users = User.query.count()
+            new_users_today = User.query.filter(User.created_at >= today_start).count()
+            users_online_now = User.query.filter(User.last_seen_at >= five_min_ago).count()
+        except Exception as e:
+            db.session.rollback()
+            print(f"[!] Dashboard user stats warning: {e}")
 
-    try:
-        total_scans = Scan.query.count()
-        scans_today = Scan.query.filter(Scan.created_at >= today_start).count()
-    except Exception as e:
-        db.session.rollback()
-        print(f"[!] Dashboard scan stats warning: {e}")
+        try:
+            total_scans = Scan.query.count()
+            scans_today = Scan.query.filter(Scan.created_at >= today_start).count()
+        except Exception as e:
+            db.session.rollback()
+            print(f"[!] Dashboard scan stats warning: {e}")
 
-    try:
-        logins_today = LoginEvent.query.filter(
-            LoginEvent.created_at >= today_start,
-            LoginEvent.event_type.in_(["login", "admin_login"]),
-            LoginEvent.success == True,
-        ).count()
-        failed_logins_today = LoginEvent.query.filter(
-            LoginEvent.created_at >= today_start,
-            LoginEvent.event_type == "failed_login",
-        ).count()
-    except Exception as e:
-        db.session.rollback()
-        print(f"[!] Dashboard login stats warning: {e}")
+        try:
+            logins_today = LoginEvent.query.filter(
+                LoginEvent.created_at >= today_start,
+                LoginEvent.event_type.in_(["login", "admin_login"]),
+                LoginEvent.success == True,
+            ).count()
+            failed_logins_today = LoginEvent.query.filter(
+                LoginEvent.created_at >= today_start,
+                LoginEvent.event_type == "failed_login",
+            ).count()
+        except Exception as e:
+            db.session.rollback()
+            print(f"[!] Dashboard login stats warning: {e}")
 
-    try:
-        diet_plans_count = get_total_diet_plans_count()
-    except Exception as e:
-        print(f"[!] Dashboard diet stats warning: {e}")
+        try:
+            diet_plans_count = get_total_diet_plans_count()
+        except Exception as e:
+            print(f"[!] Dashboard diet stats warning: {e}")
 
-    # 3. Usage Counts Per User (Product scans & Diet plans)
-    try:
-        scan_counts_query = (
-            db.session.query(Scan.user_id, func.count(Scan.id))
-            .filter(Scan.user_id.isnot(None))
-            .group_by(Scan.user_id)
-            .all()
-        )
-        user_scan_counts = {uid: count for uid, count in scan_counts_query if uid}
-    except Exception as e:
-        db.session.rollback()
-        print(f"[!] Scan counts per user warning: {e}")
-
-    try:
-        with DatabaseConnection() as (conn, is_pg):
-            cursor = conn.cursor()
-            cursor.execute("SELECT user_id, COUNT(*) FROM diet_plans GROUP BY user_id;")
-            rows = cursor.fetchall()
-            cursor.close()
-            for r in rows:
-                if r and r[0]:
-                    user_diet_counts[str(r[0]).strip().lower()] = r[1]
-    except Exception as e:
-        print(f"[!] Diet counts per user warning: {e}")
-
-    # 2. Users Listing & Search - converted to robust in-memory dicts
-    try:
-        user_query = User.query
-        if search_q:
-            like_pat = f"%{search_q}%"
-            user_query = user_query.filter(
-                (User.username.ilike(like_pat))
-                | (User.name.ilike(like_pat))
-                | (User.email.ilike(like_pat))
+        # 3. Usage Counts Per User (Product scans & Diet plans)
+        try:
+            scan_counts_query = (
+                db.session.query(Scan.user_id, func.count(Scan.id))
+                .filter(Scan.user_id.isnot(None))
+                .group_by(Scan.user_id)
+                .all()
             )
-        raw_users = user_query.order_by(User.created_at.desc()).limit(100).all()
-        for u in raw_users:
-            uname_clean = str(u.username or "").strip().lower()
-            users_data.append({
-                "id": u.id,
-                "username": u.username,
-                "name": u.name or u.username,
-                "email": u.email,
-                "is_admin": bool(u.is_admin),
-                "is_active": bool(u.is_active),
-                "is_locked": bool(u.is_locked),
-                "created_at": u.created_at,
-                "last_seen_at": u.last_seen_at,
-                "scans_count": user_scan_counts.get(u.id, 0),
-                "diet_count": user_diet_counts.get(uname_clean, 0),
-            })
-    except Exception as e:
-        db.session.rollback()
-        print(f"[!] Dashboard users query warning: {e}")
-        users_data = []
+            user_scan_counts = {uid: count for uid, count in scan_counts_query if uid}
+        except Exception as e:
+            db.session.rollback()
+            print(f"[!] Scan counts per user warning: {e}")
 
-    # 4. Recent Logins - pre-extracting data to avoid any lazy-load DB operations during template render
-    try:
-        raw_logins = (
-            LoginEvent.query.order_by(LoginEvent.created_at.desc())
-            .limit(35)
-            .all()
-        )
-        for l in raw_logins:
-            uname = None
-            try:
-                if l.user:
-                    uname = l.user.username
-            except Exception:
-                pass
-            if not uname:
-                uname = l.user_id_attempted or l.email_attempted or "Anonymous"
-            recent_logins_data.append({
-                "id": l.id,
-                "username": uname,
-                "event_type": l.event_type,
-                "success": bool(l.success),
-                "ip_address": l.ip_address,
-                "user_agent": l.user_agent,
-                "created_at": l.created_at,
-            })
-    except Exception as e:
-        db.session.rollback()
-        print(f"[!] Recent logins warning: {e}")
-        recent_logins_data = []
+        try:
+            with DatabaseConnection() as (conn, is_pg):
+                cursor = conn.cursor()
+                cursor.execute("SELECT user_id, COUNT(*) FROM diet_plans GROUP BY user_id;")
+                rows = cursor.fetchall()
+                cursor.close()
+                for r in rows:
+                    if r and r[0]:
+                        user_diet_counts[str(r[0]).strip().lower()] = r[1]
+        except Exception as e:
+            print(f"[!] Diet counts per user warning: {e}")
 
-    # 5. Admin Details & Master Key status
-    try:
-        total_admin_keys = AdminInviteKey.query.filter_by(revoked=False).count()
-    except Exception as e:
-        db.session.rollback()
-        print(f"[!] Admin keys count warning: {e}")
+        # 2. Users Listing & Search - converted to robust in-memory dicts with preformatted dates
+        try:
+            user_query = User.query
+            if search_q:
+                like_pat = f"%{search_q}%"
+                user_query = user_query.filter(
+                    (User.username.ilike(like_pat))
+                    | (User.name.ilike(like_pat))
+                    | (User.email.ilike(like_pat))
+                )
+            raw_users = user_query.order_by(User.created_at.desc()).limit(100).all()
+            for u in raw_users:
+                uname_clean = str(u.username or "").strip().lower()
+                is_u_admin = bool(getattr(u, "is_admin", False) or getattr(u, "role", "") in ("admin", "developer"))
+                created_str = _safe_format_dt(getattr(u, "created_at", None), "%Y-%m-%d")
+                last_seen = getattr(u, "last_seen_at", None)
+                last_seen_str = _safe_format_dt(last_seen, "%Y-%m-%d %H:%M") if last_seen else "Never"
+                users_data.append({
+                    "id": u.id or 0,
+                    "username": u.username or uname_clean,
+                    "name": u.name or u.username or uname_clean,
+                    "email": u.email or "",
+                    "is_admin": is_u_admin,
+                    "is_active": bool(getattr(u, "is_active", True)),
+                    "is_locked": bool(getattr(u, "is_locked", False)),
+                    "created_at_fmt": created_str,
+                    "last_seen_fmt": last_seen_str,
+                    "scans_count": user_scan_counts.get(u.id, 0),
+                    "diet_count": user_diet_counts.get(uname_clean, 0),
+                })
+        except Exception as e:
+            db.session.rollback()
+            print(f"[!] Dashboard users query warning: {e}")
+            users_data = []
 
-    try:
+        # 4. Recent Logins - pre-extracting data to avoid any lazy-load DB operations during template render
+        try:
+            raw_logins = (
+                LoginEvent.query.order_by(LoginEvent.created_at.desc())
+                .limit(35)
+                .all()
+            )
+            for l in raw_logins:
+                uname = None
+                try:
+                    if l.user:
+                        uname = l.user.username
+                except Exception:
+                    pass
+                if not uname:
+                    uname = getattr(l, "user_id_attempted", None) or getattr(l, "email_attempted", None) or "Anonymous"
+                time_str = _safe_format_dt(getattr(l, "created_at", None), "%Y-%m-%d %H:%M:%S")
+                recent_logins_data.append({
+                    "id": l.id or 0,
+                    "username": uname,
+                    "event_type": l.event_type or "login",
+                    "success": bool(l.success),
+                    "ip_address": l.ip_address or "—",
+                    "user_agent": (l.user_agent or "—")[:80],
+                    "time_fmt": time_str,
+                })
+        except Exception as e:
+            db.session.rollback()
+            print(f"[!] Recent logins warning: {e}")
+            recent_logins_data = []
+
+        # 5. Admin Details & Master Key status
+        try:
+            total_admin_keys = AdminInviteKey.query.filter_by(revoked=False).count()
+        except Exception as e:
+            db.session.rollback()
+            print(f"[!] Admin keys count warning: {e}")
+
         return render_template(
             "admin/dashboard.html",
             total_users=total_users,
@@ -465,7 +484,7 @@ def dashboard():
             user_scan_counts={},
             user_diet_counts={},
             recent_logins=[],
-            has_master_key=has_master_key,
+            has_master_key=bool(User.get_master_admin_password()),
             total_admin_keys=0,
             search_q="",
         )

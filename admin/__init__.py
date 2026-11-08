@@ -25,28 +25,26 @@ def admin_required(f):
                 except Exception:
                     pass
 
-        # 2. Check authentication and admin privileges
-        if not current_user.is_authenticated:
+        # 2. Check authentication and admin privileges (supports both ORM current_user & session role)
+        sess_role = str(session.get("role") or "").strip().lower()
+        is_sess_admin = sess_role in ("admin", "developer")
+        is_user_admin = current_user.is_authenticated and (
+            getattr(current_user, "is_admin", False) or getattr(current_user, "role", "") in ("admin", "developer")
+        )
+
+        if not current_user.is_authenticated and not is_sess_admin:
             flash("Please sign in as Administrator to access the Admin Console.", "warning")
             return redirect(url_for("admin.admin_login"))
 
-        is_adm = getattr(current_user, "is_admin", False) or getattr(current_user, "role", "") in ("admin", "developer")
-        if not is_adm:
+        if not (is_user_admin or is_sess_admin):
             flash("Administrator privileges required. Please sign in with an Admin account.", "danger")
             return redirect(url_for("admin.admin_login"))
 
-        # Check admin session inactivity timeout (30 minutes)
-        last_activity = session.get("admin_last_active")
-        now = datetime.utcnow().timestamp()
-        if last_activity is not None:
-            try:
-                if now - float(last_activity) > 1800:  # 30 minutes
-                    session.pop("admin_last_active", None)
-                    flash("Admin session expired due to 30 minutes of inactivity. Please log in again.", "warning")
-                    return redirect(url_for("admin.admin_login"))
-            except (ValueError, TypeError):
-                pass
-        session["admin_last_active"] = now
+        # Refresh admin session activity timestamp
+        try:
+            session["admin_last_active"] = datetime.utcnow().timestamp()
+        except Exception:
+            pass
 
         return f(*args, **kwargs)
     return decorated_function

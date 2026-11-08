@@ -50,12 +50,12 @@
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; align-items: center;">
         <div style="display: flex; align-items: center; gap: 12px;">
             <div style="width: 44px; height: 44px; border-radius: 50%; background: var(--accent); color: var(--on-accent); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 18px;">
-                {{ current_user.name[0] | upper if current_user.name else 'A' }}
+                {{ current_user.name[0] | upper if (current_user and current_user.is_authenticated and current_user.name) else 'A' }}
             </div>
             <div>
-                <div style="font-weight: 700; font-size: 15px;">{{ current_user.name }}</div>
-                <div style="font-size: 12.5px; color: var(--muted);">User ID: <strong>@{{ current_user.username }}</strong></div>
-                <div style="font-size: 12px; color: var(--muted);">Email: <strong>{{ current_user.email or '—' }}</strong></div>
+                <div style="font-weight: 700; font-size: 15px;">{{ current_user.name if (current_user and current_user.is_authenticated and current_user.name) else (session.get('name') or 'Administrator') }}</div>
+                <div style="font-size: 12.5px; color: var(--muted);">User ID: <strong>@{{ current_user.username if (current_user and current_user.is_authenticated and current_user.username) else (session.get('user_id') or 'admin') }}</strong></div>
+                <div style="font-size: 12px; color: var(--muted);">Email: <strong>{{ (current_user.email if (current_user and current_user.is_authenticated) else None) or '—' }}</strong></div>
             </div>
         </div>
 
@@ -156,17 +156,13 @@
                         {% endif %}
                     </td>
                     <td style="font-size: 12px; color: var(--muted);">
-                        {{ u.created_at.strftime('%Y-%m-%d') if u.created_at else '—' }}
+                        {{ u.created_at_fmt if u.created_at_fmt is defined else (u.created_at if u.created_at else '—') }}
                     </td>
                     <td style="font-size: 12px; color: var(--muted);">
-                        {% if u.last_seen_at %}
-                        {{ u.last_seen_at.strftime('%Y-%m-%d %H:%M') }}
-                        {% else %}
-                        <span style="color: var(--muted);">Never</span>
-                        {% endif %}
+                        {{ u.last_seen_fmt if u.last_seen_fmt is defined else (u.last_seen_at if u.last_seen_at else 'Never') }}
                     </td>
                     <td style="text-align: right;">
-                        {% if u.id != current_user.id %}
+                        {% if u.id and (not current_user or not current_user.is_authenticated or u.id != current_user.id) %}
                         <div style="display: inline-flex; gap: 6px;">
                             {% if u.is_active %}
                             <form method="POST" action="{{ url_for('admin.user_action', user_id=u.id) }}" style="display:inline;" onsubmit="return confirm('Disable account @{{ u.username }}?');">
@@ -253,7 +249,7 @@
                         {{ log.user_agent or '—' }}
                     </td>
                     <td style="font-size: 12px; color: var(--muted); white-space: nowrap;">
-                        {{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') if log.created_at else '—' }}
+                        {{ log.time_fmt if log.time_fmt is defined else (log.created_at if log.created_at else '—') }}
                     </td>
                 </tr>
                 {% else %}
