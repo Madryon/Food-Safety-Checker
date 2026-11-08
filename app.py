@@ -329,9 +329,14 @@ def set_security_headers(response):
 # ── CONTEXT PROCESSORS: ANNOUNCEMENT BANNER & RECAPTCHA KEY ────────────────
 @app.context_processor
 def inject_global_banner():
+    banner = ""
     try:
         banner = AppSetting.get_setting("announcement_banner", "")
     except Exception:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
         banner = ""
     provider = get_captcha_provider()
     return dict(
@@ -594,8 +599,9 @@ def debug_models():
 @app.route("/api/feedback", methods=["GET", "POST"])
 def handle_feedback():
     user_id = session.get("user_id")
-    is_admin = session.get("role") in ("admin",) or (current_user.is_authenticated and current_user.is_admin)
-    is_dev = session.get("role") in ("developer", "admin") or is_admin
+    role = session.get("role") or (current_user.role if current_user.is_authenticated else "user")
+    is_admin = (role == "admin")
+    is_dev = (role in ("developer", "admin"))
 
     if request.method == "POST":
         data = request.get_json(silent=True) or request.form.to_dict()
@@ -1518,6 +1524,8 @@ def bad_request(e):
 
 @app.errorhandler(404)
 def not_found(e):
+    if request.accept_mimetypes.accept_html and not request.is_json and not request.path.startswith("/api/"):
+        return redirect(url_for("index"))
     return jsonify({"error": "Resource not found."}), 404
 
 
@@ -1534,6 +1542,10 @@ def ratelimit_handler(e):
 @app.errorhandler(500)
 def server_error(e):
     app.logger.error(f"Internal server error on {request.path}: {e}", exc_info=True)
+    try:
+        db.session.rollback()
+    except Exception:
+        pass
     try:
         log_error("app", str(e), path=request.path)
     except Exception:

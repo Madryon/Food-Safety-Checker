@@ -388,34 +388,23 @@
         </a>
 
         <nav class="sidebar-nav">
-            <div class="nav-label">Overview</div>
+            <div class="nav-label">Core Console</div>
             <a href="{{ url_for('admin.dashboard') }}" class="nav-link {% if request.endpoint == 'admin.dashboard' %}active{% endif %}">
                 <span>📊</span> Dashboard
             </a>
+            <a href="{{ url_for('admin.dashboard') }}#users-section" class="nav-link">
+                <span>👥</span> Users &amp; Usage
+            </a>
+            <a href="{{ url_for('admin.dashboard') }}#logins-section" class="nav-link">
+                <span>🔐</span> Login Activity
+            </a>
+            <a href="{{ url_for('admin.keys_page') }}" class="nav-link {% if request.endpoint == 'admin.keys_page' %}active{% endif %}">
+                <span>🔑</span> Admin Invite Keys
+            </a>
+
+            <div class="nav-label">Utilities</div>
             <a href="{{ url_for('admin.feed_page') }}" class="nav-link {% if request.endpoint == 'admin.feed_page' %}active{% endif %}">
                 <span>⚡</span> Live Feed
-            </a>
-
-            <div class="nav-label">Management</div>
-            <a href="{{ url_for('admin.users_list') }}" class="nav-link {% if request.endpoint in ('admin.users_list', 'admin.user_detail') %}active{% endif %}">
-                <span>👥</span> Users
-            </a>
-            <a href="{{ url_for('admin.scans_list') }}" class="nav-link {% if request.endpoint == 'admin.scans_list' %}active{% endif %}">
-                <span>🔍</span> Scans Explorer
-            </a>
-            <a href="{{ url_for('admin.logins_history') }}" class="nav-link {% if request.endpoint == 'admin.logins_history' %}active{% endif %}">
-                <span>🔐</span> Login Events
-            </a>
-            <a href="{{ url_for('admin.active_sessions') }}" class="nav-link {% if request.endpoint == 'admin.active_sessions' %}active{% endif %}">
-                <span>💻</span> Active Sessions
-            </a>
-            <a href="{{ url_for('admin.reviews_list') }}" class="nav-link {% if request.endpoint == 'admin.reviews_list' %}active{% endif %}">
-                <span>💬</span> Reviews Moderation
-            </a>
-
-            <div class="nav-label">Security & System</div>
-            <a href="{{ url_for('admin.keys_page') }}" class="nav-link {% if request.endpoint == 'admin.keys_page' %}active{% endif %}">
-                <span>🔑</span> Admin Keys
             </a>
             <a href="{{ url_for('admin.system_health') }}" class="nav-link {% if request.endpoint == 'admin.system_health' %}active{% endif %}">
                 <span>🩺</span> System Health
@@ -423,16 +412,13 @@
             <a href="{{ url_for('admin.audit_log') }}" class="nav-link {% if request.endpoint == 'admin.audit_log' %}active{% endif %}">
                 <span>📜</span> Audit Trail
             </a>
-            <a href="{{ url_for('admin.export_data') }}" class="nav-link {% if request.endpoint == 'admin.export_data' %}active{% endif %}">
-                <span>📥</span> CSV Export
-            </a>
-            <a href="{{ url_for('admin.settings_page') }}" class="nav-link {% if request.endpoint == 'admin.settings_page' %}active{% endif %}">
-                <span>⚙️</span> Settings
-            </a>
 
             <div class="nav-label">Application</div>
             <a href="/" class="nav-link" target="_blank">
                 <span>🌐</span> View Web App ↗
+            </a>
+            <a href="{{ url_for('admin.admin_logout') }}" class="nav-link" style="color: var(--bad);">
+                <span>🚪</span> Sign Out
             </a>
         </nav>
 
@@ -441,7 +427,7 @@
                 <div class="admin-avatar">{{ current_user.name[0] | upper if current_user.name else 'A' }}</div>
                 <div class="admin-name">{{ current_user.name }}</div>
             </div>
-            <a href="{{ url_for('auth.logout') }}" class="btn btn-secondary btn-sm" title="Sign Out">🚪</a>
+            <a href="{{ url_for('admin.admin_logout') }}" class="btn btn-secondary btn-sm" title="Sign Out">🚪</a>
         </div>
     </aside>
 

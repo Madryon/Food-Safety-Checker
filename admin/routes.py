@@ -35,6 +35,7 @@ from services.activity_tracker import (
     is_suspicious_login,
 )
 from services.database import (
+    DatabaseConnection,
     get_all_feedbacks,
     delete_feedback_db,
     hide_feedback_db,
@@ -198,6 +199,15 @@ def admin_login():
     return render_template("admin/login.html", form=form)
 
 
+@admin_bp.route("/logout")
+def admin_logout():
+    logout_user()
+    session.pop("admin_last_active", None)
+    session.clear()
+    flash("You have been signed out from the admin console.", "info")
+    return redirect(url_for("admin.admin_login"))
+
+
 @admin_bp.route("/register", methods=["GET", "POST"])
 @limiter.limit("5 per minute")
 def admin_register():
@@ -267,7 +277,7 @@ def admin_register():
     return render_template("admin/register.html", form=form)
 
 
-# ── DASHBOARD & KPI ANALYTICS ───────────────────────────────────────────────
+# ── DASHBOARD & USER ANALYTICS ──────────────────────────────────────────────
 
 @admin_bp.route("/")
 @admin_bp.route("/dashboard")
@@ -275,226 +285,135 @@ def admin_register():
 def dashboard():
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     five_min_ago = datetime.utcnow() - timedelta(minutes=5)
-    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
 
-    # Default fallback values for all metrics and chart payloads
+    # 1. KPI Counts (safe with fallback & rollback on error)
     total_users = 0
     new_users_today = 0
     users_online_now = 0
-    logins_today = 0
-    failed_logins_today = 0
     total_scans = 0
     scans_today = 0
     diet_plans_count = 0
-    feedback_count = 0
-    avg_rating = 5.0
-    chart_scans_labels = []
-    chart_scans_data = []
-    chart_signups_labels = []
-    chart_signups_data = []
-    verdict_map = {"safe": 0, "moderate": 0, "unsafe": 0}
-    top_products = []
-    top_brands = []
-    unhealthy_products = []
-    controversial_brands = []
+    logins_today = 0
+    failed_logins_today = 0
 
     try:
-        # KPI stats (safely wrapped)
-        try:
-            total_users = User.query.count()
-            new_users_today = User.query.filter(User.created_at >= today_start).count()
-            users_online_now = User.query.filter(User.last_seen_at >= five_min_ago).count()
-        except Exception as e:
-            print(f"[!] Dashboard user stats warning: {e}")
-
-        try:
-            logins_today = LoginEvent.query.filter(
-                LoginEvent.created_at >= today_start,
-                LoginEvent.event_type.in_(["login", "admin_login"]),
-                LoginEvent.success == True
-            ).count()
-            failed_logins_today = LoginEvent.query.filter(
-                LoginEvent.created_at >= today_start,
-                LoginEvent.event_type == "failed_login"
-            ).count()
-        except Exception as e:
-            print(f"[!] Dashboard login stats warning: {e}")
-
-        try:
-            total_scans = Scan.query.count()
-            scans_today = Scan.query.filter(Scan.created_at >= today_start).count()
-        except Exception as e:
-            print(f"[!] Dashboard scan stats warning: {e}")
-
-        try:
-            diet_plans_count = get_total_diet_plans_count()
-            feedback_count, avg_rating = get_feedbacks_count_and_avg()
-        except Exception as e:
-            print(f"[!] Dashboard diet/feedback stats warning: {e}")
-
-        # 30-day scans per day (cross-database PostgreSQL and SQLite compatible)
-        try:
-            daily_scans_map = collections.defaultdict(int)
-            for (ts,) in Scan.query.with_entities(Scan.created_at).filter(Scan.created_at >= thirty_days_ago).all():
-                if ts:
-                    d_str = ts.strftime("%Y-%m-%d") if hasattr(ts, "strftime") else str(ts)[:10]
-                    daily_scans_map[d_str] += 1
-            sorted_scans = sorted(daily_scans_map.keys())
-            chart_scans_labels = sorted_scans
-            chart_scans_data = [daily_scans_map[d] for d in sorted_scans]
-        except Exception as e:
-            print(f"[!] Dashboard daily scans chart warning: {e}")
-
-        # 30-day signups per day (cross-database PostgreSQL and SQLite compatible)
-        try:
-            daily_signups_map = collections.defaultdict(int)
-            for (ts,) in User.query.with_entities(User.created_at).filter(User.created_at >= thirty_days_ago).all():
-                if ts:
-                    d_str = ts.strftime("%Y-%m-%d") if hasattr(ts, "strftime") else str(ts)[:10]
-                    daily_signups_map[d_str] += 1
-            sorted_signups = sorted(daily_signups_map.keys())
-            chart_signups_labels = sorted_signups
-            chart_signups_data = [daily_signups_map[d] for d in sorted_signups]
-        except Exception as e:
-            print(f"[!] Dashboard daily signups chart warning: {e}")
-
-        # Health verdict distribution
-        try:
-            verdict_counts = (
-                db.session.query(Scan.health_verdict, func.count(Scan.id))
-                .filter(Scan.health_verdict.isnot(None))
-                .group_by(Scan.health_verdict)
-                .all()
-            )
-            for v, c in verdict_counts:
-                v_clean = (v or "").lower().replace("healthy", "safe").replace("unhealthy", "unsafe")
-                if v_clean in verdict_map:
-                    verdict_map[v_clean] += c
-        except Exception as e:
-            print(f"[!] Dashboard verdicts warning: {e}")
-
-        # Top 10 scanned products
-        try:
-            top_products = (
-                db.session.query(Scan.product_name, func.count(Scan.id).label("c"))
-                .filter(Scan.product_name.isnot(None), Scan.product_name != "Unknown Product")
-                .group_by(Scan.product_name)
-                .order_by(desc(func.count(Scan.id)))
-                .limit(10)
-                .all()
-            )
-        except Exception as e:
-            print(f"[!] Dashboard top products warning: {e}")
-
-        # Top 10 brands
-        try:
-            top_brands = (
-                db.session.query(Scan.brand, func.count(Scan.id).label("c"))
-                .filter(Scan.brand.isnot(None), Scan.brand != "Unknown", Scan.brand != "Unknown Brand")
-                .group_by(Scan.brand)
-                .order_by(desc(func.count(Scan.id)))
-                .limit(10)
-                .all()
-            )
-        except Exception as e:
-            print(f"[!] Dashboard top brands warning: {e}")
-
-        # Leaderboard: Most Unhealthy Products
-        try:
-            unhealthy_products = (
-                db.session.query(
-                    Scan.product_name,
-                    Scan.brand,
-                    func.count(Scan.id).label("times_flagged"),
-                    func.avg(Scan.health_score).label("avg_score")
-                )
-                .filter(
-                    Scan.health_verdict.in_(["unsafe", "unhealthy", "moderate"]),
-                    Scan.product_name.isnot(None),
-                    Scan.product_name != "Unknown Product"
-                )
-                .group_by(Scan.product_name, Scan.brand)
-                .order_by(desc(func.count(Scan.id)))
-                .limit(5)
-                .all()
-            )
-        except Exception as e:
-            print(f"[!] Dashboard unhealthy products warning: {e}")
-
-        # Leaderboard: Most Controversial Brands
-        try:
-            controversial_brands = (
-                db.session.query(
-                    Scan.brand,
-                    func.count(Scan.id).label("flagged_count"),
-                    func.avg(Scan.health_score).label("avg_score")
-                )
-                .filter(
-                    Scan.health_verdict.in_(["unsafe", "unhealthy"]),
-                    Scan.brand.isnot(None),
-                    Scan.brand != "Unknown"
-                )
-                .group_by(Scan.brand)
-                .order_by(desc(func.count(Scan.id)))
-                .limit(5)
-                .all()
-            )
-        except Exception as e:
-            print(f"[!] Dashboard controversial brands warning: {e}")
-    except Exception as outer_e:
-        print(f"[!] Dashboard outer query error: {outer_e}")
+        total_users = User.query.count()
+        new_users_today = User.query.filter(User.created_at >= today_start).count()
+        users_online_now = User.query.filter(User.last_seen_at >= five_min_ago).count()
+    except Exception as e:
+        db.session.rollback()
+        print(f"[!] Dashboard user stats warning: {e}")
 
     try:
-        return render_template(
-            "admin/dashboard.html",
-            total_users=total_users,
-            new_users_today=new_users_today,
-            users_online_now=users_online_now,
-            logins_today=logins_today,
-            failed_logins_today=failed_logins_today,
-            total_scans=total_scans,
-            scans_today=scans_today,
-            diet_plans_count=diet_plans_count,
-            feedback_count=feedback_count,
-            avg_rating=avg_rating,
-            chart_scans_labels=json.dumps(chart_scans_labels),
-            chart_scans_data=json.dumps(chart_scans_data),
-            chart_signups_labels=json.dumps(chart_signups_labels),
-            chart_signups_data=json.dumps(chart_signups_data),
-            chart_verdicts_data=json.dumps([verdict_map["safe"], verdict_map["moderate"], verdict_map["unsafe"]]),
-            chart_top_products_labels=json.dumps([(p[0] or "")[:20] for p in top_products if p and p[0]]),
-            chart_top_products_data=json.dumps([p[1] for p in top_products if p]),
-            chart_top_brands_labels=json.dumps([(b[0] or "")[:20] for b in top_brands if b and b[0]]),
-            chart_top_brands_data=json.dumps([b[1] for b in top_brands if b]),
-            unhealthy_products=unhealthy_products,
-            controversial_brands=controversial_brands,
+        total_scans = Scan.query.count()
+        scans_today = Scan.query.filter(Scan.created_at >= today_start).count()
+    except Exception as e:
+        db.session.rollback()
+        print(f"[!] Dashboard scan stats warning: {e}")
+
+    try:
+        logins_today = LoginEvent.query.filter(
+            LoginEvent.created_at >= today_start,
+            LoginEvent.event_type.in_(["login", "admin_login"]),
+            LoginEvent.success == True,
+        ).count()
+        failed_logins_today = LoginEvent.query.filter(
+            LoginEvent.created_at >= today_start,
+            LoginEvent.event_type == "failed_login",
+        ).count()
+    except Exception as e:
+        db.session.rollback()
+        print(f"[!] Dashboard login stats warning: {e}")
+
+    try:
+        diet_plans_count = get_total_diet_plans_count()
+    except Exception as e:
+        print(f"[!] Dashboard diet stats warning: {e}")
+
+    # 2. Users Listing & Search
+    search_q = request.args.get("q", "").strip()
+    users = []
+    try:
+        user_query = User.query
+        if search_q:
+            like_pat = f"%{search_q}%"
+            user_query = user_query.filter(
+                (User.username.ilike(like_pat))
+                | (User.name.ilike(like_pat))
+                | (User.email.ilike(like_pat))
+            )
+        users = user_query.order_by(User.created_at.desc()).limit(100).all()
+    except Exception as e:
+        db.session.rollback()
+        print(f"[!] Dashboard users query warning: {e}")
+        users = []
+
+    # 3. Usage Counts Per User (Product scans & Diet plans)
+    user_scan_counts = {}
+    try:
+        scan_counts_query = (
+            db.session.query(Scan.user_id, func.count(Scan.id))
+            .filter(Scan.user_id.isnot(None))
+            .group_by(Scan.user_id)
+            .all()
         )
-    except Exception as render_e:
-        print(f"[!] Dashboard render error fallback: {render_e}")
-        return render_template(
-            "admin/dashboard.html",
-            total_users=total_users,
-            new_users_today=new_users_today,
-            users_online_now=users_online_now,
-            logins_today=logins_today,
-            failed_logins_today=failed_logins_today,
-            total_scans=total_scans,
-            scans_today=scans_today,
-            diet_plans_count=diet_plans_count,
-            feedback_count=feedback_count,
-            avg_rating=avg_rating,
-            chart_scans_labels="[]",
-            chart_scans_data="[]",
-            chart_signups_labels="[]",
-            chart_signups_data="[]",
-            chart_verdicts_data="[0, 0, 0]",
-            chart_top_products_labels="[]",
-            chart_top_products_data="[]",
-            chart_top_brands_labels="[]",
-            chart_top_brands_data="[]",
-            unhealthy_products=[],
-            controversial_brands=[],
+        user_scan_counts = {uid: count for uid, count in scan_counts_query if uid}
+    except Exception as e:
+        db.session.rollback()
+        print(f"[!] Scan counts per user warning: {e}")
+
+    user_diet_counts = {}
+    try:
+        with DatabaseConnection() as (conn, is_pg):
+            cursor = conn.cursor()
+            cursor.execute("SELECT user_id, COUNT(*) FROM diet_plans GROUP BY user_id;")
+            rows = cursor.fetchall()
+            cursor.close()
+            for r in rows:
+                if r and r[0]:
+                    user_diet_counts[str(r[0]).strip().lower()] = r[1]
+    except Exception as e:
+        print(f"[!] Diet counts per user warning: {e}")
+
+    # 4. Recent Logins (Who is logging in)
+    recent_logins = []
+    try:
+        recent_logins = (
+            LoginEvent.query.order_by(LoginEvent.created_at.desc())
+            .limit(35)
+            .all()
         )
+    except Exception as e:
+        db.session.rollback()
+        print(f"[!] Recent logins warning: {e}")
+
+    # 5. Admin Details & Master Key status
+    has_master_key = bool(User.get_master_admin_password())
+    total_admin_keys = 0
+    try:
+        total_admin_keys = AdminInviteKey.query.filter_by(revoked=False).count()
+    except Exception as e:
+        db.session.rollback()
+        print(f"[!] Admin keys count warning: {e}")
+
+    return render_template(
+        "admin/dashboard.html",
+        total_users=total_users,
+        new_users_today=new_users_today,
+        users_online_now=users_online_now,
+        total_scans=total_scans,
+        scans_today=scans_today,
+        diet_plans_count=diet_plans_count,
+        logins_today=logins_today,
+        failed_logins_today=failed_logins_today,
+        users=users,
+        user_scan_counts=user_scan_counts,
+        user_diet_counts=user_diet_counts,
+        recent_logins=recent_logins,
+        has_master_key=has_master_key,
+        total_admin_keys=total_admin_keys,
+        search_q=search_q,
+    )
 
 
 # ── LIVE ACTIVITY FEED ──────────────────────────────────────────────────────
@@ -617,16 +536,17 @@ def user_action(user_id):
     action = request.form.get("action")
 
     # Guard: Cannot modify self
+    back_url = request.referrer or url_for("admin.dashboard")
     if target.id == current_user.id and action in ("disable", "delete"):
         flash("You cannot disable or delete your own administrator account.", "danger")
-        return redirect(url_for("admin.user_detail", user_id=target.id))
+        return redirect(back_url)
 
     # Guard: Cannot delete/disable the last remaining admin
     if target.is_admin and action in ("disable", "delete"):
         active_admins = User.query.filter_by(role="admin", is_active=True).count()
         if active_admins <= 1:
             flash("Operation aborted: Cannot disable or delete the only remaining active administrator.", "danger")
-            return redirect(url_for("admin.user_detail", user_id=target.id))
+            return redirect(back_url)
 
     if action == "disable":
         target.is_active = False
@@ -661,7 +581,7 @@ def user_action(user_id):
         flash(f"User '{username}' and all associated data were permanently deleted.", "info")
         return redirect(url_for("admin.users_list"))
 
-    return redirect(url_for("admin.user_detail", user_id=target.id))
+    return redirect(back_url)
 
 
 # ── SCANS EXPLORER ──────────────────────────────────────────────────────────

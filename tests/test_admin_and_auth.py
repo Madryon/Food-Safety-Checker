@@ -85,10 +85,11 @@ class AdminAndRoleAuthTest(unittest.TestCase):
         self.assertEqual(u.role, "user")
 
     def test_02_admin_panel_obscurity_returns_404(self):
-        """Non-admins and anonymous visitors receive 404 to hide admin panel existence."""
+        """Non-admins and anonymous visitors are redirected to admin login with flash notice."""
         # Anonymous request to /admin/dashboard
         anon_res = self.client.get("/admin/dashboard")
-        self.assertEqual(anon_res.status_code, 404)
+        self.assertEqual(anon_res.status_code, 302)
+        self.assertIn("/admin/login", anon_res.headers.get("Location", ""))
 
         # Standard user request to /admin/dashboard
         with self.client:
@@ -97,7 +98,8 @@ class AdminAndRoleAuthTest(unittest.TestCase):
                 "password": "ValidPassword123",
             })
             user_res = self.client.get("/admin/dashboard")
-            self.assertEqual(user_res.status_code, 404)
+            self.assertEqual(user_res.status_code, 302)
+            self.assertIn("/admin/login", user_res.headers.get("Location", ""))
 
     def test_03_admin_developer_key_registration_flow(self):
         """Admin registration requires a valid developer invite key."""

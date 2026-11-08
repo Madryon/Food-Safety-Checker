@@ -8,8 +8,7 @@ admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
 def admin_required(f):
     """Decorator to protect admin routes.
-    CRITICAL SECURITY RULE: Unauthorized users (anonymous or standard users)
-    receive an immediate 404 NOT FOUND so the admin panel's existence is hidden.
+    Unauthorized users are redirected to the Admin Sign In page with a clear notification.
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -25,10 +24,14 @@ def admin_required(f):
                 except Exception:
                     pass
 
-        # 2. Check admin privileges
-        if not current_user.is_authenticated or not getattr(current_user, "is_admin", False):
-            # Obscure admin panel existence
-            abort(404)
+        # 2. Check authentication and admin privileges
+        if not current_user.is_authenticated:
+            flash("Please sign in as Administrator to access the Admin Console.", "warning")
+            return redirect(url_for("admin.admin_login"))
+
+        if not getattr(current_user, "is_admin", False):
+            flash("Administrator privileges required. Please sign in with an Admin account.", "danger")
+            return redirect(url_for("admin.admin_login"))
 
         # Check admin session inactivity timeout (30 minutes)
         last_activity = session.get("admin_last_active")

@@ -8,11 +8,11 @@
 <div style="background: rgba(8, 145, 178, 0.10); border: 1px solid var(--accent-2); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 22px; display: flex; align-items: center; gap: 14px; font-size: 0.88rem; color: var(--text);">
     <span style="font-size: 1.4rem;">🔒</span>
     <div>
-        <strong>Diet & Calorie Privacy Notice:</strong> User diet profiles, health conditions, meal logs, and calorie entries are strictly private (accessible only by each individual user). Only aggregate system totals are displayed here for operational analytics.
+        <strong>Diet &amp; Calorie Privacy Notice:</strong> User diet profiles, health conditions, meal logs, and calorie entries are strictly private (accessible only by each individual user). Only aggregate system totals and usage counts are displayed here for operational management.
     </div>
 </div>
 
-<!-- KPI Stats Cards -->
+<!-- KPI Stats Summary Cards -->
 <div class="stats-grid">
     <div class="stat-card">
         <div class="stat-label">Total Users</div>
@@ -20,17 +20,12 @@
         <div class="stat-sub">+{{ new_users_today }} registered today</div>
     </div>
     <div class="stat-card">
-        <div class="stat-label">Users Online</div>
+        <div class="stat-label">Users Online Now</div>
         <div class="stat-val" style="color: var(--good);">{{ users_online_now }}</div>
         <div class="stat-sub">Active in last 5 mins</div>
     </div>
     <div class="stat-card">
-        <div class="stat-label">Logins Today</div>
-        <div class="stat-val">{{ logins_today }}</div>
-        <div class="stat-sub">{{ failed_logins_today }} failed attempts</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-label">Total Scans</div>
+        <div class="stat-label">Total Product Scans</div>
         <div class="stat-val" style="color: var(--accent);">{{ total_scans }}</div>
         <div class="stat-sub">{{ scans_today }} performed today</div>
     </div>
@@ -40,272 +35,234 @@
         <div class="stat-sub">Aggregate total (privacy-protected)</div>
     </div>
     <div class="stat-card">
-        <div class="stat-label">Community Reviews</div>
-        <div class="stat-val">{{ feedback_count }}</div>
-        <div class="stat-sub">Avg Rating: {{ avg_rating }} ⭐</div>
+        <div class="stat-label">Logins Today</div>
+        <div class="stat-val">{{ logins_today }}</div>
+        <div class="stat-sub">{{ failed_logins_today }} failed attempts</div>
     </div>
 </div>
 
-<!-- Charts Grid -->
-<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 24px; margin-bottom: 24px;">
-    <!-- 30-Day Scans Trend -->
-    <div class="card" style="margin-bottom: 0;">
-        <div class="card-title">
-            <span>📈 Daily Product Scans (Last 30 Days)</span>
-        </div>
-        <div style="height: 250px;">
-            <canvas id="scansChart"></canvas>
-        </div>
+<!-- Admin Details & Credentials Card -->
+<div class="card" style="margin-bottom: 24px;">
+    <div class="card-title">
+        <span>🛡️ Administrator Details &amp; Access Controls</span>
+        <span class="badge badge-success">Authenticated</span>
     </div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="width: 44px; height: 44px; border-radius: 50%; background: var(--accent); color: var(--on-accent); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 18px;">
+                {{ current_user.name[0] | upper if current_user.name else 'A' }}
+            </div>
+            <div>
+                <div style="font-weight: 700; font-size: 15px;">{{ current_user.name }}</div>
+                <div style="font-size: 12.5px; color: var(--muted);">User ID: <strong>@{{ current_user.username }}</strong></div>
+                <div style="font-size: 12px; color: var(--muted);">Email: <strong>{{ current_user.email or '—' }}</strong></div>
+            </div>
+        </div>
 
-    <!-- 30-Day Signups Trend -->
-    <div class="card" style="margin-bottom: 0;">
-        <div class="card-title">
-            <span>👥 New User Signups (Last 30 Days)</span>
+        <div style="background: var(--surface-2); padding: 12px 16px; border-radius: 10px; border: 1px solid var(--border);">
+            <div style="font-size: 11px; text-transform: uppercase; color: var(--muted); font-weight: 700;">Admin Master Password (.env)</div>
+            <div style="font-size: 13.5px; font-weight: 600; margin-top: 3px;">
+                {% if has_master_key %}
+                <span style="color: var(--good);">● Active &amp; Configured</span>
+                {% else %}
+                <span style="color: var(--warn);">○ Not Configured (Using Invite Keys)</span>
+                {% endif %}
+            </div>
         </div>
-        <div style="height: 250px;">
-            <canvas id="signupsChart"></canvas>
-        </div>
-    </div>
-</div>
 
-<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; margin-bottom: 24px;">
-    <!-- Health Verdict Distribution Donut -->
-    <div class="card" style="margin-bottom: 0;">
-        <div class="card-title">
-            <span>🥗 Health Verdict Distribution</span>
-        </div>
-        <div style="height: 220px; display: flex; justify-content: center;">
-            <canvas id="verdictChart"></canvas>
-        </div>
-    </div>
-
-    <!-- Top 10 Scanned Products -->
-    <div class="card" style="margin-bottom: 0;">
-        <div class="card-title">
-            <span>🏆 Top Scanned Products</span>
-        </div>
-        <div style="height: 220px;">
-            <canvas id="productsChart"></canvas>
-        </div>
-    </div>
-
-    <!-- Top 10 Brands -->
-    <div class="card" style="margin-bottom: 0;">
-        <div class="card-title">
-            <span>🏭 Most Checked Brands</span>
-        </div>
-        <div style="height: 220px;">
-            <canvas id="brandsChart"></canvas>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <a href="{{ url_for('admin.keys_page') }}" class="btn btn-secondary btn-sm" style="text-decoration: none;">
+                🔑 Invite Keys ({{ total_admin_keys }} Active)
+            </a>
+            <a href="/" class="btn btn-primary btn-sm" target="_blank" style="text-decoration: none;">
+                🌐 Open Web App ↗
+            </a>
         </div>
     </div>
 </div>
 
-<!-- Leaderboards: Unhealthy Products & Controversial Brands -->
-<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 24px;">
-    <!-- Unhealthy Products Leaderboard -->
-    <div class="card">
-        <div class="card-title">
-            <span>⚠️ Most Unhealthy Flagged Products</span>
-            <span class="badge badge-danger">High Risk</span>
+<!-- Users & Usage Details Section -->
+<div class="card" id="users-section">
+    <div class="card-title" style="flex-wrap: wrap; gap: 12px;">
+        <div>
+            <span>👥 User Directory &amp; Usage Details</span>
+            <span style="font-size: 12px; color: var(--muted); font-weight: normal; margin-left: 8px;">
+                Showing {{ users | length }} registered accounts
+            </span>
         </div>
-        <div class="table-responsive">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Product</th>
-                        <th>Brand</th>
-                        <th>Times Flagged</th>
-                        <th>Avg Health Score</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for p in unhealthy_products %}
-                    <tr>
-                        <td><strong>{{ p.product_name }}</strong></td>
-                        <td>{{ p.brand or 'Unknown' }}</td>
-                        <td><span class="badge badge-warning">{{ p.times_flagged }}</span></td>
-                        <td>
-                            <span style="font-weight: 700; color: {% if (p.avg_score or 0)|float < 40 %}var(--bad){% else %}var(--warn){% endif %};">
-                                {{ "%.1f" | format((p.avg_score or 0)|float) }}/100
+        <!-- Search bar -->
+        <form method="GET" action="{{ url_for('admin.dashboard') }}" style="display: flex; gap: 8px; align-items: center;">
+            <input type="text" name="q" value="{{ search_q }}" placeholder="Search User ID, Name, Email..." class="form-control" style="font-size: 13px; padding: 6px 12px; width: 240px; max-width: 100%;">
+            <button type="submit" class="btn btn-primary btn-sm">Search</button>
+            {% if search_q %}
+            <a href="{{ url_for('admin.dashboard') }}" class="btn btn-secondary btn-sm" style="text-decoration: none;">Clear</a>
+            {% endif %}
+        </form>
+    </div>
+
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>User ID</th>
+                    <th>Full Name</th>
+                    <th>Email ID</th>
+                    <th>Role</th>
+                    <th>Usage (How Much Is Using)</th>
+                    <th>Status</th>
+                    <th>Joined</th>
+                    <th>Last Active</th>
+                    <th style="text-align: right;">Quick Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in users %}
+                <tr>
+                    <td>
+                        <strong>@{{ u.username }}</strong>
+                    </td>
+                    <td>{{ u.name }}</td>
+                    <td>
+                        {% if u.email %}
+                        <a href="mailto:{{ u.email }}" style="color: var(--accent-2); text-decoration: none;">{{ u.email }}</a>
+                        {% else %}
+                        <span style="color: var(--muted);">—</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if u.is_admin %}
+                        <span class="badge badge-warning">🛡️ Admin</span>
+                        {% else %}
+                        <span class="badge" style="background: var(--surface-2); color: var(--text);">👤 User</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                            <span class="badge badge-info" title="Total products scanned">
+                                🔍 {{ user_scan_counts.get(u.id, 0) }} scans
                             </span>
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="4" style="text-align: center; color: var(--muted); padding: 20px;">No flagged unhealthy products yet.</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- Controversial Brands Leaderboard -->
-    <div class="card">
-        <div class="card-title">
-            <span>🚩 Most Controversial Brands</span>
-            <span class="badge badge-warning">Watchlist</span>
-        </div>
-        <div class="table-responsive">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Brand</th>
-                        <th>Unsafe Scans</th>
-                        <th>Avg Score</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for b in controversial_brands %}
-                    <tr>
-                        <td><strong>{{ b.brand }}</strong></td>
-                        <td><span class="badge badge-danger">{{ b.flagged_count }} unsafe</span></td>
-                        <td>
-                            <span style="font-weight: 700; color: {% if (b.avg_score or 0)|float < 40 %}var(--bad){% else %}var(--warn){% endif %};">
-                                {{ "%.1f" | format((b.avg_score or 0)|float) }}/100
+                            <span class="badge badge-success" title="Total diet plans created">
+                                🥗 {{ user_diet_counts.get(u.username, 0) }} diet plans
                             </span>
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="3" style="text-align: center; color: var(--muted); padding: 20px;">No controversial brands logged yet.</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+                        </div>
+                    </td>
+                    <td>
+                        {% if not u.is_active %}
+                        <span class="badge badge-danger">Disabled</span>
+                        {% elif u.is_locked %}
+                        <span class="badge badge-warning">Locked</span>
+                        {% else %}
+                        <span class="badge badge-success">Active</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-size: 12px; color: var(--muted);">
+                        {{ u.created_at.strftime('%Y-%m-%d') if u.created_at else '—' }}
+                    </td>
+                    <td style="font-size: 12px; color: var(--muted);">
+                        {% if u.last_seen_at %}
+                        {{ u.last_seen_at.strftime('%Y-%m-%d %H:%M') }}
+                        {% else %}
+                        <span style="color: var(--muted);">Never</span>
+                        {% endif %}
+                    </td>
+                    <td style="text-align: right;">
+                        {% if u.id != current_user.id %}
+                        <div style="display: inline-flex; gap: 6px;">
+                            {% if u.is_active %}
+                            <form method="POST" action="{{ url_for('admin.user_action', user_id=u.id) }}" style="display:inline;" onsubmit="return confirm('Disable account @{{ u.username }}?');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="action" value="disable">
+                                <button type="submit" class="btn btn-secondary btn-sm" style="color: var(--bad); padding: 3px 8px; font-size: 11px;">Disable</button>
+                            </form>
+                            {% else %}
+                            <form method="POST" action="{{ url_for('admin.user_action', user_id=u.id) }}" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="action" value="enable">
+                                <button type="submit" class="btn btn-primary btn-sm" style="padding: 3px 8px; font-size: 11px;">Enable</button>
+                            </form>
+                            {% endif %}
+
+                            {% if u.is_locked %}
+                            <form method="POST" action="{{ url_for('admin.user_action', user_id=u.id) }}" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="action" value="reset_lockout">
+                                <button type="submit" class="btn btn-secondary btn-sm" style="color: var(--warn); padding: 3px 8px; font-size: 11px;">Unlock</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                        {% else %}
+                        <span style="font-size: 12px; color: var(--muted);">(Current Admin)</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="9" style="text-align: center; color: var(--muted); padding: 28px;">
+                        {% if search_q %}
+                        No users matching query "{{ search_q }}".
+                        {% else %}
+                        No registered users found.
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
 </div>
 
-<script>
-    // Theme-aware Chart defaults
-    var isLight = document.documentElement.getAttribute('data-theme') === 'light';
-    var textColor = isLight ? '#14221b' : '#e8eef5';
-    var gridColor = isLight ? 'rgba(20,40,30,.08)' : 'rgba(255,255,255,.07)';
+<!-- Who is Logging In (Recent Login Activity) Section -->
+<div class="card" id="logins-section">
+    <div class="card-title">
+        <span>🔐 Recent Login Events (Who is Logging In)</span>
+        <span style="font-size: 12px; color: var(--muted); font-weight: normal;">Latest 35 authentication events</span>
+    </div>
 
-    // 1. Scans Trend Chart
-    var scansLabels = {{ chart_scans_labels | safe }};
-    var scansData = {{ chart_scans_data | safe }};
-    new Chart(document.getElementById('scansChart'), {
-        type: 'line',
-        data: {
-            labels: scansLabels.length ? scansLabels : ['No scans in last 30 days'],
-            datasets: [{
-                label: 'Scans',
-                data: scansData.length ? scansData : [0],
-                borderColor: '#34d399',
-                backgroundColor: 'rgba(52,211,153,0.12)',
-                fill: true,
-                tension: 0.35,
-                borderWidth: 2,
-                pointRadius: 3
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { ticks: { color: textColor, maxTicksLimit: 8 }, grid: { color: gridColor } },
-                y: { ticks: { color: textColor, precision: 0 }, grid: { color: gridColor }, beginAtZero: true }
-            }
-        }
-    });
-
-    // 2. Signups Chart
-    var signupsLabels = {{ chart_signups_labels | safe }};
-    var signupsData = {{ chart_signups_data | safe }};
-    new Chart(document.getElementById('signupsChart'), {
-        type: 'bar',
-        data: {
-            labels: signupsLabels.length ? signupsLabels : ['No signups in last 30 days'],
-            datasets: [{
-                label: 'New Users',
-                data: signupsData.length ? signupsData : [0],
-                backgroundColor: '#22d3ee',
-                borderRadius: 6
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { ticks: { color: textColor, maxTicksLimit: 8 }, grid: { color: gridColor } },
-                y: { ticks: { color: textColor, precision: 0 }, grid: { color: gridColor }, beginAtZero: true }
-            }
-        }
-    });
-
-    // 3. Verdict Donut Chart
-    var verdictData = {{ chart_verdicts_data | safe }};
-    new Chart(document.getElementById('verdictChart'), {
-        type: 'doughnut',
-        data: {
-            labels: ['Safe / Healthy', 'Moderate', 'Unsafe / Unhealthy'],
-            datasets: [{
-                data: (verdictData[0] + verdictData[1] + verdictData[2] > 0) ? verdictData : [1, 1, 1],
-                backgroundColor: ['#34d399', '#fbbf24', '#f87171'],
-                borderWidth: 0
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { position: 'bottom', labels: { color: textColor, font: { size: 11 } } }
-            }
-        }
-    });
-
-    // 4. Top Products Bar Chart
-    var prodLabels = {{ chart_top_products_labels | safe }};
-    var prodData = {{ chart_top_products_data | safe }};
-    new Chart(document.getElementById('productsChart'), {
-        type: 'bar',
-        data: {
-            labels: prodLabels.length ? prodLabels : ['No data'],
-            datasets: [{
-                data: prodData.length ? prodData : [0],
-                backgroundColor: '#34d399',
-                borderRadius: 4
-            }]
-        },
-        options: {
-            indexAxis: 'y',
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { ticks: { color: textColor, precision: 0 }, grid: { color: gridColor }, beginAtZero: true },
-                y: { ticks: { color: textColor, font: { size: 10 } }, grid: { display: false } }
-            }
-        }
-    });
-
-    // 5. Top Brands Bar Chart
-    var brandLabels = {{ chart_top_brands_labels | safe }};
-    var brandData = {{ chart_top_brands_data | safe }};
-    new Chart(document.getElementById('brandsChart'), {
-        type: 'bar',
-        data: {
-            labels: brandLabels.length ? brandLabels : ['No data'],
-            datasets: [{
-                data: brandData.length ? brandData : [0],
-                backgroundColor: '#a78bfa',
-                borderRadius: 4
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { ticks: { color: textColor, font: { size: 10 } }, grid: { display: false } },
-                y: { ticks: { color: textColor, precision: 0 }, grid: { color: gridColor }, beginAtZero: true }
-            }
-        }
-    });
-</script>
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>User ID / Attempted</th>
+                    <th>Event Type</th>
+                    <th>Status</th>
+                    <th>IP Address</th>
+                    <th>Device / User Agent</th>
+                    <th>Time</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in recent_logins %}
+                <tr>
+                    <td>
+                        <strong>{{ log.user.username if log.user else (log.email_attempted or 'Anonymous') }}</strong>
+                    </td>
+                    <td>
+                        <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">{{ log.event_type }}</span>
+                    </td>
+                    <td>
+                        {% if log.success %}
+                        <span class="badge badge-success">Success</span>
+                        {% else %}
+                        <span class="badge badge-danger">Failed</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <code style="font-size: 12px; color: var(--accent-2);">{{ log.ip_address or '—' }}</code>
+                    </td>
+                    <td style="font-size: 12px; color: var(--muted); max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        {{ log.user_agent or '—' }}
+                    </td>
+                    <td style="font-size: 12px; color: var(--muted); white-space: nowrap;">
+                        {{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') if log.created_at else '—' }}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" style="text-align: center; color: var(--muted); padding: 24px;">No login events recorded yet.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
 {% endblock %}
