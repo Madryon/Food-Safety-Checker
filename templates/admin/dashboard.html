@@ -139,10 +139,10 @@
                     <td>
                         <div style="display: flex; gap: 6px; flex-wrap: wrap;">
                             <span class="badge badge-info" title="Total products scanned">
-                                🔍 {{ user_scan_counts.get(u.id, 0) }} scans
+                                🔍 {{ u.scans_count if u.scans_count is defined else user_scan_counts.get(u.id, 0) }} scans
                             </span>
                             <span class="badge badge-success" title="Total diet plans created">
-                                🥗 {{ user_diet_counts.get(u.username, 0) }} diet plans
+                                🥗 {{ u.diet_count if u.diet_count is defined else user_diet_counts.get(u.username, 0) }} diet plans
                             </span>
                         </div>
                     </td>
@@ -234,7 +234,7 @@
                 {% for log in recent_logins %}
                 <tr>
                     <td>
-                        <strong>{{ log.user.username if log.user else (log.email_attempted or 'Anonymous') }}</strong>
+                        <strong>{{ log.username if log.username is defined else (log.user.username if log.user else (log.email_attempted or 'Anonymous')) }}</strong>
                     </td>
                     <td>
                         <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">{{ log.event_type }}</span>

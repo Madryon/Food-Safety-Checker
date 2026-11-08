@@ -22,7 +22,8 @@
         /* apply saved theme before first paint (no flash) */
         try {
             var t = localStorage.getItem('foodcheck-theme');
-            if (t === 'light' || t === 'dark' || t === 'techno') document.documentElement.setAttribute('data-theme', t);
+            if (t !== 'light' && t !== 'dark') t = 'dark';
+            document.documentElement.setAttribute('data-theme', t);
         } catch (e) {}
     </script>
     <style>
@@ -40,11 +41,6 @@
     --text: #14221b; --muted: #5c6f64; --accent: #15803d; --accent-2: #0891b2; --on-accent: #ffffff;
     --good: #15803d; --warn: #b45309; --bad: #dc2626; --shadow: 0 10px 28px rgba(20,40,30,.10);
 }
-[data-theme="techno"], [data-theme="tech"] {
-    --bg: #05060d; --surface: rgba(12,16,32,.78); --surface-2: rgba(20,26,52,.85); --border: rgba(0,240,255,.28);
-    --text: #e6f7ff; --muted: #7f95b8; --accent: #00f0ff; --accent-2: #ff2bd6; --on-accent: #001418;
-    --good: #39ff88; --warn: #ffd23f; --bad: #ff4d6d; --shadow: 0 0 24px rgba(0,240,255,.16);
-}
 
 /* ===== Base ===== */
 *, *::before, *::after { box-sizing: border-box; }
@@ -59,18 +55,6 @@ img { max-width: 100%; }
 .hidden { display: none !important; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* ===== Tech background ===== */
-.techno-bg { display: none; position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
-[data-theme="techno"] .techno-bg, [data-theme="tech"] .techno-bg { display: block; }
-.grid-lines { position: absolute; inset: 0; background-image: linear-gradient(rgba(0,240,255,.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,240,255,.08) 1px, transparent 1px); background-size: 44px 44px;
-    -webkit-mask-image: radial-gradient(circle at 50% 30%, #000, transparent 75%); mask-image: radial-gradient(circle at 50% 30%, #000, transparent 75%); }
-.glow-orb { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .45; animation: float 14s ease-in-out infinite alternate; }
-.orb-1 { width: 380px; height: 380px; background: #00f0ff; top: -80px; left: -60px; }
-.orb-2 { width: 340px; height: 340px; background: #ff2bd6; top: 35%; right: -80px; animation-delay: -5s; }
-.orb-3 { width: 300px; height: 300px; background: #6d5cff; bottom: -80px; left: 30%; animation-delay: -9s; }
-@keyframes float { to { transform: translate(40px, 30px) scale(1.12); } }
-
 /* ===== Top bar + theme switcher ===== */
 .top-bar { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; justify-content: space-between; gap: 12px;
     padding: 10px max(16px, calc((100% - 1120px) / 2)); background: color-mix(in srgb, var(--bg) 82%, transparent);
@@ -80,25 +64,22 @@ img { max-width: 100%; }
 .theme-toggle-wrap { display: flex; align-items: center; gap: 10px; }
 .theme-label { font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .slider-track { position: relative; padding: 4px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); }
-.slider-track::before { content: ""; position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / 3); border-radius: 999px;
+.slider-track::before { content: ""; position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / 2); border-radius: 999px;
     background: linear-gradient(135deg, var(--accent), var(--accent-2)); transition: transform .25s ease; }
 [data-theme="light"] .slider-track::before { transform: translateX(0); }
 [data-theme="dark"] .slider-track::before { transform: translateX(100%); }
-[data-theme="techno"] .slider-track::before, [data-theme="tech"] .slider-track::before { transform: translateX(200%); }
 .slider-track input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; pointer-events: none; margin: 0; }
 .slider-track:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
-.slider-labels { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); }
-.slider-labels span { padding: 6px 12px; font-size: .8rem; text-align: center; cursor: pointer; color: var(--muted); white-space: nowrap; user-select: none; transition: color .2s; }
+.slider-labels { position: relative; display: grid; grid-template-columns: repeat(2, 1fr); }
+.slider-labels span { padding: 6px 14px; font-size: .8rem; text-align: center; cursor: pointer; color: var(--muted); white-space: nowrap; user-select: none; transition: color .2s; }
 .slider-labels b { font-weight: 600; }
-[data-theme="light"] .slider-labels [data-val="0"], [data-theme="dark"] .slider-labels [data-val="1"],
-[data-theme="techno"] .slider-labels [data-val="2"], [data-theme="tech"] .slider-labels [data-val="2"] { color: var(--on-accent); }
+[data-theme="light"] .slider-labels [data-val="0"], [data-theme="dark"] .slider-labels [data-val="1"] { color: var(--on-accent); }
 
 /* ===== Hero ===== */
 .hero-text { text-align: center; max-width: 720px; margin: 12px auto 32px; }
 .hero-badge { display: inline-block; padding: 5px 14px; margin-bottom: 16px; border-radius: 999px; font-size: .8rem; color: var(--muted); background: var(--surface); border: 1px solid var(--border); }
 .hero-text h1 { font-size: clamp(2.1rem, 6vw, 3.6rem); font-weight: 800; letter-spacing: -.02em; }
 .accent-text { background: linear-gradient(90deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-[data-theme="techno"] .accent-text { filter: drop-shadow(0 0 14px rgba(0,240,255,.45)); }
 .hero-sub { color: var(--muted); font-size: 1.05rem; }
 
 .hero-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
@@ -184,7 +165,6 @@ button { font: inherit; cursor: pointer; }
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
 
 footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(--muted); border-top: 1px solid var(--border); }
-[data-theme="techno"] .logo span:last-child, [data-theme="techno"] h1, [data-theme="techno"] .stat-number { font-family: var(--mono); }
 
 /* ===== Responsive ===== */
 @media (max-width: 860px) {
@@ -257,14 +237,13 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
 .report-actions { display: flex; justify-content: center; margin-top: 6px; }
 .btn-primary { display: inline-block; text-decoration: none; }
 footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(--muted); border-top: 1px solid var(--border); }
-[data-theme="techno"] h1, [data-theme="techno"] h2, [data-theme="techno"] .score-badge { font-family: var(--mono); }
 @media (max-width: 520px) {
     .theme-label { display: none; }
     .slider-labels span { padding: 6px 9px; }
     .slider-labels b { display: none; }
     .score-badge { width: 76px; height: 76px; font-size: 1.6rem; }
 }
-@media print { .top-bar, .techno-bg, .report-actions { display: none; } body { background: #fff; color: #000; } }
+@media print { .top-bar, .report-actions { display: none; } body { background: #fff; color: #000; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 
 /* ===== App states ===== */
@@ -357,11 +336,6 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
     flex-direction: column;
     gap: 6px;
     animation: fbFadeIn .2s ease-out;
-}
-[data-theme="techno"] .account-dropdown-menu,
-[data-theme="tech"] .account-dropdown-menu {
-    box-shadow: 0 0 24px rgba(0, 240, 255, .3);
-    border-color: rgba(0, 240, 255, .4);
 }
 .dropdown-user-header {
     display: flex;
@@ -486,10 +460,6 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
     padding: 28px;
     box-shadow: var(--shadow);
     transition: border-color .3s, box-shadow .3s;
-}
-[data-theme="techno"] .feedback-box, [data-theme="tech"] .feedback-box {
-    border-color: rgba(0,240,255,.25);
-    box-shadow: 0 0 24px rgba(0,240,255,.1);
 }
 .feedback-box.highlight {
     animation: pulseBorder 1.5s ease-out;
@@ -637,7 +607,6 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
 .nav-tab-btn { background: none; border: none; padding: 7px 16px; border-radius: 999px; color: var(--muted); font-size: .84rem; font-weight: 700; cursor: pointer; transition: all .25s ease; display: inline-flex; align-items: center; gap: 6px; }
 .nav-tab-btn:hover { color: var(--text); }
 .nav-tab-btn.active { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--on-accent); box-shadow: 0 4px 14px rgba(0,0,0,.25); }
-[data-theme="techno"] .nav-tab-btn.active, [data-theme="tech"] .nav-tab-btn.active { box-shadow: 0 0 16px rgba(0,240,255,.35); }
 @media (max-width: 768px) {
     .nav-modes { order: 3; width: 100%; justify-content: center; margin-top: 6px; }
     .top-bar { flex-wrap: wrap; }
@@ -652,7 +621,6 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
 .diet-subtab { background: var(--surface); border: 1px solid var(--border); color: var(--muted); padding: 9px 20px; border-radius: 999px; font-weight: 700; font-size: .88rem; cursor: pointer; transition: all .2s; }
 .diet-subtab:hover { color: var(--text); border-color: var(--accent); }
 .diet-subtab.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-[data-theme="techno"] .diet-subtab.active, [data-theme="tech"] .diet-subtab.active { background: linear-gradient(135deg, #00f0ff, #ff2bd6); color: #001418; box-shadow: 0 0 16px rgba(0,240,255,.3); }
 
 .diet-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 26px; box-shadow: var(--shadow); margin-bottom: 24px; }
 .diet-card h3 { font-size: 1.25rem; font-weight: 700; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
@@ -757,9 +725,6 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
     background: var(--surface); color: var(--text);
     box-shadow: 0 2px 8px rgba(0,0,0,.2);
 }
-[data-theme="techno"] .auth-tab-btn.active {
-    background: rgba(0,240,255,.18); color: #00f0ff;
-}
 
 .diet-auth-gate {
     text-align: center; padding: 48px 24px; max-width: 600px;
@@ -808,532 +773,10 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
     background: var(--accent); color: var(--on-accent);
 }
 
-/* ==========================================================================
-   💎 TECH THEME GLASSMORPHISM RESTYLE
-   Scoped strictly under [data-theme="techno"] and [data-theme="tech"]
-   ========================================================================== */
-:is([data-theme="techno"], [data-theme="tech"]) {
-    --t-bg: linear-gradient(135deg, #0b1220 0%, #111b3a 45%, #1a1040 100%);
-    --t-glass: rgba(255, 255, 255, .07);
-    --t-glass-strong: rgba(255, 255, 255, .12);
-    --t-border: rgba(140, 180, 255, .28);
-    --t-text: #e8efff;
-    --t-muted: #9bb0d9;
-    --t-accent: #22d3ee;   /* cyan */
-    --t-accent2: #8b5cf6;  /* violet */
-    --t-glow: 0 0 24px rgba(34, 211, 238, .35);
-
-    /* Map theme variables to tech glass tokens */
-    --bg: #0b1220;
-    --surface: var(--t-glass);
-    --surface-2: var(--t-glass-strong);
-    --border: var(--t-border);
-    --text: var(--t-text);
-    --muted: var(--t-muted);
-    --accent: var(--t-accent);
-    --accent-2: var(--t-accent2);
-    --on-accent: #06101f;
-    --shadow: 0 8px 32px rgba(0, 0, 0, .35);
-}
-
-/* Body & Background Glow Blobs */
-:is([data-theme="techno"], [data-theme="tech"]) body {
-    background: var(--t-bg) !important;
-    background-attachment: fixed !important;
-    color: var(--t-text) !important;
-    position: relative;
-    min-height: 100vh;
-}
-
-:is([data-theme="techno"], [data-theme="tech"]) .techno-bg {
-    display: none !important;
-}
-
-:is([data-theme="techno"], [data-theme="tech"]) body::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    background:
-        radial-gradient(circle at 12% 16%, rgba(34, 211, 238, .55) 0%, transparent 45%),
-        radial-gradient(circle at 88% 42%, rgba(139, 92, 246, .50) 0%, transparent 45%);
-    filter: blur(90px);
-    opacity: .45;
-    z-index: 0;
-    pointer-events: none;
-}
-
-:is([data-theme="techno"], [data-theme="tech"]) body::after {
-    content: "";
-    position: fixed;
-    inset: 0;
-    background: radial-gradient(circle at 50% 90%, rgba(59, 130, 246, .45) 0%, transparent 50%);
-    filter: blur(90px);
-    opacity: .45;
-    z-index: 0;
-    pointer-events: none;
-}
-
-:is([data-theme="techno"], [data-theme="tech"]) :is(main, .top-bar, footer, .modal, .toast, .floating-feedback-btn) {
-    position: relative;
-    z-index: 1;
-}
-
-/* Glass Components: Navbar, Hero, Cards, Modals, Dropdowns */
-:is([data-theme="techno"], [data-theme="tech"]) :is(
-    .top-bar,
-    .upload-card,
-    .how-card,
-    .diet-promo-banner,
-    .feedback-box,
-    .feedback-card-item,
-    .diet-card,
-    .calorie-overview-box,
-    .meal-suggester-box,
-    .meal-sug-card,
-    .meal-plan-card,
-    .diet-auth-gate,
-    .plan-history-item,
-    .logged-meal-item,
-    .modal-content,
-    .account-dropdown-menu,
-    .stat-card,
-    .report-card,
-    .alt-card,
-    .news-card,
-    .loading-box,
-    .error-card,
-    .bmr-stat-box,
-    .macro-card,
-    .preview-wrap
-) {
-    background: var(--t-glass) !important;
-    backdrop-filter: blur(20px) saturate(170%);
-    -webkit-backdrop-filter: blur(20px) saturate(170%);
-    border: 1px solid var(--t-border) !important;
-    border-radius: 22px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, .35), inset 0 1px 0 rgba(255, 255, 255, .15) !important;
-    transition: transform .25s ease, background .25s ease, box-shadow .25s ease, border-color .25s ease;
-}
-
-/* Top Bar specific border & radius */
-:is([data-theme="techno"], [data-theme="tech"]) .top-bar {
-    border-radius: 0 0 20px 20px !important;
-    border-top: none !important;
-    border-left: none !important;
-    border-right: none !important;
-    border-bottom: 1px solid var(--t-border) !important;
-}
-
-/* Interactive Card Hovers */
-:is([data-theme="techno"], [data-theme="tech"]) :is(
-    .how-card,
-    .diet-promo-banner,
-    .feedback-card-item,
-    .meal-sug-card,
-    .meal-plan-card,
-    .plan-history-item,
-    .logged-meal-item,
-    .alt-card,
-    .news-card,
-    .macro-card,
-    .stat-card
-):hover {
-    transform: translateY(-4px) !important;
-    background: var(--t-glass-strong) !important;
-    border-color: var(--t-accent) !important;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, .35), var(--t-glow), inset 0 1px 0 rgba(255, 255, 255, .2) !important;
-}
-
-/* Inputs, Selects, Textareas */
-:is([data-theme="techno"], [data-theme="tech"]) :is(
-    .fb-input,
-    .fb-textarea,
-    .diet-input,
-    .diet-select,
-    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
-    select,
-    textarea
-) {
-    background: rgba(255, 255, 255, .06) !important;
-    border: 1px solid var(--t-border) !important;
-    color: var(--t-text) !important;
-    border-radius: 12px;
-    transition: border-color .2s ease, box-shadow .2s ease, background .2s ease;
-}
-
-:is([data-theme="techno"], [data-theme="tech"]) :is(
-    .fb-input,
-    .fb-textarea,
-    .diet-input,
-    .diet-select,
-    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
-    select,
-    textarea
-):focus {
-    border-color: var(--t-accent) !important;
-    box-shadow: 0 0 0 3px rgba(34, 211, 238, .2) !important;
-    background: rgba(255, 255, 255, .09) !important;
-    outline: none !important;
-}
-
-:is([data-theme="techno"], [data-theme="tech"]) select option {
-    background: #111b3a;
-    color: var(--t-text);
-}
-
-/* Primary Buttons */
-:is([data-theme="techno"], [data-theme="tech"]) :is(
-    .btn-primary,
-    .btn-upload,
-    .fb-submit-btn,
-    #generate-diet-btn,
-    #submit-meal-log-btn,
-    #btn-suggest-meals,
-    #promo-open-diet-btn,
-    #analyze-btn,
-    #retry-btn,
-    #gate-login-btn,
-    #btn-submit-login,
-    #btn-submit-register
-) {
-    background: linear-gradient(135deg, var(--t-accent), var(--t-accent2)) !important;
-    color: #06101f !important;
-    font-weight: 600 !important;
-    box-shadow: var(--t-glow) !important;
-    border: none !important;
-    border-radius: 12px;
-    transition: transform .2s ease, box-shadow .2s ease, filter .2s ease;
-}
-
-:is([data-theme="techno"], [data-theme="tech"]) :is(
-    .btn-primary,
-    .btn-upload,
-    .fb-submit-btn,
-    #generate-diet-btn,
-    #submit-meal-log-btn,
-    #btn-suggest-meals,
-    #promo-open-diet-btn,
-    #analyze-btn,
-    #retry-btn,
-    #gate-login-btn,
-    #btn-submit-login,
-    #btn-submit-register
-):hover:not(:disabled) {
-    transform: translateY(-2px) !important;
-    box-shadow: 0 0 32px rgba(34, 211, 238, .55), 0 0 16px rgba(139, 92, 246, .4) !important;
-    filter: brightness(1.06);
-}
-
-/* Secondary Buttons */
-:is([data-theme="techno"], [data-theme="tech"]) :is(
-    .btn-secondary,
-    .btn-icon,
-    .three-dots-btn,
-    .fb-edit-btn,
-    .meal-sug-action-btn,
-    #change-btn,
-    #gate-back-btn,
-    #save-profile-btn,
-    #refresh-history-btn,
-    #cancel-edit-fb-btn,
-    #flip-camera-btn,
-    #fallback-camera-btn
-) {
-    background: var(--t-glass) !important;
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-    border: 1px solid var(--t-border) !important;
-    color: var(--t-text) !important;
-    border-radius: 12px;
-    transition: transform .2s ease, background .2s ease, border-color .2s ease, color .2s ease, box-shadow .2s ease;
-}
-
-:is([data-theme="techno"], [data-theme="tech"]) :is(
-    .btn-secondary,
-    .btn-icon,
-    .three-dots-btn,
-    .fb-edit-btn,
-    .meal-sug-action-btn,
-    #change-btn,
-    #gate-back-btn,
-    #save-profile-btn,
-    #refresh-history-btn,
-    #cancel-edit-fb-btn,
-    #flip-camera-btn,
-    #fallback-camera-btn
-):hover {
-    background: var(--t-glass-strong) !important;
-    border-color: var(--t-accent) !important;
-    color: var(--t-accent) !important;
-    box-shadow: 0 0 16px rgba(34, 211, 238, .25) !important;
-    transform: translateY(-2px);
-}
-
-/* Tabs & Active States */
-:is([data-theme="techno"], [data-theme="tech"]) :is(.nav-modes, .diet-subtabs, .auth-tabs) {
-    background: var(--t-glass) !important;
-    border: 1px solid var(--t-border) !important;
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-}
-
-:is([data-theme="techno"], [data-theme="tech"]) :is(
-    .nav-tab-btn.active,
-    .diet-subtab.active,
-    .auth-tab-btn.active
-) {
-    background: var(--t-glass-strong) !important;
-    color: var(--t-accent) !important;
-    border: 1px solid var(--t-accent) !important;
-    box-shadow: 0 0 18px rgba(34, 211, 238, .35) !important;
-}
-
-/* Theme Switcher Track & Active Pill */
-:is([data-theme="techno"], [data-theme="tech"]) .slider-track {
-    background: var(--t-glass) !important;
-    border: 1px solid var(--t-border) !important;
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-}
-
-:is([data-theme="techno"], [data-theme="tech"]) .slider-track::before {
-    background: linear-gradient(135deg, var(--t-accent), var(--t-accent2)) !important;
-    box-shadow: var(--t-glow) !important;
-}
-
-:is([data-theme="techno"], [data-theme="tech"]) .slider-labels [data-val="2"] {
-    color: #06101f !important;
-    font-weight: 700 !important;
-}
-
-/* Modal Overlays */
-:is([data-theme="techno"], [data-theme="tech"]) .modal {
-    background: rgba(5, 10, 25, .55) !important;
-    backdrop-filter: blur(8px) !important;
-    -webkit-backdrop-filter: blur(8px) !important;
-}
-
-/* Upload Dropzone */
-:is([data-theme="techno"], [data-theme="tech"]) .upload-card#drop-zone {
-    border: 2px dashed rgba(34, 211, 238, .5) !important;
-    background: var(--t-glass) !important;
-}
-
-:is([data-theme="techno"], [data-theme="tech"]) .upload-card#drop-zone:hover,
-:is([data-theme="techno"], [data-theme="tech"]) .upload-card#drop-zone.dragover,
-:is([data-theme="techno"], [data-theme="tech"]) .upload-card#drop-zone.drag-over,
-:is([data-theme="techno"], [data-theme="tech"]) .upload-card#drop-zone.dragging,
-:is([data-theme="techno"], [data-theme="tech"]) .upload-card#drop-zone.active {
-    border-color: var(--t-accent) !important;
-    background: var(--t-glass-strong) !important;
-    box-shadow: var(--t-glow) !important;
-    transform: translateY(-4px) !important;
-}
-
-/* Progress / Analysis Loader & Macro Bars */
-:is([data-theme="techno"], [data-theme="tech"]) :is(
-    .cal-progress-fill,
-    .macro-bar-fill
-) {
-    background: linear-gradient(90deg, var(--t-accent), var(--t-accent2)) !important;
-    box-shadow: 0 0 14px rgba(34, 211, 238, .4) !important;
-}
-
-:is([data-theme="techno"], [data-theme="tech"]) .spinner {
-    border-color: rgba(255, 255, 255, .1) !important;
-    border-top-color: var(--t-accent) !important;
-    box-shadow: 0 0 18px rgba(34, 211, 238, .35);
-}
-
-:is([data-theme="techno"], [data-theme="tech"]) .step.active,
-:is([data-theme="techno"], [data-theme="tech"]) .step.running,
-:is([data-theme="techno"], [data-theme="tech"]) .step.loading {
-    border-color: var(--t-accent) !important;
-    box-shadow: 0 0 16px rgba(34, 211, 238, .25);
-    background: var(--t-glass-strong) !important;
-}
-
-:is([data-theme="techno"], [data-theme="tech"]) .step.done,
-:is([data-theme="techno"], [data-theme="tech"]) .step.complete,
-:is([data-theme="techno"], [data-theme="tech"]) .step.completed {
-    border-color: var(--t-accent2) !important;
-    color: var(--t-accent) !important;
-}
-
-/* Ticker Strip */
-:is([data-theme="techno"], [data-theme="tech"]) .facts-strip {
-    background: var(--t-glass) !important;
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border-block: 1px solid var(--t-border) !important;
-    color: var(--t-muted) !important;
-}
-
-:is([data-theme="techno"], [data-theme="tech"]) .fact-chip {
-    background: var(--t-glass-strong) !important;
-    border: 1px solid var(--t-border) !important;
-    color: var(--t-text) !important;
-}
-
-/* Scrollbars */
-:is([data-theme="techno"], [data-theme="tech"]) * {
-    scrollbar-width: thin;
-    scrollbar-color: var(--t-accent) rgba(11, 18, 32, .6);
-}
-
-:is([data-theme="techno"], [data-theme="tech"]) *::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-}
-
-:is([data-theme="techno"], [data-theme="tech"]) *::-webkit-scrollbar-track {
-    background: rgba(11, 18, 32, .6);
-}
-
-:is([data-theme="techno"], [data-theme="tech"]) *::-webkit-scrollbar-thumb {
-    background: var(--t-accent);
-    border-radius: 999px;
-}
-
-/* Navigation Admin Link & Floating Feedback Button */
-:is([data-theme="techno"], [data-theme="tech"]) #nav-admin-link {
-    background: var(--t-glass) !important;
-    border-color: var(--t-accent) !important;
-    color: var(--t-accent) !important;
-    box-shadow: 0 0 12px rgba(34, 211, 238, .25) !important;
-}
-
-:is([data-theme="techno"], [data-theme="tech"]) #nav-admin-link:hover {
-    background: var(--t-glass-strong) !important;
-    box-shadow: var(--t-glow) !important;
-}
-
-:is([data-theme="techno"], [data-theme="tech"]) .floating-feedback-btn {
-    background: var(--t-glass) !important;
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid var(--t-border) !important;
-    color: var(--t-text) !important;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, .4), var(--t-glow) !important;
-}
-
-:is([data-theme="techno"], [data-theme="tech"]) .floating-feedback-btn:hover {
-    background: var(--t-glass-strong) !important;
-    border-color: var(--t-accent) !important;
-    color: var(--t-accent) !important;
-    transform: translateY(-3px) scale(1.04);
-}
-
-/* Footer */
-:is([data-theme="techno"], [data-theme="tech"]) footer {
-    background: var(--t-glass) !important;
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border-top: 1px solid var(--t-border) !important;
-    color: var(--t-muted) !important;
-}
-
-/* Camera Elements */
-:is([data-theme="techno"], [data-theme="tech"]) .guide-corner {
-    border-color: var(--t-accent) !important;
-}
-
-:is([data-theme="techno"], [data-theme="tech"]) .btn-snap {
-    border-color: var(--t-accent) !important;
-}
-
-:is([data-theme="techno"], [data-theme="tech"]) .shutter-circle {
-    background: var(--t-accent) !important;
-}
-
-/* Reduced Motion Override */
-@media (prefers-reduced-motion: reduce) {
-    :is([data-theme="techno"], [data-theme="tech"]) * {
-        animation: none !important;
-        transition: none !important;
-        transform: none !important;
-    }
-}
-
-/* Fallback for browsers without backdrop-filter support */
-@supports not (backdrop-filter: blur(1px)) {
-    :is([data-theme="techno"], [data-theme="tech"]) :is(
-        .top-bar,
-        .upload-card,
-        .how-card,
-        .diet-promo-banner,
-        .feedback-box,
-        .feedback-card-item,
-        .diet-card,
-        .calorie-overview-box,
-        .meal-suggester-box,
-        .meal-sug-card,
-        .meal-plan-card,
-        .diet-auth-gate,
-        .plan-history-item,
-        .logged-meal-item,
-        .modal-content,
-        .account-dropdown-menu,
-        .stat-card,
-        .report-card,
-        .alt-card,
-        .news-card,
-        .loading-box,
-        .error-card,
-        .facts-strip,
-        footer
-    ) {
-        background: rgba(20, 30, 60, .85) !important;
-    }
-}
-
-/* Responsive adjustments: 360px overflow prevention & reduced blur under 600px */
-@media (max-width: 600px) {
-    :is([data-theme="techno"], [data-theme="tech"]) :is(
-        .top-bar,
-        .upload-card,
-        .how-card,
-        .diet-promo-banner,
-        .feedback-box,
-        .feedback-card-item,
-        .diet-card,
-        .calorie-overview-box,
-        .meal-suggester-box,
-        .meal-sug-card,
-        .meal-plan-card,
-        .diet-auth-gate,
-        .plan-history-item,
-        .logged-meal-item,
-        .modal-content,
-        .account-dropdown-menu,
-        .stat-card,
-        .report-card,
-        .alt-card,
-        .news-card,
-        .loading-box,
-        .error-card,
-        .facts-strip,
-        .modal,
-        footer
-    ) {
-        backdrop-filter: blur(12px) saturate(150%) !important;
-        -webkit-backdrop-filter: blur(12px) saturate(150%) !important;
-    }
-
-    :is([data-theme="techno"], [data-theme="tech"]) body::before,
-    :is([data-theme="techno"], [data-theme="tech"]) body::after {
-        filter: blur(60px);
-    }
-}
-    </style>
+</style>
 </head>
 <body>
-    <div class="techno-bg" aria-hidden="true">
-        <div class="grid-lines"></div>
-        <div class="glow-orb orb-1"></div>
-        <div class="glow-orb orb-2"></div>
-        <div class="glow-orb orb-3"></div>
-    </div>
+
 
     <nav class="top-bar">
         <a href="/" class="logo"><span class="logo-mark">🍽️</span><span>FoodCheck</span></a>
@@ -1344,7 +787,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             <button type="button" class="nav-tab-btn" id="nav-diet-mode">
                 <span>🥗</span> Diet &amp; Calorie Plan
             </button>
-            <a href="{{ url_for('admin.dashboard') }}" id="nav-admin-link" class="nav-tab-btn {% if not (current_user.is_authenticated and current_user.is_admin) %}hidden{% endif %}" style="text-decoration: none; color: var(--accent); border: 1.5px solid var(--accent); background: rgba(52, 211, 153, 0.12); font-weight: 700; {% if current_user.is_authenticated and current_user.is_admin %}display: inline-flex;{% endif %}">
+            <a href="{{ url_for('admin.dashboard') }}" id="nav-admin-link" class="nav-tab-btn {% if not (current_user.is_authenticated and (current_user.is_admin or current_user.role in ('admin', 'developer'))) %}hidden{% endif %}" style="text-decoration: none; color: var(--accent); border: 1.5px solid var(--accent); background: rgba(52, 211, 153, 0.12); font-weight: 700; {% if current_user.is_authenticated and (current_user.is_admin or current_user.role in ('admin', 'developer')) %}display: inline-flex;{% endif %}">
                 <span>🛡️</span> Admin Console
             </a>
         </div>
@@ -1383,7 +826,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                         <button type="button" id="menu-feedback-link" class="dropdown-item-btn">
                             <span>💬</span> Community Reviews
                         </button>
-                        <a href="{{ url_for('admin.dashboard') }}" id="menu-admin-link" class="dropdown-item-btn {% if not (current_user.is_authenticated and current_user.is_admin) %}hidden{% endif %}" style="color: var(--accent); text-decoration: none; font-weight: 700; {% if current_user.is_authenticated and current_user.is_admin %}display: flex;{% endif %}">
+                        <a href="{{ url_for('admin.dashboard') }}" id="menu-admin-link" class="dropdown-item-btn {% if not (current_user.is_authenticated and (current_user.is_admin or current_user.role in ('admin', 'developer'))) %}hidden{% endif %}" style="color: var(--accent); text-decoration: none; font-weight: 700; {% if current_user.is_authenticated and (current_user.is_admin or current_user.role in ('admin', 'developer')) %}display: flex;{% endif %}">
                             <span>🛡️</span> Admin Console
                         </a>
                         <div class="dropdown-divider"></div>
@@ -1420,11 +863,10 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             <div class="theme-toggle-wrap">
                 
                 <div class="slider-track">
-                    <input type="range" id="theme-slider" min="0" max="2" step="1" value="1" aria-label="Theme : light, dark or tech">
+                    <input type="range" id="theme-slider" min="0" max="1" step="1" value="1" aria-label="Theme: light or dark">
                     <div class="slider-labels">
                         <span data-val="0">☀️ <b>Light</b></span>
                         <span data-val="1">🌙 <b>Dark</b></span>
-                        <span data-val="2">💎 <b>Tech</b></span>
                     </div>
                 </div>
             </div>
@@ -2136,17 +1578,17 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
     </footer>
 
     <script>
-/* Theme switcher: 0 = light, 1 = dark, 2 = techno. Saved in localStorage. */
+/* Theme switcher: 0 = light, 1 = dark. Saved in localStorage. */
 (function () {
-    var THEMES = ['light', 'dark', 'techno'];
-    var COLORS = { light: '#f6f8f5', dark: '#0b1117', techno: '#05060d' };
+    var THEMES = ['light', 'dark'];
+    var COLORS = { light: '#f6f8f5', dark: '#0b1117' };
     var KEY = 'foodcheck-theme';
     var root = document.documentElement;
     var slider = document.getElementById('theme-slider');
     var meta = document.querySelector('meta[name="theme-color"]');
 
     function apply(name, save) {
-        if (THEMES.indexOf(name) < 0) name = 'dark';
+        if (name !== 'light' && name !== 'dark') name = 'dark';
         root.setAttribute('data-theme', name);
         if (slider) slider.value = THEMES.indexOf(name);
         if (meta) meta.setAttribute('content', COLORS[name]);
@@ -2872,7 +2314,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                 }
             }
 
-            var isAdmin = Boolean(user && (user.is_admin || user.role === 'admin'));
+            var isAdmin = Boolean(user && (user.is_admin || user.is_developer || user.role === 'admin' || user.role === 'developer'));
             var menuAdminLink = $('menu-admin-link');
             if (menuAdminLink) {
                 if (isAdmin) {

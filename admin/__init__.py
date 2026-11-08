@@ -19,7 +19,8 @@ def admin_required(f):
                 try:
                     from models import User
                     u = User.query.filter_by(username=str(sess_uid).strip().lower()).first()
-                    if u and u.is_admin and u.is_active and not u.is_locked:
+                    is_u_adm = getattr(u, "is_admin", False) or getattr(u, "role", "") in ("admin", "developer")
+                    if u and is_u_adm and getattr(u, "is_active", True) and not getattr(u, "is_locked", False):
                         login_user(u)
                 except Exception:
                     pass
@@ -29,7 +30,8 @@ def admin_required(f):
             flash("Please sign in as Administrator to access the Admin Console.", "warning")
             return redirect(url_for("admin.admin_login"))
 
-        if not getattr(current_user, "is_admin", False):
+        is_adm = getattr(current_user, "is_admin", False) or getattr(current_user, "role", "") in ("admin", "developer")
+        if not is_adm:
             flash("Administrator privileges required. Please sign in with an Admin account.", "danger")
             return redirect(url_for("admin.admin_login"))
 

@@ -108,7 +108,7 @@ def admin_login():
         # Generic error message to never disclose user existence or role
         generic_err = "Invalid administrator credentials or access denied."
 
-        if not user or user.role != "admin":
+        if not user or not user.is_admin:
             log_login_event(
                 event_type="failed_login",
                 email_attempted=identifier,
@@ -295,6 +295,13 @@ def dashboard():
     diet_plans_count = 0
     logins_today = 0
     failed_logins_today = 0
+    users_data = []
+    user_scan_counts = {}
+    user_diet_counts = {}
+    recent_logins_data = []
+    has_master_key = bool(User.get_master_admin_password())
+    total_admin_keys = 0
+    search_q = request.args.get("q", "").strip()
 
     try:
         total_users = User.query.count()
@@ -330,26 +337,7 @@ def dashboard():
     except Exception as e:
         print(f"[!] Dashboard diet stats warning: {e}")
 
-    # 2. Users Listing & Search
-    search_q = request.args.get("q", "").strip()
-    users = []
-    try:
-        user_query = User.query
-        if search_q:
-            like_pat = f"%{search_q}%"
-            user_query = user_query.filter(
-                (User.username.ilike(like_pat))
-                | (User.name.ilike(like_pat))
-                | (User.email.ilike(like_pat))
-            )
-        users = user_query.order_by(User.created_at.desc()).limit(100).all()
-    except Exception as e:
-        db.session.rollback()
-        print(f"[!] Dashboard users query warning: {e}")
-        users = []
-
     # 3. Usage Counts Per User (Product scans & Diet plans)
-    user_scan_counts = {}
     try:
         scan_counts_query = (
             db.session.query(Scan.user_id, func.count(Scan.id))
@@ -362,7 +350,6 @@ def dashboard():
         db.session.rollback()
         print(f"[!] Scan counts per user warning: {e}")
 
-    user_diet_counts = {}
     try:
         with DatabaseConnection() as (conn, is_pg):
             cursor = conn.cursor()
@@ -375,45 +362,113 @@ def dashboard():
     except Exception as e:
         print(f"[!] Diet counts per user warning: {e}")
 
-    # 4. Recent Logins (Who is logging in)
-    recent_logins = []
+    # 2. Users Listing & Search - converted to robust in-memory dicts
     try:
-        recent_logins = (
+        user_query = User.query
+        if search_q:
+            like_pat = f"%{search_q}%"
+            user_query = user_query.filter(
+                (User.username.ilike(like_pat))
+                | (User.name.ilike(like_pat))
+                | (User.email.ilike(like_pat))
+            )
+        raw_users = user_query.order_by(User.created_at.desc()).limit(100).all()
+        for u in raw_users:
+            uname_clean = str(u.username or "").strip().lower()
+            users_data.append({
+                "id": u.id,
+                "username": u.username,
+                "name": u.name or u.username,
+                "email": u.email,
+                "is_admin": bool(u.is_admin),
+                "is_active": bool(u.is_active),
+                "is_locked": bool(u.is_locked),
+                "created_at": u.created_at,
+                "last_seen_at": u.last_seen_at,
+                "scans_count": user_scan_counts.get(u.id, 0),
+                "diet_count": user_diet_counts.get(uname_clean, 0),
+            })
+    except Exception as e:
+        db.session.rollback()
+        print(f"[!] Dashboard users query warning: {e}")
+        users_data = []
+
+    # 4. Recent Logins - pre-extracting data to avoid any lazy-load DB operations during template render
+    try:
+        raw_logins = (
             LoginEvent.query.order_by(LoginEvent.created_at.desc())
             .limit(35)
             .all()
         )
+        for l in raw_logins:
+            uname = None
+            try:
+                if l.user:
+                    uname = l.user.username
+            except Exception:
+                pass
+            if not uname:
+                uname = l.user_id_attempted or l.email_attempted or "Anonymous"
+            recent_logins_data.append({
+                "id": l.id,
+                "username": uname,
+                "event_type": l.event_type,
+                "success": bool(l.success),
+                "ip_address": l.ip_address,
+                "user_agent": l.user_agent,
+                "created_at": l.created_at,
+            })
     except Exception as e:
         db.session.rollback()
         print(f"[!] Recent logins warning: {e}")
+        recent_logins_data = []
 
     # 5. Admin Details & Master Key status
-    has_master_key = bool(User.get_master_admin_password())
-    total_admin_keys = 0
     try:
         total_admin_keys = AdminInviteKey.query.filter_by(revoked=False).count()
     except Exception as e:
         db.session.rollback()
         print(f"[!] Admin keys count warning: {e}")
 
-    return render_template(
-        "admin/dashboard.html",
-        total_users=total_users,
-        new_users_today=new_users_today,
-        users_online_now=users_online_now,
-        total_scans=total_scans,
-        scans_today=scans_today,
-        diet_plans_count=diet_plans_count,
-        logins_today=logins_today,
-        failed_logins_today=failed_logins_today,
-        users=users,
-        user_scan_counts=user_scan_counts,
-        user_diet_counts=user_diet_counts,
-        recent_logins=recent_logins,
-        has_master_key=has_master_key,
-        total_admin_keys=total_admin_keys,
-        search_q=search_q,
-    )
+    try:
+        return render_template(
+            "admin/dashboard.html",
+            total_users=total_users,
+            new_users_today=new_users_today,
+            users_online_now=users_online_now,
+            total_scans=total_scans,
+            scans_today=scans_today,
+            diet_plans_count=diet_plans_count,
+            logins_today=logins_today,
+            failed_logins_today=failed_logins_today,
+            users=users_data,
+            user_scan_counts=user_scan_counts,
+            user_diet_counts=user_diet_counts,
+            recent_logins=recent_logins_data,
+            has_master_key=has_master_key,
+            total_admin_keys=total_admin_keys,
+            search_q=search_q,
+        )
+    except Exception as render_err:
+        print(f"[!] Critical dashboard render error: {render_err}")
+        return render_template(
+            "admin/dashboard.html",
+            total_users=0,
+            new_users_today=0,
+            users_online_now=0,
+            total_scans=0,
+            scans_today=0,
+            diet_plans_count=0,
+            logins_today=0,
+            failed_logins_today=0,
+            users=[],
+            user_scan_counts={},
+            user_diet_counts={},
+            recent_logins=[],
+            has_master_key=has_master_key,
+            total_admin_keys=0,
+            search_q="",
+        )
 
 
 # ── LIVE ACTIVITY FEED ──────────────────────────────────────────────────────

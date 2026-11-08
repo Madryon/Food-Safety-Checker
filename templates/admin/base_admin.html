@@ -14,7 +14,7 @@
     <script>
         (function() {
             var t = localStorage.getItem('foodcheck-theme') || 'dark';
-            if (t === 'tech') t = 'techno';
+            if (t !== 'light' && t !== 'dark') t = 'dark';
             document.documentElement.setAttribute('data-theme', t);
         })();
     </script>
@@ -29,11 +29,6 @@
             --bg: #f6f8f5; --surface: #ffffff; --surface-2: #eef3ee; --border: rgba(20,40,30,.12);
             --text: #14221b; --muted: #5c6f64; --accent: #15803d; --accent-2: #0891b2; --on-accent: #ffffff;
             --good: #15803d; --warn: #b45309; --bad: #dc2626; --shadow: 0 10px 28px rgba(20,40,30,.10);
-        }
-        [data-theme="techno"], [data-theme="tech"] {
-            --bg: #05060d; --surface: rgba(12,16,32,.88); --surface-2: rgba(20,26,52,.92); --border: rgba(0,240,255,.28);
-            --text: #e6f7ff; --muted: #7f95b8; --accent: #00f0ff; --accent-2: #ff2bd6; --on-accent: #001418;
-            --good: #39ff88; --warn: #ffd23f; --bad: #ff4d6d; --shadow: 0 0 24px rgba(0,240,255,.16);
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -443,7 +438,6 @@
                 <div class="theme-pill-wrap">
                     <button class="theme-pill-btn" onclick="setTheme('light')">☀️ Light</button>
                     <button class="theme-pill-btn" onclick="setTheme('dark')">🌙 Dark</button>
-                    <button class="theme-pill-btn" onclick="setTheme('techno')">💎 Tech</button>
                 </div>
             </div>
         </header>
@@ -466,6 +460,7 @@
             document.getElementById('adminSidebar').classList.toggle('open');
         }
         function setTheme(t) {
+            if (t !== 'light' && t !== 'dark') t = 'dark';
             document.documentElement.setAttribute('data-theme', t);
             localStorage.setItem('foodcheck-theme', t);
             updatePillActive();
@@ -479,8 +474,9 @@
         }
         function updatePillActive() {
             var cur = document.documentElement.getAttribute('data-theme') || 'dark';
+            if (cur !== 'light' && cur !== 'dark') cur = 'dark';
             document.querySelectorAll('.theme-pill-btn').forEach(function(btn) {
-                var isAct = btn.textContent.toLowerCase().indexOf(cur === 'techno' ? 'tech' : cur) !== -1;
+                var isAct = btn.textContent.toLowerCase().indexOf(cur) !== -1;
                 btn.classList.toggle('active', isAct);
             });
         }

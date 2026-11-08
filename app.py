@@ -678,7 +678,12 @@ def edit_feedback_endpoint(fb_id):
         return jsonify({"error": "Feedback message cannot be empty."}), 400
 
     rating = data.get("rating", 5)
-    is_admin = session.get("role") in ("admin",) or (current_user.is_authenticated and current_user.is_admin)
+    curr_is_admin = False
+    if current_user and getattr(current_user, "is_authenticated", False):
+        if getattr(current_user, "username", None) == user_id:
+            curr_is_admin = getattr(current_user, "is_admin", False)
+
+    is_admin = session.get("role") in ("admin",) or curr_is_admin
     is_dev = session.get("role") in ("developer", "admin") or is_admin
 
     updated_fb, err = update_feedback_db(fb_id, user_id, rating, message, is_dev=is_dev)
@@ -704,7 +709,11 @@ def edit_feedback_endpoint(fb_id):
 def delete_feedback_endpoint(fb_id):
     """Allow admins (or review owners) to delete a community review."""
     user_id = session.get("user_id")
-    is_admin = session.get("role") in ("admin",) or (current_user.is_authenticated and current_user.is_admin)
+    curr_is_admin = False
+    if current_user and getattr(current_user, "is_authenticated", False):
+        if getattr(current_user, "username", None) == user_id:
+            curr_is_admin = getattr(current_user, "is_admin", False)
+    is_admin = session.get("role") in ("admin",) or curr_is_admin
 
     if not is_admin and not user_id:
         return jsonify({"error": "Admin access required to delete reviews.", "auth_required": True}), 403
@@ -1454,7 +1463,7 @@ def auth_me():
                 "user_id": current_user.username,
                 "name": current_user.name,
                 "role": current_user.role,
-                "is_admin": current_user.is_admin,
+                "is_admin": current_user.is_admin or current_user.role in ("admin", "developer"),
                 "is_developer": current_user.role in ("developer", "admin"),
             })
 
@@ -1465,13 +1474,14 @@ def auth_me():
         if not account:
             session.clear()
             return jsonify({"authenticated": False})
+        user_role = account.get("role", "user")
         return jsonify({
             "authenticated": True,
             "user_id": account["user_id"],
             "name": account["name"],
-            "role": account.get("role", "user"),
-            "is_admin": account.get("role") == "admin",
-            "is_developer": account.get("role") in ("developer", "admin"),
+            "role": user_role,
+            "is_admin": user_role in ("admin", "developer"),
+            "is_developer": user_role in ("developer", "admin"),
         })
     except Exception as e:
         app.logger.error(f"Error in auth_me endpoint: {e}", exc_info=True)
