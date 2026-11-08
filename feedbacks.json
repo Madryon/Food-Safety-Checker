@@ -1,0 +1,26 @@
+[
+  {
+    "id": "fb-seed-01",
+    "name": "Dr. Rohit Sharma",
+    "rating": 5,
+    "message": "The ingredient transparency and additive warnings are extraordinarily accurate. Indispensable for health-conscious families!"
+  },
+  {
+    "id": "fb-seed-02",
+    "name": "Priya Nair",
+    "rating": 5,
+    "message": "Scanned all my kitchen packaged snacks within minutes. Found hidden maltodextrin and palm oil in items branded as 'healthy'."
+  },
+  {
+    "id": "fb-seed-03",
+    "name": "Aman Verma",
+    "rating": 5,
+    "message": "The personalized diet and macro generator gives spot-on meal plans tailored to Indian dietary habits. Love this platform!"
+  },
+  {
+    "id": "fb-seed-04",
+    "name": "Sneha Patel",
+    "rating": 5,
+    "message": "Super clean interface. Being able to check allergens before buying groceries has made shopping so much safer."
+  }
+]

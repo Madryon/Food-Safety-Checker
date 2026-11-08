@@ -960,9 +960,12 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                         <!-- Left: Submit Form -->
                         <div class="feedback-form-col">
                             <h3><span>✍️ Share Your Feedback</span></h3>
-                            <p id="feedback-auth-hint" style="font-size:0.8rem; color:var(--muted); margin-bottom:12px;">
+                            <p id="feedback-auth-hint" style="font-size:0.8rem; color:var(--muted); margin-bottom:10px;">
                                 💡 <a href="#" id="feedback-login-link" style="color:var(--accent); font-weight:600;">Sign in to your account</a> or <a href="#" id="feedback-register-link" style="color:var(--accent); font-weight:600;">Create an account</a> to share your review and join the community discussion.
                             </p>
+                            <div id="feedback-auth-bar" style="margin-bottom:14px; padding:10px 14px; border-radius:12px; font-size:0.85rem; background:var(--surface-2); border:1px solid var(--border); transition:all .2s ease;">
+                                <span id="feedback-auth-status-text">🔒 Browsing as Guest. Sign in or register to submit a review.</span>
+                            </div>
                             <form id="feedback-form" onsubmit="return false;">
                                 <div class="fb-field">
                                     <label for="feedback-name">Your Name <span class="req">*</span></label>
@@ -2427,6 +2430,19 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             if (fbHint) fbHint.style.display = 'none';
             if (fbNameInp && !fbNameInp.value) fbNameInp.value = fullName;
             if (dietNameInp && !dietNameInp.value) dietNameInp.value = fullName;
+
+            var submitFbBtn = $('feedback-submit');
+            if (submitFbBtn) {
+                submitFbBtn.textContent = '🚀 Submit Feedback';
+                submitFbBtn.title = 'Post review as @' + (user.user_id || 'user');
+            }
+            var fbAuthBar = $('feedback-auth-bar');
+            if (fbAuthBar) {
+                fbAuthBar.style.display = 'block';
+                fbAuthBar.style.borderColor = 'rgba(52, 211, 153, 0.4)';
+                fbAuthBar.style.background = 'rgba(52, 211, 153, 0.08)';
+                fbAuthBar.innerHTML = '👤 Signed in as <b>' + esc(fullName) + '</b> (@' + esc(user.user_id || 'user') + ') • Your review will be posted under your account.';
+            }
         } else {
             // Hide admin links
             var menuAdminLink = $('menu-admin-link');
@@ -2452,8 +2468,25 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             if (content) content.classList.add('hidden');
 
             
-            if (fbDesc) fbDesc.textContent = 'Sign in to your account to view all community reviews, share your experience, and manage your feedback.';
+            if (fbDesc) fbDesc.textContent = 'Browse reviews from the FoodCheck community. Sign in or create an account to share your own experience!';
             if (fbHint) fbHint.style.display = 'block';
+
+            var submitFbBtn = $('feedback-submit');
+            if (submitFbBtn) {
+                submitFbBtn.textContent = '🔒 Sign In to Submit Feedback';
+                submitFbBtn.title = 'Sign in or create an account to submit your review';
+            }
+            var fbAuthBar = $('feedback-auth-bar');
+            if (fbAuthBar) {
+                fbAuthBar.style.display = 'block';
+                fbAuthBar.style.borderColor = 'var(--border)';
+                fbAuthBar.style.background = 'var(--surface-2)';
+                fbAuthBar.innerHTML = '🔒 Browsing as Guest. <a href="#" id="fb-bar-login-link" style="color:var(--accent); font-weight:700; text-decoration:underline;">Sign In</a> or <a href="#" id="fb-bar-reg-link" style="color:var(--accent); font-weight:700; text-decoration:underline;">Create an account</a> to submit a review.';
+                var barLog = $('fb-bar-login-link');
+                if (barLog) barLog.addEventListener('click', function(e) { e.preventDefault(); openAuthModal('login'); });
+                var barReg = $('fb-bar-reg-link');
+                if (barReg) barReg.addEventListener('click', function(e) { e.preventDefault(); openAuthModal('register'); });
+            }
         }
     }
 

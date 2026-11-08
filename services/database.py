@@ -330,35 +330,64 @@ def init_db():
                 VALUES ('developer', ?, 'App Developer', 'developer');
             """, (dev_hash,))
 
-        # Seed initial feedbacks from feedbacks.json if table is empty
+        # Seed initial feedbacks if table is empty
         cursor.execute("SELECT COUNT(*) FROM feedbacks;")
         fb_count = cursor.fetchone()[0]
         if fb_count == 0:
+            seed_items = [
+                {
+                    "id": "fb-seed-01",
+                    "name": "Dr. Rohit Sharma",
+                    "rating": 5,
+                    "message": "The ingredient transparency and additive warnings are extraordinarily accurate. Indispensable for health-conscious families!",
+                },
+                {
+                    "id": "fb-seed-02",
+                    "name": "Priya Nair",
+                    "rating": 5,
+                    "message": "Scanned all my kitchen packaged snacks within minutes. Found hidden maltodextrin and palm oil in items branded as 'healthy'.",
+                },
+                {
+                    "id": "fb-seed-03",
+                    "name": "Aman Verma",
+                    "rating": 5,
+                    "message": "The personalized diet and macro generator gives spot-on meal plans tailored to Indian dietary habits. Love this platform!",
+                },
+                {
+                    "id": "fb-seed-04",
+                    "name": "Sneha Patel",
+                    "rating": 5,
+                    "message": "Super clean interface. Being able to check allergens before buying groceries has made shopping so much safer.",
+                },
+            ]
             fb_json_path = os.path.join(
                 os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "feedbacks.json"
             )
             if os.path.exists(fb_json_path):
                 try:
                     with open(fb_json_path, "r", encoding="utf-8") as f:
-                        seed_items = json.load(f)
-                    for item in seed_items:
-                        fid = item.get("id") or f"fb-{datetime.now().timestamp()}"
-                        fuser = "developer"
-                        fname = item.get("name") or "User"
-                        frating = int(item.get("rating") or 5)
-                        fmsg = item.get("message") or ""
-                        if is_pg:
-                            cursor.execute("""
-                                INSERT INTO feedbacks (id, user_id, name, rating, message)
-                                VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING;
-                            """, (fid, fuser, fname, frating, fmsg))
-                        else:
-                            cursor.execute("""
-                                INSERT OR IGNORE INTO feedbacks (id, user_id, name, rating, message)
-                                VALUES (?, ?, ?, ?, ?);
-                            """, (fid, fuser, fname, frating, fmsg))
+                        file_items = json.load(f)
+                        if file_items:
+                            seed_items = file_items
                 except Exception as ex:
-                    logger.warning(f"Could not seed feedbacks: {ex}")
+                    logger.warning(f"Could not load feedbacks.json: {ex}")
+
+            for item in seed_items:
+                fid = item.get("id") or f"fb-{datetime.now().timestamp()}"
+                fuser = "developer"
+                fname = item.get("name") or "User"
+                frating = int(item.get("rating") or 5)
+                fmsg = item.get("message") or ""
+                if is_pg:
+                    cursor.execute("""
+                        INSERT INTO feedbacks (id, user_id, name, rating, message)
+                        VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING;
+                    """, (fid, fuser, fname, frating, fmsg))
+                else:
+                    cursor.execute("""
+                        INSERT OR IGNORE INTO feedbacks (id, user_id, name, rating, message)
+                        VALUES (?, ?, ?, ?, ?);
+                    """, (fid, fuser, fname, frating, fmsg))
 
         cursor.close()
     logger.info("Database initialized successfully.")
