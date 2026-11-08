@@ -2,7 +2,7 @@ import os
 import json
 import logging
 import requests
-from services.ai_provider import get_groq_api_keys
+from services.ai_provider import get_groq_api_keys, call_groq_json
 
 logger = logging.getLogger(__name__)
 
@@ -185,44 +185,21 @@ Return ONLY a single valid JSON object following this exact schema:
   ]
 }}"""
 
-    headers = {
-        "Authorization": f"Bearer {groq_api_key}",
-        "Content-Type": "application/json",
-    }
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
 
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        "temperature": 0.3,
-        "max_tokens": 2048,
-        "response_format": {"type": "json_object"},
-    }
-
-    try:
-        response = requests.post(GROQ_API_URL, headers=headers, json=payload, timeout=25)
-        response.raise_for_status()
-        data = response.json()
-        content = data["choices"][0]["message"]["content"]
-        plan = json.loads(content)
+    plan, raw_content, err = call_groq_json(messages, model=model, timeout=25, max_tokens=2048)
+    if plan:
         plan["generated_by"] = f"Groq ({model})"
         plan["calculated_stats"] = stats
         return plan
-    except requests.exceptions.HTTPError as e:
-        status_code = getattr(response, "status_code", None)
-        err_text = getattr(response, "text", str(e))
-        logger.error(f"Groq API HTTP error {status_code}: {err_text}")
+    else:
+        logger.warning(f"Groq diet generation failed across all keys: {err}")
         return get_fallback_diet_plan(
             user_name, stats, diet_pref, goal, health_conditions,
-            is_fallback=True, error_msg=f"Groq API Error ({status_code}): {err_text[:120]}"
-        )
-    except Exception as e:
-        logger.error(f"Error calling Groq API: {e}", exc_info=True)
-        return get_fallback_diet_plan(
-            user_name, stats, diet_pref, goal, health_conditions,
-            is_fallback=True, error_msg=f"API connection issue: {str(e)}"
+            is_fallback=True, error_msg=f"Groq API Error: {err}"
         )
 
 
@@ -382,31 +359,17 @@ Return ONLY a JSON object:
   ]
 }}"""
 
-    headers = {
-        "Authorization": f"Bearer {groq_api_key}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        "temperature": 0.4,
-        "max_tokens": 1024,
-        "response_format": {"type": "json_object"},
-    }
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
 
-    try:
-        response = requests.post(GROQ_API_URL, headers=headers, json=payload, timeout=20)
-        response.raise_for_status()
-        data = response.json()
-        content = data["choices"][0]["message"]["content"]
-        res = json.loads(content)
+    res, raw_content, err = call_groq_json(messages, model=model, timeout=20, max_tokens=1024)
+    if res:
         res["source"] = f"Meta-Llama-3.1-8B ({model})"
         return res
-    except Exception as e:
-        logger.error(f"Error generating meal suggestion via Groq: {e}")
+    else:
+        logger.warning(f"Error generating meal suggestion via Groq: {err}")
         return get_fallback_meal_suggestions(diet_pref, meal_type, target_calories, craving)
 
 

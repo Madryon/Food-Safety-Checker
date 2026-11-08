@@ -66,6 +66,38 @@ class TestAIProvider(unittest.TestCase):
         keys = get_groq_api_keys()
         self.assertEqual(keys, ["gkey_1", "gkey_2"])
 
+    def test_groq_keys_multiple_env_formats(self):
+        os.environ["GROQ_API_KEY"] = "primary_groq"
+        os.environ["GROQ_API_KEY_2"] = "secondary_groq"
+        keys = get_groq_api_keys()
+        self.assertIn("primary_groq", keys)
+        self.assertIn("secondary_groq", keys)
+        self.assertEqual(len(keys), 2)
+
+    @patch("requests.post")
+    def test_groq_multi_key_rotation_on_429(self, mock_post):
+        from services.ai_provider import call_groq_json
+        os.environ["GROQ_API_KEYS"] = "groq_key_fail, groq_key_pass"
+
+        # Mock first response as 429, second response as 200
+        resp_429 = MagicMock()
+        resp_429.status_code = 429
+        resp_429.text = "Rate limit reached"
+
+        resp_200 = MagicMock()
+        resp_200.status_code = 200
+        resp_200.json.return_value = {
+            "choices": [{"message": {"content": '{"result": "success"}'}}]
+        }
+        resp_200.elapsed.total_seconds.return_value = 0.25
+
+        mock_post.side_effect = [resp_429, resp_200]
+
+        parsed, raw, err = call_groq_json([{"role": "user", "content": "hi"}])
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed.get("result"), "success")
+        self.assertIsNone(err)
+
     def test_ai_status_summary(self):
         os.environ["GEMINI_API_KEYS"] = "gem1, gem2"
         os.environ["GROQ_API_KEY"] = "gkey1"
