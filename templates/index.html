@@ -961,7 +961,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                         <div class="feedback-form-col">
                             <h3><span>✍️ Share Your Feedback</span></h3>
                             <p id="feedback-auth-hint" style="font-size:0.8rem; color:var(--muted); margin-bottom:12px;">
-                                💡 <a href="#" id="feedback-login-link" style="color:var(--accent); font-weight:600;">Sign in to your account</a> to join the community discussion and edit your feedback anytime.
+                                💡 <a href="#" id="feedback-login-link" style="color:var(--accent); font-weight:600;">Sign in to your account</a> or <a href="#" id="feedback-register-link" style="color:var(--accent); font-weight:600;">Create an account</a> to share your review and join the community discussion.
                             </p>
                             <form id="feedback-form" onsubmit="return false;">
                                 <div class="fb-field">
@@ -2192,6 +2192,102 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
     var fabFb = $('fab-feedback-btn');
     if (fabFb) fabFb.addEventListener('click', scrollToFeedback);
 
+    function submitFeedback(name, message, rating) {
+        var submitFb = $('feedback-submit');
+        var textInp = $('feedback-text');
+        var nameInp = $('feedback-name');
+        var statusDiv = $('feedback-status');
+
+        if (!name && currentUser && currentUser.name) {
+            name = currentUser.name;
+            if (nameInp) nameInp.value = name;
+        }
+
+        if (!name) {
+            if (statusDiv) {
+                statusDiv.className = 'fb-status-msg error';
+                statusDiv.textContent = '⚠️ Please enter your name first.';
+                statusDiv.style.display = 'block';
+            }
+            if (nameInp) nameInp.focus();
+            return;
+        }
+
+        if (!message) {
+            if (statusDiv) {
+                statusDiv.className = 'fb-status-msg error';
+                statusDiv.textContent = '⚠️ Please write your feedback message.';
+                statusDiv.style.display = 'block';
+            }
+            if (textInp) textInp.focus();
+            return;
+        }
+
+        if (submitFb) {
+            submitFb.disabled = true;
+            submitFb.textContent = 'Submitting...';
+        }
+        if (statusDiv) { statusDiv.style.display = 'none'; }
+
+        fetch('/api/feedback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name, message: message, rating: rating })
+        })
+        .then(function (res) {
+            return res.json().then(function (d) {
+                return { ok: res.ok, status: res.status, data: d };
+            }).catch(function () {
+                return { ok: res.ok, status: res.status, data: { error: 'Request rejected (' + res.status + ').' } };
+            });
+        })
+        .then(function (res) {
+            if (submitFb) {
+                submitFb.disabled = false;
+                submitFb.textContent = '🚀 Submit Feedback';
+            }
+            if (!res.ok) {
+                if (res.status === 401 || (res.data && res.data.auth_required)) {
+                    window._pendingFeedbackSubmission = { name: name, message: message, rating: rating };
+                    if (statusDiv) {
+                        statusDiv.className = 'fb-status-msg info';
+                        statusDiv.textContent = '🔒 Please sign in or create an account to post your feedback.';
+                        statusDiv.style.display = 'block';
+                    }
+                    toast('🔒 Please sign in to submit your feedback.');
+                    openAuthModal('login');
+                    return;
+                }
+                throw new Error((res.data && res.data.error) || 'Submission failed');
+            }
+
+            var data = res.data;
+            if (data.status === 'success' && data.feedbacks) {
+                renderFeedbacks(data.feedbacks);
+                if (statusDiv) {
+                    statusDiv.className = 'fb-status-msg success';
+                    statusDiv.textContent = '🎉 Thank you, ' + name + '! Your feedback has been recorded securely.';
+                    statusDiv.style.display = 'block';
+                }
+                if (textInp) textInp.value = '';
+                toast('🎉 Feedback submitted successfully!');
+            } else {
+                throw new Error((data && data.error) || 'Submission failed');
+            }
+        })
+        .catch(function (err) {
+            if (submitFb) {
+                submitFb.disabled = false;
+                submitFb.textContent = '🚀 Submit Feedback';
+            }
+            if (statusDiv) {
+                statusDiv.className = 'fb-status-msg error';
+                statusDiv.textContent = '⚠️ ' + (err.message || 'Submission failed');
+                statusDiv.style.display = 'block';
+            }
+        });
+    }
+
     var submitFb = $('feedback-submit');
     if (submitFb) {
         submitFb.addEventListener('click', function () {
@@ -2202,57 +2298,34 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             var name = nameInp ? nameInp.value.trim() : '';
             var message = textInp ? textInp.value.trim() : '';
 
-            if (!name) {
-                if (statusDiv) {
-                    statusDiv.className = 'fb-status-msg error';
-                    statusDiv.textContent = '⚠️ Please enter your name first.';
-                }
-                if (nameInp) nameInp.focus();
-                return;
-            }
-
             if (!message) {
                 if (statusDiv) {
                     statusDiv.className = 'fb-status-msg error';
                     statusDiv.textContent = '⚠️ Please write your feedback message.';
+                    statusDiv.style.display = 'block';
                 }
                 if (textInp) textInp.focus();
                 return;
             }
 
-            submitFb.disabled = true;
-            submitFb.textContent = 'Submitting...';
-            if (statusDiv) { statusDiv.style.display = 'none'; }
-
-            fetch('/api/feedback', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: name, message: message, rating: fbRating })
-            })
-            .then(function (res) { return res.json(); })
-            .then(function (data) {
-                submitFb.disabled = false;
-                submitFb.textContent = '🚀 Submit Feedback';
-                if (data.status === 'success' && data.feedbacks) {
-                    renderFeedbacks(data.feedbacks);
-                    if (statusDiv) {
-                        statusDiv.className = 'fb-status-msg success';
-                        statusDiv.textContent = '🎉 Thank you, ' + name + '! Your feedback has been recorded securely.';
-                    }
-                    if (textInp) textInp.value = '';
-                    toast('🎉 Feedback submitted successfully!');
-                } else {
-                    throw new Error(data.error || 'Submission failed');
-                }
-            })
-            .catch(function (err) {
-                submitFb.disabled = false;
-                submitFb.textContent = '🚀 Submit Feedback';
+            var isAuthenticated = Boolean(currentUser && currentUser.authenticated);
+            if (!isAuthenticated) {
+                window._pendingFeedbackSubmission = {
+                    name: name,
+                    message: message,
+                    rating: fbRating
+                };
                 if (statusDiv) {
-                    statusDiv.className = 'fb-status-msg error';
-                    statusDiv.textContent = '⚠️ ' + (err.message || 'Submission failed');
+                    statusDiv.className = 'fb-status-msg info';
+                    statusDiv.textContent = '🔒 Please sign in or create an account to submit your review.';
+                    statusDiv.style.display = 'block';
                 }
-            });
+                toast('🔒 Please sign in or create an account to submit your feedback.');
+                openAuthModal('login');
+                return;
+            }
+
+            submitFeedback(name, message, fbRating);
         });
     }
 
@@ -2492,6 +2565,8 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
 
     var fbLoginLink = $('feedback-login-link');
     if (fbLoginLink) fbLoginLink.addEventListener('click', function (e) { e.preventDefault(); openAuthModal('login'); });
+    var fbRegLink = $('feedback-register-link');
+    if (fbRegLink) fbRegLink.addEventListener('click', function (e) { e.preventDefault(); openAuthModal('register'); });
 
     function resetRecaptchaWidget(containerId) {
         var el = document.getElementById(containerId);
@@ -2610,6 +2685,16 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                         toast('🛡️ Welcome Administrator, ' + ((res.data.user && res.data.user.name) || username) + '! Admin Console is unlocked.');
                     } else {
                         toast('🎉 Welcome back, ' + ((res.data.user && res.data.user.name) || (res.data.user && res.data.user.user_id) || username) + '!');
+                    }
+                    if (window._pendingFeedbackSubmission) {
+                        var pending = window._pendingFeedbackSubmission;
+                        window._pendingFeedbackSubmission = null;
+                        var pName = pending.name || (currentUser && currentUser.name) || (res.data.user && res.data.user.name) || username || 'User';
+                        var pNameInp = $('feedback-name');
+                        if (pNameInp) pNameInp.value = pName;
+                        var pTextInp = $('feedback-text');
+                        if (pTextInp) pTextInp.value = pending.message;
+                        submitFeedback(pName, pending.message, pending.rating);
                     }
                 });
             }, 350);
@@ -2741,6 +2826,16 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                         toast('🛡️ Administrator account created! Welcome, ' + ((res.data.user && res.data.user.name) || name) + '!');
                     } else {
                         toast('🎉 Account created! Welcome, ' + ((res.data.user && res.data.user.name) || (res.data.user && res.data.user.user_id) || name) + '!');
+                    }
+                    if (window._pendingFeedbackSubmission) {
+                        var pending = window._pendingFeedbackSubmission;
+                        window._pendingFeedbackSubmission = null;
+                        var pName = pending.name || (currentUser && currentUser.name) || (res.data.user && res.data.user.name) || name || 'User';
+                        var pNameInp = $('feedback-name');
+                        if (pNameInp) pNameInp.value = pName;
+                        var pTextInp = $('feedback-text');
+                        if (pTextInp) pTextInp.value = pending.message;
+                        submitFeedback(pName, pending.message, pending.rating);
                     }
                 });
             }, 350);

@@ -599,7 +599,7 @@ def debug_models():
 @app.route("/api/feedback", methods=["GET", "POST"])
 def handle_feedback():
     user_id = session.get("user_id")
-    role = session.get("role") or (current_user.role if current_user.is_authenticated else "user")
+    role = session.get("role", "user")
     is_admin = (role == "admin")
     is_dev = (role in ("developer", "admin"))
 
@@ -608,8 +608,14 @@ def handle_feedback():
         if not data:
             return jsonify({"error": "No data received."}), 400
 
-        user_id_val = user_id or "anonymous"
-        name = (data.get("name") or session.get("name") or "User").strip()
+        # Mandatory authentication: user must sign in or register to submit feedback
+        if not user_id:
+            return jsonify({
+                "error": "Please sign in or create an account to submit your feedback.",
+                "auth_required": True
+            }), 401
+
+        name = (data.get("name") or session.get("name") or (current_user.name if current_user.is_authenticated else "") or user_id).strip()
         message = (data.get("message") or "").strip()
         rating = data.get("rating", 5)
 
@@ -617,17 +623,12 @@ def handle_feedback():
             return jsonify({"error": "Please write your feedback message."}), 400
 
         fb_id = f"fb-{str(uuid.uuid4())[:8]}"
-        saved_fb = save_feedback_db(fb_id, user_id_val, name, rating, message)
+        saved_fb = save_feedback_db(fb_id, user_id, name, rating, message)
 
-        if user_id:
-            feedbacks = get_all_feedbacks()
-            for f in feedbacks:
-                f["can_edit"] = is_dev or (f.get("user_id") == user_id)
-                f["can_delete"] = is_admin
-        else:
-            saved_fb["can_edit"] = False
-            saved_fb["can_delete"] = False
-            feedbacks = [saved_fb]
+        feedbacks = get_all_feedbacks()
+        for f in feedbacks:
+            f["can_edit"] = is_dev or (f.get("user_id") == user_id)
+            f["can_delete"] = is_admin
 
         log_activity(action="submit_feedback", details={"rating": rating, "fb_id": fb_id})
 
@@ -637,7 +638,7 @@ def handle_feedback():
             "feedbacks": feedbacks,
             "is_developer": is_dev,
             "is_admin": is_admin,
-            "is_signed_in": bool(user_id),
+            "is_signed_in": True,
         })
 
     else:

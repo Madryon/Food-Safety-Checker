@@ -204,6 +204,16 @@ class FoodCheckPrivateAuthTest(unittest.TestCase):
         anon_res = client_anon.get('/api/feedback').get_json()
         self.assertTrue(anon_res.get('prompt_login'))
 
+        # 7. Unauthenticated visitor cannot submit feedback without signing in (401 auth_required)
+        anon_post = client_anon.post('/api/feedback', json={
+            'name': 'Anon Visitor',
+            'rating': 5,
+            'message': 'Attempting feedback without logging in'
+        })
+        self.assertEqual(anon_post.status_code, 401)
+        anon_post_data = anon_post.get_json()
+        self.assertTrue(anon_post_data.get('auth_required'))
+
     def test_05_meal_suggestion_endpoint(self):
         client_alice = app.test_client()
         client_alice.post('/api/auth/login', json={'username': 'alice101', 'password': 'password123'})
