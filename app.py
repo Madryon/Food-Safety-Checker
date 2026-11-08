@@ -116,30 +116,51 @@ db_url = (
 if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql://", 1)
 
+is_pg = False
 if db_url.startswith("postgresql://") or db_url.startswith("postgresql+"):
     if "sslmode=" not in db_url:
         sep = "&" if "?" in db_url else "?"
         db_url += f"{sep}sslmode=require"
-    # SQLAlchemy 2.0+ defaults 'postgresql://' to psycopg (v3).
-    # If psycopg is missing but psycopg2 is present, use postgresql+psycopg2://
-    if db_url.startswith("postgresql://"):
-        try:
-            import psycopg  # noqa: F401
-        except ImportError:
+
+    # Fast DNS pre-flight check: ensure external host exists before connecting
+    host = ""
+    try:
+        from urllib.parse import urlparse
+        import socket
+        parsed_url = urlparse(db_url)
+        host = parsed_url.hostname or ""
+        if host:
+            socket.gethostbyname(host)
+        is_pg = True
+    except Exception as dns_err:
+        app.logger.warning(
+            f"⚠️ PostgreSQL host '{host}' could not be resolved ({dns_err}). "
+            "Falling back to local SQLite database so the application continues to run without crashing."
+        )
+        is_pg = False
+
+    if is_pg:
+        # SQLAlchemy 2.0+ defaults 'postgresql://' to psycopg (v3).
+        # If psycopg is missing but psycopg2 is present, use postgresql+psycopg2://
+        if db_url.startswith("postgresql://"):
             try:
-                import psycopg2  # noqa: F401
-                db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+                import psycopg  # noqa: F401
             except ImportError:
-                pass
-    app.config["SQLALCHEMY_DATABASE_URI"] = db_url
-    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-        "pool_pre_ping": True,
-        "pool_recycle": 280,
-        "pool_size": 3,
-        "max_overflow": 2,
-        "pool_timeout": 15,
-    }
-else:
+                try:
+                    import psycopg2  # noqa: F401
+                    db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+                except ImportError:
+                    pass
+        app.config["SQLALCHEMY_DATABASE_URI"] = db_url
+        app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+            "pool_pre_ping": True,
+            "pool_recycle": 280,
+            "pool_size": 3,
+            "max_overflow": 2,
+            "pool_timeout": 15,
+        }
+
+if not is_pg:
     # Local SQLite default in instance/foodcheck.db
     os.makedirs(app.instance_path, exist_ok=True)
     sqlite_path = os.path.join(app.instance_path, "foodcheck.db")

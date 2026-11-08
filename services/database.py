@@ -25,6 +25,12 @@ if DB_URL.startswith("postgres://"):
 
 if DB_URL.startswith("postgresql://"):
     try:
+        from urllib.parse import urlparse
+        import socket
+        parsed_db = urlparse(DB_URL)
+        if parsed_db.hostname:
+            socket.gethostbyname(parsed_db.hostname)
+
         import psycopg2
         from psycopg2 import pool, extras
 
@@ -64,6 +70,12 @@ def get_or_create_pg_pool():
     if pg_pool is not None:
         return pg_pool
     try:
+        from urllib.parse import urlparse
+        import socket
+        parsed_db = urlparse(DB_URL)
+        if parsed_db.hostname:
+            socket.gethostbyname(parsed_db.hostname)
+
         import psycopg2
         from psycopg2 import pool
         url = DB_URL
@@ -74,7 +86,7 @@ def get_or_create_pg_pool():
         USE_POSTGRES = True
         return pg_pool
     except Exception as e:
-        logger.warning(f"Could not initialize PostgreSQL pool: {e}")
+        logger.warning(f"Could not initialize PostgreSQL pool ({e}). Falling back to SQLite.")
         return None
 
 
