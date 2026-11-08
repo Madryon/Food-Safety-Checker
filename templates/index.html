@@ -826,7 +826,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                         <button type="button" id="menu-feedback-link" class="dropdown-item-btn">
                             <span>💬</span> Community Reviews
                         </button>
-                        <a href="{{ url_for('admin.dashboard') }}" id="menu-admin-link" class="dropdown-item-btn {% if not (current_user.is_authenticated and (current_user.is_admin or current_user.role in ('admin', 'developer'))) %}hidden{% endif %}" style="color: var(--accent); text-decoration: none; font-weight: 700; {% if current_user.is_authenticated and (current_user.is_admin or current_user.role in ('admin', 'developer')) %}display: flex;{% endif %}">
+                        <a href="{{ url_for('admin.dashboard') }}" id="menu-admin-link" class="dropdown-item-btn {% if not (current_user.is_authenticated and (current_user.is_admin or current_user.role in ('admin', 'developer'))) %}hidden{% endif %}" style="color: var(--accent); text-decoration: none; font-weight: 700; background: rgba(52, 211, 153, 0.12); border: 1px solid rgba(52, 211, 153, 0.3); border-radius: 8px; margin: 4px 0; {% if current_user.is_authenticated and (current_user.is_admin or current_user.role in ('admin', 'developer')) %}display: flex;{% endif %}">
                             <span>🛡️</span> Admin Dashboard
                         </a>
                         <div class="dropdown-divider"></div>
@@ -2409,20 +2409,20 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             if (menuAdminLink) {
                 if (isAdmin) {
                     menuAdminLink.classList.remove('hidden');
-                    menuAdminLink.style.display = 'flex';
+                    menuAdminLink.style.setProperty('display', 'flex', 'important');
                 } else {
                     menuAdminLink.classList.add('hidden');
-                    menuAdminLink.style.display = 'none';
+                    menuAdminLink.style.setProperty('display', 'none', 'important');
                 }
             }
             var navAdminLink = $('nav-admin-link');
             if (navAdminLink) {
                 if (isAdmin) {
                     navAdminLink.classList.remove('hidden');
-                    navAdminLink.style.display = 'inline-flex';
+                    navAdminLink.style.setProperty('display', 'inline-flex', 'important');
                 } else {
                     navAdminLink.classList.add('hidden');
-                    navAdminLink.style.display = 'none';
+                    navAdminLink.style.setProperty('display', 'none', 'important');
                 }
             }
 

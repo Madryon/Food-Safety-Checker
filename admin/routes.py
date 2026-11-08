@@ -291,6 +291,204 @@ def _safe_format_dt(val, fmt="%Y-%m-%d %H:%M"):
         return "—"
 
 
+def _render_standalone_compact_dashboard(users, recent_logins, total_users, total_scans, diet_plans_count, error_note=""):
+    """Emergency standalone compact dashboard that requires zero external template files."""
+    from flask import render_template_string
+    user_rows = ""
+    for u in users:
+        uid = u.get("id", 0)
+        uname = u.get("username", "user")
+        name = u.get("name", uname)
+        email = u.get("email") or "—"
+        is_admin = u.get("is_admin", False)
+        is_active = u.get("is_active", True)
+        is_locked = u.get("is_locked", False)
+        created = u.get("created_at_fmt", "—")
+        last_seen = u.get("last_seen_fmt", "Never")
+        scans = u.get("scans_count", 0)
+        diets = u.get("diet_count", 0)
+
+        role_badge = '<span style="background:#fbbf24;color:#1e1b4b;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;">🛡️ Admin</span>' if is_admin else '<span style="background:#182535;color:#e8eef5;padding:2px 8px;border-radius:999px;font-size:11px;">👤 User</span>'
+        status_badge = '<span style="background:rgba(248,113,113,.15);color:#f87171;padding:2px 8px;border-radius:6px;font-size:11px;">Disabled</span>' if not is_active else ('<span style="background:rgba(251,191,36,.15);color:#fbbf24;padding:2px 8px;border-radius:6px;font-size:11px;">Locked</span>' if is_locked else '<span style="background:rgba(52,211,153,.15);color:#34d399;padding:2px 8px;border-radius:6px;font-size:11px;">Active</span>')
+
+        user_rows += f"""
+        <tr>
+            <td><strong>@{uname}</strong></td>
+            <td>{name}</td>
+            <td><a href="mailto:{email}" style="color:#22d3ee;text-decoration:none;">{email}</a></td>
+            <td>{role_badge}</td>
+            <td><span style="background:rgba(34,211,238,.12);color:#22d3ee;padding:3px 7px;border-radius:6px;font-size:11.5px;">🔍 {scans} scans</span> <span style="background:rgba(52,211,153,.12);color:#34d399;padding:3px 7px;border-radius:6px;font-size:11.5px;">🥗 {diets} diet plans</span></td>
+            <td>{status_badge}</td>
+            <td style="color:#8ea0b3;font-size:12px;">{created}</td>
+            <td style="color:#8ea0b3;font-size:12px;">{last_seen}</td>
+        </tr>
+        """
+    if not user_rows:
+        user_rows = '<tr><td colspan="8" style="text-align:center;padding:24px;color:#8ea0b3;">No registered users recorded.</td></tr>'
+
+    login_rows = ""
+    for l in recent_logins:
+        uname = l.get("username", "Anonymous")
+        evt = l.get("event_type", "login")
+        succ = l.get("success", True)
+        ip = l.get("ip_address", "—")
+        ua = l.get("user_agent", "—")[:60]
+        time_fmt = l.get("time_fmt", "—")
+        st_badge = '<span style="background:rgba(52,211,153,.15);color:#34d399;padding:2px 6px;border-radius:4px;font-size:11px;">Success</span>' if succ else '<span style="background:rgba(248,113,113,.15);color:#f87171;padding:2px 6px;border-radius:4px;font-size:11px;">Failed</span>'
+        login_rows += f"""
+        <tr>
+            <td><strong>{uname}</strong></td>
+            <td><code>{evt}</code></td>
+            <td>{st_badge}</td>
+            <td><code style="color:#22d3ee;">{ip}</code></td>
+            <td style="color:#8ea0b3;font-size:12px;">{ua}</td>
+            <td style="color:#8ea0b3;font-size:12px;">{time_fmt}</td>
+        </tr>
+        """
+    if not login_rows:
+        login_rows = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#8ea0b3;">No recent login events recorded.</td></tr>'
+
+    cur_name = getattr(current_user, "name", None) or session.get("name") or "Administrator"
+    cur_user = getattr(current_user, "username", None) or session.get("user_id") or "admin"
+    cur_email = getattr(current_user, "email", None) or "—"
+
+    html = f"""<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard — FoodCheck Admin</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {{ --bg: #0b1117; --surface: #121c27; --surface-2: #182535; --border: rgba(255,255,255,.09); --text: #e8eef5; --muted: #8ea0b3; --accent: #34d399; --accent-2: #22d3ee; }}
+        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+        body {{ font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: var(--bg); color: var(--text); padding: 24px; min-height: 100vh; }}
+        .header {{ display: flex; justify-content: space-between; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px 24px; margin-bottom: 24px; }}
+        .brand {{ font-size: 19px; font-weight: 800; display: flex; align-items: center; gap: 10px; }}
+        .badge-admin {{ font-size: 10.5px; background: var(--accent); color: #04261b; padding: 3px 8px; border-radius: 6px; font-weight: 800; text-transform: uppercase; }}
+        .btn {{ display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; text-decoration: none; border: 1px solid transparent; cursor: pointer; }}
+        .btn-p {{ background: var(--accent); color: #04261b; }}
+        .btn-s {{ background: var(--surface-2); color: var(--text); border-color: var(--border); }}
+        .stats-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }}
+        .stat-card {{ background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }}
+        .stat-lbl {{ font-size: 11.5px; color: var(--muted); text-transform: uppercase; font-weight: 700; margin-bottom: 6px; }}
+        .stat-val {{ font-size: 26px; font-weight: 800; }}
+        .card {{ background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 22px; margin-bottom: 24px; }}
+        .card-title {{ font-size: 16px; font-weight: 700; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; }}
+        table {{ width: 100%; border-collapse: collapse; font-size: 13.5px; }}
+        th {{ text-align: left; padding: 12px 14px; font-size: 11.5px; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); font-weight: 700; }}
+        td {{ padding: 12px 14px; border-bottom: 1px solid var(--border); }}
+        tr:hover td {{ background: var(--surface-2); }}
+        .table-wrap {{ overflow-x: auto; width: 100%; }}
+        code {{ font-family: 'JetBrains Mono', monospace; font-size: 12px; }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="brand">
+            <span>🛡️ FoodCheck Admin Console</span>
+            <span class="badge-admin">Admin</span>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <a href="/" class="btn btn-s">🌐 Web App ↗</a>
+            <a href="/admin/dashboard" class="btn btn-p">🔄 Refresh</a>
+            <a href="/admin/logout" class="btn btn-s" style="color: #f87171;">🚪 Sign Out</a>
+        </div>
+    </div>
+
+    <div class="card" style="margin-bottom: 24px; background: linear-gradient(135deg, #121c27, #182535);">
+        <div class="card-title">
+            <span>🛡️ Current Administrator Profile</span>
+            <span class="badge-admin">Authenticated</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 18px; flex-wrap: wrap;">
+            <div style="width: 44px; height: 44px; border-radius: 50%; background: var(--accent); color: #04261b; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 18px;">
+                {cur_name[0].upper() if cur_name else 'A'}
+            </div>
+            <div>
+                <div style="font-weight: 700; font-size: 15px;">{cur_name}</div>
+                <div style="font-size: 12.5px; color: var(--muted);">User ID: <strong>@{cur_user}</strong> &bull; Email: <strong>{cur_email}</strong></div>
+            </div>
+            <div style="margin-left: auto;">
+                <a href="/admin/keys" class="btn btn-s">🔑 Admin Invite Keys</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-lbl">Total Users</div>
+            <div class="stat-val">{total_users}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-lbl">Total Product Scans</div>
+            <div class="stat-val" style="color: var(--accent);">{total_scans}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-lbl">Diet Plans Generated</div>
+            <div class="stat-val" style="color: var(--accent-2);">{diet_plans_count}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-lbl">Recent Login Events</div>
+            <div class="stat-val">{len(recent_logins)}</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">
+            <span>👥 User Directory &amp; Usage Details ({len(users)} Users)</span>
+            <span style="font-size: 12px; color: var(--muted); font-weight: normal;">Live user accounts &amp; usage statistics</span>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>User ID</th>
+                        <th>Full Name</th>
+                        <th>Email ID</th>
+                        <th>Role</th>
+                        <th>Usage (How Much Is Using)</th>
+                        <th>Status</th>
+                        <th>Joined</th>
+                        <th>Last Active</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {user_rows}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">
+            <span>🔐 Recent Login Events (Who is Logging In)</span>
+            <span style="font-size: 12px; color: var(--muted); font-weight: normal;">Latest authentication events</span>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>User ID / Attempted</th>
+                        <th>Event Type</th>
+                        <th>Status</th>
+                        <th>IP Address</th>
+                        <th>Device / User Agent</th>
+                        <th>Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {login_rows}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>"""
+    return render_template_string(html), 200
+
+
 # ── DASHBOARD & USER ANALYTICS ──────────────────────────────────────────────
 
 @admin_bp.route("/")
@@ -323,14 +521,20 @@ def dashboard():
             new_users_today = User.query.filter(User.created_at >= today_start).count()
             users_online_now = User.query.filter(User.last_seen_at >= five_min_ago).count()
         except Exception as e:
-            db.session.rollback()
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
             print(f"[!] Dashboard user stats warning: {e}")
 
         try:
             total_scans = Scan.query.count()
             scans_today = Scan.query.filter(Scan.created_at >= today_start).count()
         except Exception as e:
-            db.session.rollback()
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
             print(f"[!] Dashboard scan stats warning: {e}")
 
         try:
@@ -344,7 +548,10 @@ def dashboard():
                 LoginEvent.event_type == "failed_login",
             ).count()
         except Exception as e:
-            db.session.rollback()
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
             print(f"[!] Dashboard login stats warning: {e}")
 
         try:
@@ -362,7 +569,10 @@ def dashboard():
             )
             user_scan_counts = {uid: count for uid, count in scan_counts_query if uid}
         except Exception as e:
-            db.session.rollback()
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
             print(f"[!] Scan counts per user warning: {e}")
 
         try:
@@ -404,13 +614,46 @@ def dashboard():
                     "is_locked": bool(getattr(u, "is_locked", False)),
                     "created_at_fmt": created_str,
                     "last_seen_fmt": last_seen_str,
-                    "scans_count": user_scan_counts.get(u.id, 0),
+                    "scans_count": user_scan_counts.get(u.id, user_scan_counts.get(uname_clean, 0)),
                     "diet_count": user_diet_counts.get(uname_clean, 0),
                 })
         except Exception as e:
-            db.session.rollback()
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
             print(f"[!] Dashboard users query warning: {e}")
             users_data = []
+
+        # Fallback to legacy users_auth table if users_data is empty
+        if not users_data:
+            try:
+                with DatabaseConnection() as (conn, is_pg):
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT user_id, name, role, created_at FROM users_auth ORDER BY created_at DESC LIMIT 100;")
+                    rows = cursor.fetchall()
+                    cursor.close()
+                    for r in rows:
+                        if r and r[0]:
+                            uid = str(r[0]).strip().lower()
+                            users_data.append({
+                                "id": 0,
+                                "username": uid,
+                                "name": r[1] or uid.capitalize(),
+                                "email": "",
+                                "is_admin": r[2] in ("admin", "developer"),
+                                "is_active": True,
+                                "is_locked": False,
+                                "created_at_fmt": _safe_format_dt(r[3], "%Y-%m-%d"),
+                                "last_seen_fmt": "Never",
+                                "scans_count": user_scan_counts.get(uid, 0),
+                                "diet_count": user_diet_counts.get(uid, 0),
+                            })
+            except Exception:
+                pass
+
+        if total_users == 0 and users_data:
+            total_users = len(users_data)
 
         # 4. Recent Logins - pre-extracting data to avoid any lazy-load DB operations during template render
         try:
@@ -439,7 +682,10 @@ def dashboard():
                     "time_fmt": time_str,
                 })
         except Exception as e:
-            db.session.rollback()
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
             print(f"[!] Recent logins warning: {e}")
             recent_logins_data = []
 
@@ -447,7 +693,10 @@ def dashboard():
         try:
             total_admin_keys = AdminInviteKey.query.filter_by(revoked=False).count()
         except Exception as e:
-            db.session.rollback()
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
             print(f"[!] Admin keys count warning: {e}")
 
         return render_template(
@@ -470,24 +719,35 @@ def dashboard():
         )
     except Exception as render_err:
         print(f"[!] Critical dashboard render error: {render_err}")
-        return render_template(
-            "admin/dashboard.html",
-            total_users=0,
-            new_users_today=0,
-            users_online_now=0,
-            total_scans=0,
-            scans_today=0,
-            diet_plans_count=0,
-            logins_today=0,
-            failed_logins_today=0,
-            users=[],
-            user_scan_counts={},
-            user_diet_counts={},
-            recent_logins=[],
-            has_master_key=bool(User.get_master_admin_password()),
-            total_admin_keys=0,
-            search_q="",
-        )
+        try:
+            return render_template(
+                "admin/dashboard.html",
+                total_users=total_users if 'total_users' in locals() else 0,
+                new_users_today=new_users_today if 'new_users_today' in locals() else 0,
+                users_online_now=users_online_now if 'users_online_now' in locals() else 0,
+                total_scans=total_scans if 'total_scans' in locals() else 0,
+                scans_today=scans_today if 'scans_today' in locals() else 0,
+                diet_plans_count=diet_plans_count if 'diet_plans_count' in locals() else 0,
+                logins_today=logins_today if 'logins_today' in locals() else 0,
+                failed_logins_today=failed_logins_today if 'failed_logins_today' in locals() else 0,
+                users=users_data if 'users_data' in locals() else [],
+                user_scan_counts=user_scan_counts if 'user_scan_counts' in locals() else {},
+                user_diet_counts=user_diet_counts if 'user_diet_counts' in locals() else {},
+                recent_logins=recent_logins_data if 'recent_logins_data' in locals() else [],
+                has_master_key=bool(User.get_master_admin_password()),
+                total_admin_keys=total_admin_keys if 'total_admin_keys' in locals() else 0,
+                search_q="",
+            )
+        except Exception as e2:
+            print(f"[!] Secondary dashboard fallback error: {e2}")
+            return _render_standalone_compact_dashboard(
+                users=users_data if 'users_data' in locals() else [],
+                recent_logins=recent_logins_data if 'recent_logins_data' in locals() else [],
+                total_users=total_users if 'total_users' in locals() else 0,
+                total_scans=total_scans if 'total_scans' in locals() else 0,
+                diet_plans_count=diet_plans_count if 'diet_plans_count' in locals() else 0,
+                error_note=str(e2)
+            )
 
 
 # ── LIVE ACTIVITY FEED ──────────────────────────────────────────────────────
@@ -606,7 +866,11 @@ def user_detail(user_id):
 @admin_bp.route("/users/<int:user_id>/action", methods=["POST"])
 @admin_required
 def user_action(user_id):
-    target = User.query.get_or_404(user_id)
+    target = db.session.get(User, user_id)
+    back_url = request.referrer or url_for("admin.dashboard")
+    if not target:
+        flash("Target user account was not found.", "warning")
+        return redirect(back_url)
     action = request.form.get("action")
 
     # Guard: Cannot modify self

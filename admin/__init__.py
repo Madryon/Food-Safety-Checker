@@ -18,7 +18,23 @@ def admin_required(f):
             if sess_uid:
                 try:
                     from models import User
-                    u = User.query.filter_by(username=str(sess_uid).strip().lower()).first()
+                    from services.database import get_account, db
+                    clean_uid = str(sess_uid).strip().lower()
+                    u = User.query.filter_by(username=clean_uid).first()
+                    if not u:
+                        acc = get_account(clean_uid)
+                        if acc:
+                            u = User(
+                                username=clean_uid,
+                                name=acc.get("name") or clean_uid.capitalize(),
+                                role=acc.get("role", "user"),
+                                is_active=True,
+                            )
+                            db.session.add(u)
+                            try:
+                                db.session.commit()
+                            except Exception:
+                                db.session.rollback()
                     is_u_adm = getattr(u, "is_admin", False) or getattr(u, "role", "") in ("admin", "developer")
                     if u and is_u_adm and getattr(u, "is_active", True) and not getattr(u, "is_locked", False):
                         login_user(u)
@@ -39,6 +55,29 @@ def admin_required(f):
         if not (is_user_admin or is_sess_admin):
             flash("Administrator privileges required. Please sign in with an Admin account.", "danger")
             return redirect(url_for("admin.admin_login"))
+
+        # Guarantee current_user is authenticated if session role is admin
+        if not current_user.is_authenticated and is_sess_admin:
+            try:
+                from models import User
+                from services.database import db
+                clean_uid = str(session.get("user_id") or "admin").strip().lower()
+                u = User.query.filter_by(username=clean_uid).first()
+                if not u:
+                    u = User(
+                        username=clean_uid,
+                        name=session.get("name") or clean_uid.capitalize(),
+                        role="admin",
+                        is_active=True,
+                    )
+                    db.session.add(u)
+                    try:
+                        db.session.commit()
+                    except Exception:
+                        db.session.rollback()
+                login_user(u)
+            except Exception:
+                pass
 
         # Refresh admin session activity timestamp
         try:
