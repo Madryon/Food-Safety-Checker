@@ -49,6 +49,12 @@ class TestAIProvider(unittest.TestCase):
         keys = get_gemini_api_keys()
         self.assertEqual(keys, ["key_one", "key_two"])
 
+    def test_gemini_keys_primary_plus_secondary(self):
+        os.environ["GEMINI_API_KEY"] = "primary_gemini"
+        os.environ["GEMINI_API_KEY_2"] = "secondary_gemini"
+        keys = get_gemini_api_keys()
+        self.assertEqual(keys, ["primary_gemini", "secondary_gemini"])
+
     def test_gemini_key_rotation_and_cooldown(self):
         os.environ["GEMINI_API_KEYS"] = "k1, k2, k3"
         keys = get_gemini_api_keys()

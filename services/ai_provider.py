@@ -43,13 +43,13 @@ def get_groq_api_keys() -> List[str]:
             k = k.strip()
             if k and k not in keys:
                 keys.append(k)
+    k = os.getenv("GROQ_API_KEY", "").strip()
+    if k and k not in keys:
+        keys.append(k)
     for i in range(1, 11):
         k = os.getenv(f"GROQ_API_KEY_{i}", "").strip()
         if k and k not in keys:
             keys.append(k)
-    k = os.getenv("GROQ_API_KEY", "").strip()
-    if k and k not in keys:
-        keys.append(k)
     return keys
 
 
