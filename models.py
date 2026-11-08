@@ -121,10 +121,10 @@ class AdminInviteKey(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     key_hash = db.Column(db.String(64), nullable=False, unique=True, index=True)  # SHA-256
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
     expires_at = db.Column(db.DateTime, nullable=False)
     used_at = db.Column(db.DateTime, nullable=True)
-    used_by_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    used_by_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
     revoked = db.Column(db.Boolean, default=False, nullable=False)
 
     used_by_user = db.relationship("User", foreign_keys=[used_by_user_id], backref="invite_key_used")
@@ -316,8 +316,8 @@ class UserSession(db.Model):
     session_token_hash = db.Column(db.String(64), nullable=False, unique=True, index=True)
     ip = db.Column(db.String(45), nullable=True)
     user_agent = db.Column(db.String(255), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    last_seen_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    last_seen_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
     revoked = db.Column(db.Boolean, default=False, nullable=False)
 
     @staticmethod

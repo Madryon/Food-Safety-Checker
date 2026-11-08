@@ -1,13 +1,38 @@
 import os
 import json
+import time
+import threading
 import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 import requests
 from services.gemini_client import generate_content_with_retry
 
+# In-memory TTL cache for brand news lookups (60-second TTL)
+_NEWS_CACHE = {}
+_NEWS_CACHE_LOCK = threading.Lock()
+_CACHE_TTL = 60
 
-def get_news(brand: str) -> list[dict] | None:
+
+def _get_cached_news(brand_key: str):
+    with _NEWS_CACHE_LOCK:
+        entry = _NEWS_CACHE.get(brand_key)
+        if entry and (time.monotonic() - entry[0]) < _CACHE_TTL:
+            return entry[1]
+        _NEWS_CACHE.pop(brand_key, None)
+        return None
+
+
+def _set_cached_news(brand_key: str, articles: list):
+    with _NEWS_CACHE_LOCK:
+        _NEWS_CACHE[brand_key] = (time.monotonic(), articles)
+        if len(_NEWS_CACHE) > 200:
+            oldest = sorted(_NEWS_CACHE, key=lambda k: _NEWS_CACHE[k][0])[:50]
+            for k in oldest:
+                _NEWS_CACHE.pop(k, None)
+
+
+def get_news(brand: str) -> list[dict]:
     """Fetch corporate transparency news, FSSAI notices, or controversies for a brand.
 
     Uses a robust multi-tier approach:
@@ -22,22 +47,40 @@ def get_news(brand: str) -> list[dict] | None:
         return []
 
     clean_brand = brand.strip()
+    brand_key = clean_brand.lower()
 
-    # Tier 1: Try Google News RSS (Fast, no API key needed, works on college networks)
-    rss_articles = _fetch_google_news_rss(clean_brand)
-    if rss_articles:
-        return rss_articles
+    cached = _get_cached_news(brand_key)
+    if cached is not None:
+        return cached
 
-    # Tier 2: Try GNews API if key is available
-    gnews_articles = _fetch_gnews(clean_brand)
-    if gnews_articles:
-        return gnews_articles
+    # Tier 1: Try Google News RSS (Fast, no API key needed, timeout=5s)
+    try:
+        rss_articles = _fetch_google_news_rss(clean_brand)
+        if rss_articles:
+            _set_cached_news(brand_key, rss_articles)
+            return rss_articles
+    except Exception:
+        pass
+
+    # Tier 2: Try GNews API if key is available (timeout=5s)
+    try:
+        gnews_articles = _fetch_gnews(clean_brand)
+        if gnews_articles:
+            _set_cached_news(brand_key, gnews_articles)
+            return gnews_articles
+    except Exception:
+        pass
 
     # Tier 3: AI Corporate Transparency Fallback (Guaranteed to return insights even if firewalled)
-    ai_articles = _fetch_ai_transparency(clean_brand)
-    if ai_articles:
-        return ai_articles
+    try:
+        ai_articles = _fetch_ai_transparency(clean_brand)
+        if ai_articles:
+            _set_cached_news(brand_key, ai_articles)
+            return ai_articles
+    except Exception:
+        pass
 
+    _set_cached_news(brand_key, [])
     return []
 
 
@@ -58,7 +101,7 @@ def _fetch_google_news_rss(brand: str) -> list[dict] | None:
 
     try:
         req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=6) as response:
+        with urllib.request.urlopen(req, timeout=5) as response:
             xml_data = response.read()
 
         root = ET.fromstring(xml_data)
@@ -69,7 +112,7 @@ def _fetch_google_news_rss(brand: str) -> list[dict] | None:
             fallback_query = urllib.parse.quote(f'"{brand}" food India')
             fallback_url = f"https://news.google.com/rss/search?q={fallback_query}&hl=en-IN&gl=IN&ceid=IN:en"
             req_fb = urllib.request.Request(fallback_url, headers=headers)
-            with urllib.request.urlopen(req_fb, timeout=6) as fb_response:
+            with urllib.request.urlopen(req_fb, timeout=5) as fb_response:
                 root = ET.fromstring(fb_response.read())
             items = root.findall(".//item")
 
@@ -166,7 +209,7 @@ Return ONLY a valid JSON array of objects with exactly these keys:
 
 Do NOT wrap in markdown code blocks. Return raw JSON array only."""
 
-        text = generate_content_with_retry(prompt)
+        text = generate_content_with_retry(prompt, timeout=10)
         if text.startswith("```json"):
             text = text[7:]
         if text.startswith("```"):

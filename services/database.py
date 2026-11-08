@@ -109,6 +109,17 @@ class DatabaseConnection:
                     except Exception:
                         pass
                     conn = pool_inst.getconn()
+                # Pre-ping check: ensure socket is alive (prevents stale connection delay on Render/Aiven)
+                try:
+                    chk = conn.cursor()
+                    chk.execute("SELECT 1;")
+                    chk.close()
+                except Exception:
+                    try:
+                        pool_inst.putconn(conn, close=True)
+                    except Exception:
+                        pass
+                    conn = pool_inst.getconn()
                 self.conn = conn
                 self.is_pg = True
                 return self.conn, True
@@ -234,8 +245,12 @@ def init_db():
             """)
 
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_diet_plans_user ON diet_plans(user_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_diet_plans_created ON diet_plans(created_at);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_calorie_logs_user_date ON calorie_logs(user_id, log_date);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_calorie_logs_logged ON calorie_logs(logged_at);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_feedbacks_user ON feedbacks(user_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_feedbacks_created ON feedbacks(created_at);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_auth_created ON users_auth(created_at);")
 
         else:
             # SQLite Schema
@@ -314,6 +329,15 @@ def init_db():
                 cursor.execute("ALTER TABLE feedbacks ADD COLUMN is_hidden INTEGER DEFAULT 0;")
             except Exception:
                 pass
+
+            # SQLite indexes for high-frequency queries
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sqlite_diet_plans_user ON diet_plans(user_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sqlite_diet_plans_created ON diet_plans(created_at);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sqlite_calorie_logs_user_date ON calorie_logs(user_id, log_date);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sqlite_calorie_logs_logged ON calorie_logs(logged_at);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sqlite_feedbacks_user ON feedbacks(user_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sqlite_feedbacks_created ON feedbacks(created_at);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sqlite_users_auth_created ON users_auth(created_at);")
 
         # Ensure default developer account exists
         dev_pass = os.getenv("DEV_PASSWORD", "developer123")

@@ -1726,8 +1726,8 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             var finish = function (v) { if (!done) { done = true; resolve(v); } };
             setTimeout(function () { finish(f); }, 8000); /* never hang on a photo the browser can't decode */
             img.onload = function () {
-                var maxW = 1280;
-                var scale = Math.min(1, maxW / img.width, maxW / img.height);
+                var maxDim = 1200;
+                var scale = Math.min(1, maxDim / Math.max(img.width, img.height));
                 var c = document.createElement('canvas');
                 c.width = Math.round(img.width * scale);
                 c.height = Math.round(img.height * scale);
@@ -1763,8 +1763,8 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
     function snap() {
         var v = $('camera-video'), c = $('camera-canvas');
         if (!v.videoWidth) { toast('Camera is still starting, try again.'); return; }
-        var maxW = 1280;
-        var scale = Math.min(1, maxW / v.videoWidth, maxW / v.videoHeight);
+        var maxDim = 1200;
+        var scale = Math.min(1, maxDim / Math.max(v.videoWidth, v.videoHeight));
         c.width = Math.round(v.videoWidth * scale);
         c.height = Math.round(v.videoHeight * scale);
         var ctx = c.getContext('2d');

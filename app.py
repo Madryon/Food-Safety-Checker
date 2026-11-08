@@ -5,6 +5,7 @@ import uuid
 import shutil
 import json
 import time
+import threading
 from datetime import datetime, timedelta
 
 from flask import (
@@ -20,6 +21,8 @@ from flask import (
     make_response,
     send_from_directory,
 )
+from flask_compress import Compress
+from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -87,6 +90,7 @@ from services.diet_generator import generate_diet_plan, calculate_bmr_and_tdee, 
 load_dotenv()
 
 app = Flask(__name__)
+Compress(app)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5MB upload limit
 def _get_or_create_secret_key():
@@ -167,9 +171,9 @@ if db_url.startswith("postgresql://") or db_url.startswith("postgresql+"):
         app.config["SQLALCHEMY_DATABASE_URI"] = db_url
         app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
             "pool_pre_ping": True,
-            "pool_recycle": 280,
-            "pool_size": 3,
-            "max_overflow": 2,
+            "pool_recycle": 300,
+            "pool_size": 5,
+            "max_overflow": 5,
             "pool_timeout": 15,
         }
 
@@ -231,8 +235,33 @@ UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "upload
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
+
+# ── Thread-Safe In-Memory TTL Cache (60s TTL) & Concurrency Thread Pool ─────
+_CACHE_TTL = 60
+_cache_lock = threading.Lock()
 HEALTH_CACHE = {}
 NEWS_CACHE = {}
+
+
+def _cache_get(cache: dict, key: str):
+    entry = cache.get(key)
+    if entry and (time.monotonic() - entry[0]) < _CACHE_TTL:
+        return entry[1]
+    cache.pop(key, None)
+    return None
+
+
+def _cache_set(cache: dict, key: str, value):
+    with _cache_lock:
+        cache[key] = (time.monotonic(), value)
+        if len(cache) > 300:
+            oldest = sorted(cache, key=lambda k: cache[k][0])[:60]
+            for k in oldest:
+                cache.pop(k, None)
+
+
+# Thread pool for parallel external API operations (Open Food Facts, News, Health scoring)
+_io_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="fc_io")
 
 
 def allowed_file(filename: str) -> bool:
@@ -428,10 +457,30 @@ def analyze_vision():
         ingredients_text = vision_result.get("ingredients_text", "")
         nutrition_facts = vision_result.get("nutrition_facts")
 
-        # Open Food Facts lookup
+        # ── Parallel Network I/O via ThreadPoolExecutor ──────────────────────────
+        # 1. Fetch Open Food Facts in background
+        off_future = _io_pool.submit(search, product_name, brand)
+
+        # 2. Concurrently pre-fetch brand news so /news responds immediately
+        if brand and brand != "Unknown":
+            _io_pool.submit(get_news, brand)
+
+        # 3. Concurrently pre-warm health scoring cache so /analyze/health responds immediately
+        if ingredients_text or nutrition_facts:
+            _health_cache_key = f"{product_name.strip().lower()}:{ingredients_text.strip().lower()[:150]}"
+            def _prewarm_health():
+                try:
+                    h_res = analyze(ingredients_text, nutrition_facts, product_name)
+                    if h_res and h_res.get("score") is not None:
+                        _cache_set(HEALTH_CACHE, _health_cache_key, h_res)
+                except Exception:
+                    pass
+            _io_pool.submit(_prewarm_health)
+
+        # Await Open Food Facts with strict 5s timeout & graceful fallback
         off_match = None
         try:
-            off_match = search(product_name, brand)
+            off_match = off_future.result(timeout=5)
         except Exception as off_err:
             log_error("open_food_facts", str(off_err), path=request.path)
 
@@ -501,13 +550,14 @@ def analyze_health():
     scan_id = data.get("scan_id")
 
     cache_key = f"{product_name.strip().lower()}:{ingredients_text.strip().lower()[:150]}"
-    if cache_key in HEALTH_CACHE:
-        return jsonify(HEALTH_CACHE[cache_key])
+    cached_health = _cache_get(HEALTH_CACHE, cache_key)
+    if cached_health:
+        return jsonify(cached_health)
 
     try:
         health_result = analyze(ingredients_text, nutrition_facts, product_name)
         if health_result.get("score") is not None:
-            HEALTH_CACHE[cache_key] = health_result
+            _cache_set(HEALTH_CACHE, cache_key, health_result)
 
             # Update existing scan record if scan_id provided
             if scan_id:
@@ -552,14 +602,15 @@ def news_endpoint():
         return jsonify({"articles": []}), 200
 
     brand_key = brand.lower()
-    if brand_key in NEWS_CACHE:
-        return jsonify({"articles": NEWS_CACHE[brand_key]})
+    cached_news = _cache_get(NEWS_CACHE, brand_key)
+    if cached_news is not None:
+        return jsonify({"articles": cached_news})
 
     try:
         articles = get_news(brand)
         articles_list = articles or []
         if articles_list:
-            NEWS_CACHE[brand_key] = articles_list
+            _cache_set(NEWS_CACHE, brand_key, articles_list)
         log_activity(action="news_fetch", details={"brand": brand, "count": len(articles_list)})
         return jsonify({"articles": articles_list})
     except (requests.exceptions.Timeout, TimeoutError) as te:

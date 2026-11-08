@@ -2,11 +2,13 @@ import os
 import csv
 import io
 import json
+import time
 import collections
 from datetime import datetime, timedelta
 from flask import render_template, redirect, url_for, flash, request, session, abort, jsonify, Response
 from flask_login import login_user, logout_user, current_user
 from sqlalchemy import func, desc
+from sqlalchemy.orm import joinedload
 
 from extensions import db, limiter
 from models import (
@@ -491,103 +493,155 @@ def _render_standalone_compact_dashboard(users, recent_logins, total_users, tota
 
 # ── DASHBOARD & USER ANALYTICS ──────────────────────────────────────────────
 
+_DASHBOARD_KPI_CACHE = {}
+_DASHBOARD_KPI_TIMESTAMP = 0.0
+_DASHBOARD_KPI_TTL = 60.0  # 60-second in-memory caching for summary stats
+
+
 @admin_bp.route("/")
 @admin_bp.route("/dashboard")
 @admin_required
 def dashboard():
+    global _DASHBOARD_KPI_CACHE, _DASHBOARD_KPI_TIMESTAMP
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     five_min_ago = datetime.utcnow() - timedelta(minutes=5)
+    now_mono = time.monotonic()
 
-    # 1. KPI Counts (safe with fallback & rollback on error)
-    total_users = 0
-    new_users_today = 0
-    users_online_now = 0
-    total_scans = 0
-    scans_today = 0
-    diet_plans_count = 0
-    logins_today = 0
-    failed_logins_today = 0
+    # 1. KPI Counts — Check 60-second TTL cache first
+    cached_kpi = None
+    if (now_mono - _DASHBOARD_KPI_TIMESTAMP) < _DASHBOARD_KPI_TTL and _DASHBOARD_KPI_CACHE:
+        cached_kpi = _DASHBOARD_KPI_CACHE
+
+    if cached_kpi:
+        total_users = cached_kpi.get("total_users", 0)
+        new_users_today = cached_kpi.get("new_users_today", 0)
+        users_online_now = cached_kpi.get("users_online_now", 0)
+        total_scans = cached_kpi.get("total_scans", 0)
+        scans_today = cached_kpi.get("scans_today", 0)
+        diet_plans_count = cached_kpi.get("diet_plans_count", 0)
+        logins_today = cached_kpi.get("logins_today", 0)
+        failed_logins_today = cached_kpi.get("failed_logins_today", 0)
+        user_scan_counts = cached_kpi.get("user_scan_counts", {})
+        user_diet_counts = cached_kpi.get("user_diet_counts", {})
+        total_admin_keys = cached_kpi.get("total_admin_keys", 0)
+    else:
+        total_users = 0
+        new_users_today = 0
+        users_online_now = 0
+        total_scans = 0
+        scans_today = 0
+        diet_plans_count = 0
+        logins_today = 0
+        failed_logins_today = 0
+        user_scan_counts = {}
+        user_diet_counts = {}
+        total_admin_keys = 0
+
     users_data = []
-    user_scan_counts = {}
-    user_diet_counts = {}
     recent_logins_data = []
     has_master_key = bool(User.get_master_admin_password())
-    total_admin_keys = 0
     search_q = request.args.get("q", "").strip()
 
     try:
-        try:
-            total_users = User.query.count()
-            new_users_today = User.query.filter(User.created_at >= today_start).count()
-            users_online_now = User.query.filter(User.last_seen_at >= five_min_ago).count()
-        except Exception as e:
+        # Re-compute KPI stats only when cache has expired
+        if not cached_kpi:
             try:
-                db.session.rollback()
-            except Exception:
-                pass
-            print(f"[!] Dashboard user stats warning: {e}")
+                total_users = User.query.count()
+                new_users_today = User.query.filter(User.created_at >= today_start).count()
+                users_online_now = User.query.filter(User.last_seen_at >= five_min_ago).count()
+            except Exception as e:
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
+                print(f"[!] Dashboard user stats warning: {e}")
 
-        try:
-            total_scans = Scan.query.count()
-            scans_today = Scan.query.filter(Scan.created_at >= today_start).count()
-        except Exception as e:
             try:
-                db.session.rollback()
-            except Exception:
-                pass
-            print(f"[!] Dashboard scan stats warning: {e}")
+                total_scans = Scan.query.count()
+                scans_today = Scan.query.filter(Scan.created_at >= today_start).count()
+            except Exception as e:
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
+                print(f"[!] Dashboard scan stats warning: {e}")
 
-        try:
-            logins_today = LoginEvent.query.filter(
-                LoginEvent.created_at >= today_start,
-                LoginEvent.event_type.in_(["login", "admin_login"]),
-                LoginEvent.success == True,
-            ).count()
-            failed_logins_today = LoginEvent.query.filter(
-                LoginEvent.created_at >= today_start,
-                LoginEvent.event_type == "failed_login",
-            ).count()
-        except Exception as e:
             try:
-                db.session.rollback()
-            except Exception:
-                pass
-            print(f"[!] Dashboard login stats warning: {e}")
+                logins_today = LoginEvent.query.filter(
+                    LoginEvent.created_at >= today_start,
+                    LoginEvent.event_type.in_(["login", "admin_login"]),
+                    LoginEvent.success == True,
+                ).count()
+                failed_logins_today = LoginEvent.query.filter(
+                    LoginEvent.created_at >= today_start,
+                    LoginEvent.event_type == "failed_login",
+                ).count()
+            except Exception as e:
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
+                print(f"[!] Dashboard login stats warning: {e}")
 
-        try:
-            diet_plans_count = get_total_diet_plans_count()
-        except Exception as e:
-            print(f"[!] Dashboard diet stats warning: {e}")
-
-        # 3. Usage Counts Per User (Product scans & Diet plans)
-        try:
-            scan_counts_query = (
-                db.session.query(Scan.user_id, func.count(Scan.id))
-                .filter(Scan.user_id.isnot(None))
-                .group_by(Scan.user_id)
-                .all()
-            )
-            user_scan_counts = {uid: count for uid, count in scan_counts_query if uid}
-        except Exception as e:
             try:
-                db.session.rollback()
-            except Exception:
-                pass
-            print(f"[!] Scan counts per user warning: {e}")
+                diet_plans_count = get_total_diet_plans_count()
+            except Exception as e:
+                print(f"[!] Dashboard diet stats warning: {e}")
 
-        try:
-            with DatabaseConnection() as (conn, is_pg):
-                cursor = conn.cursor()
-                cursor.execute("SELECT user_id, COUNT(*) FROM diet_plans GROUP BY user_id;")
-                rows = cursor.fetchall()
-                cursor.close()
-                for r in rows:
-                    if r and r[0]:
-                        user_diet_counts[str(r[0]).strip().lower()] = r[1]
-        except Exception as e:
-            print(f"[!] Diet counts per user warning: {e}")
+            # 3. Usage Counts Per User (Product scans & Diet plans)
+            try:
+                scan_counts_query = (
+                    db.session.query(Scan.user_id, func.count(Scan.id))
+                    .filter(Scan.user_id.isnot(None))
+                    .group_by(Scan.user_id)
+                    .all()
+                )
+                user_scan_counts = {uid: count for uid, count in scan_counts_query if uid}
+            except Exception as e:
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
+                print(f"[!] Scan counts per user warning: {e}")
 
-        # 2. Users Listing & Search - converted to robust in-memory dicts with preformatted dates
+            try:
+                with DatabaseConnection() as (conn, is_pg):
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT user_id, COUNT(*) FROM diet_plans GROUP BY user_id;")
+                    rows = cursor.fetchall()
+                    cursor.close()
+                    for r in rows:
+                        if r and r[0]:
+                            user_diet_counts[str(r[0]).strip().lower()] = r[1]
+            except Exception as e:
+                print(f"[!] Diet counts per user warning: {e}")
+
+            try:
+                total_admin_keys = AdminInviteKey.query.filter_by(revoked=False).count()
+            except Exception as e:
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
+                print(f"[!] Admin keys count warning: {e}")
+
+            # Update KPI cache
+            _DASHBOARD_KPI_CACHE = {
+                "total_users": total_users,
+                "new_users_today": new_users_today,
+                "users_online_now": users_online_now,
+                "total_scans": total_scans,
+                "scans_today": scans_today,
+                "diet_plans_count": diet_plans_count,
+                "logins_today": logins_today,
+                "failed_logins_today": failed_logins_today,
+                "user_scan_counts": user_scan_counts,
+                "user_diet_counts": user_diet_counts,
+                "total_admin_keys": total_admin_keys,
+            }
+            _DASHBOARD_KPI_TIMESTAMP = now_mono
+
+        # 2. Users Listing & Search — Paginated / limited to 50 recent records to prevent loading heavy datasets
         try:
             user_query = User.query
             if search_q:
@@ -597,7 +651,7 @@ def dashboard():
                     | (User.name.ilike(like_pat))
                     | (User.email.ilike(like_pat))
                 )
-            raw_users = user_query.order_by(User.created_at.desc()).limit(100).all()
+            raw_users = user_query.order_by(User.created_at.desc()).limit(50).all()
             for u in raw_users:
                 uname_clean = str(u.username or "").strip().lower()
                 is_u_admin = bool(getattr(u, "is_admin", False) or getattr(u, "role", "") in ("admin", "developer"))
@@ -630,7 +684,7 @@ def dashboard():
             try:
                 with DatabaseConnection() as (conn, is_pg):
                     cursor = conn.cursor()
-                    cursor.execute("SELECT user_id, name, role, created_at FROM users_auth ORDER BY created_at DESC LIMIT 100;")
+                    cursor.execute("SELECT user_id, name, role, created_at FROM users_auth ORDER BY created_at DESC LIMIT 50;")
                     rows = cursor.fetchall()
                     cursor.close()
                     for r in rows:
@@ -655,10 +709,11 @@ def dashboard():
         if total_users == 0 and users_data:
             total_users = len(users_data)
 
-        # 4. Recent Logins - pre-extracting data to avoid any lazy-load DB operations during template render
+        # 4. Recent Logins — joinedload(LoginEvent.user) eliminates N+1 queries
         try:
             raw_logins = (
-                LoginEvent.query.order_by(LoginEvent.created_at.desc())
+                LoginEvent.query.options(joinedload(LoginEvent.user))
+                .order_by(LoginEvent.created_at.desc())
                 .limit(35)
                 .all()
             )
@@ -688,10 +743,6 @@ def dashboard():
                 pass
             print(f"[!] Recent logins warning: {e}")
             recent_logins_data = []
-
-        # 5. Admin Details & Master Key status
-        try:
-            total_admin_keys = AdminInviteKey.query.filter_by(revoked=False).count()
         except Exception as e:
             try:
                 db.session.rollback()
@@ -761,20 +812,28 @@ def feed_page():
 @admin_bp.route("/api/feed")
 @admin_required
 def api_feed():
-    """Return the latest 50 activities and login events for auto-refresh."""
-    activities = ActivityLog.query.order_by(ActivityLog.created_at.desc()).limit(50).all()
+    """Return the latest 50 activities and login events for auto-refresh without N+1 queries."""
+    activities = (
+        ActivityLog.query.options(joinedload(ActivityLog.user))
+        .order_by(ActivityLog.created_at.desc())
+        .limit(50)
+        .all()
+    )
 
     feed_items = []
+    seen_ips = {}
     for a in activities:
         suspicious = False
         if a.user_id and a.action in ("user_login", "admin_login") and a.ip_address:
-            # Check if this IP is unseen
-            prev_count = LoginEvent.query.filter(
-                LoginEvent.user_id == a.user_id,
-                LoginEvent.ip_address == a.ip_address,
-                LoginEvent.success == True
-            ).count()
-            suspicious = (prev_count <= 1)
+            ip_key = (a.user_id, a.ip_address)
+            if ip_key not in seen_ips:
+                prev_count = LoginEvent.query.filter(
+                    LoginEvent.user_id == a.user_id,
+                    LoginEvent.ip_address == a.ip_address,
+                    LoginEvent.success == True
+                ).count()
+                seen_ips[ip_key] = (prev_count <= 1)
+            suspicious = seen_ips[ip_key]
 
         feed_items.append({
             "id": a.id,
@@ -933,7 +992,7 @@ def scans_list():
     success_filter = request.args.get("success", "").strip()
     username = request.args.get("username", "").strip()
 
-    query = Scan.query
+    query = Scan.query.options(joinedload(Scan.user))
 
     if verdict:
         query = query.filter(Scan.health_verdict == verdict)
@@ -972,7 +1031,7 @@ def logins_history():
     username = request.args.get("username", "").strip()
     success_val = request.args.get("success", "").strip()
 
-    query = LoginEvent.query
+    query = LoginEvent.query.options(joinedload(LoginEvent.user))
 
     if event_type:
         query = query.filter(LoginEvent.event_type == event_type)
@@ -1003,7 +1062,7 @@ def logins_history():
 def active_sessions():
     now_minus_30m = datetime.utcnow() - timedelta(minutes=30)
     sessions = (
-        UserSession.query
+        UserSession.query.options(joinedload(UserSession.user))
         .filter(UserSession.revoked == False, UserSession.last_seen_at >= now_minus_30m)
         .order_by(UserSession.last_seen_at.desc())
         .all()
@@ -1096,7 +1155,11 @@ def system_health():
 @admin_required
 def audit_log():
     page = request.args.get("page", 1, type=int)
-    logs = AdminAuditLog.query.order_by(AdminAuditLog.created_at.desc()).paginate(page=page, per_page=30, error_out=False)
+    logs = (
+        AdminAuditLog.query.options(joinedload(AdminAuditLog.admin), joinedload(AdminAuditLog.target_user))
+        .order_by(AdminAuditLog.created_at.desc())
+        .paginate(page=page, per_page=30, error_out=False)
+    )
     return render_template("admin/audit.html", logs=logs)
 
 
@@ -1127,7 +1190,7 @@ def export_data():
 
         elif dataset == "scans":
             writer.writerow(["ID", "User ID", "Product Name", "Brand", "Verdict", "Score", "Source", "Gemini Used", "Success", "Response Time (ms)", "Created At"])
-            query = Scan.query
+            query = Scan.query.options(joinedload(Scan.user))
             if date_from_str:
                 query = query.filter(Scan.created_at >= date_from_str)
             if date_to_str:
@@ -1138,7 +1201,7 @@ def export_data():
 
         elif dataset == "login_events":
             writer.writerow(["ID", "User ID", "Attempted", "Event Type", "IP Address", "User Agent", "Success", "Created At"])
-            query = LoginEvent.query
+            query = LoginEvent.query.options(joinedload(LoginEvent.user))
             if date_from_str:
                 query = query.filter(LoginEvent.created_at >= date_from_str)
             if date_to_str:
