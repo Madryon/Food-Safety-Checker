@@ -127,8 +127,14 @@ class DatabaseConnection:
                 logger.warning(f"PostgreSQL connection acquisition failed ({e}). Falling back to SQLite.")
                 self.is_pg = False
 
-        # SQLite fallback with concurrency-safe timeout
+        # SQLite fallback with concurrency-safe timeout and WAL mode
         self.conn = sqlite3.connect(SQLITE_DB_PATH, timeout=20.0)
+        try:
+            self.conn.execute("PRAGMA journal_mode=WAL;")
+            self.conn.execute("PRAGMA synchronous=NORMAL;")
+            self.conn.execute("PRAGMA busy_timeout=5000;")
+        except Exception:
+            pass
         self.conn.row_factory = sqlite3.Row
         self.is_pg = False
         return self.conn, False

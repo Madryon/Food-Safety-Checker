@@ -6,7 +6,11 @@ import shutil
 import json
 import time
 import threading
+import sqlite3
 from datetime import datetime, timedelta
+
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
 
 from flask import (
     Flask,
@@ -198,6 +202,21 @@ app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
 
 # ── INITIALIZE EXTENSIONS ──────────────────────────────────────────────────
 db.init_app(app)
+# Configure SQLite WAL mode, normal synchronous, and busy timeout on connection
+@event.listens_for(Engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    if isinstance(dbapi_connection, sqlite3.Connection):
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA journal_mode=WAL;")
+            cursor.execute("PRAGMA synchronous=NORMAL;")
+            cursor.execute("PRAGMA busy_timeout=5000;")
+        except Exception:
+            pass
+        finally:
+            cursor.close()
+
+
 migrate.init_app(app, db)
 login_manager.init_app(app)
 
@@ -275,7 +294,7 @@ _maint_cache = {"val": False, "ts": 0}
 @app.route("/healthz", methods=["GET"])
 def healthz():
     """Ultra-lightweight ping endpoint for Render health checks without database overhead."""
-    return "ok", 200
+    return jsonify({"status": "ok"}), 200
 
 def _run_daily_purge_if_needed():
     global _last_auto_purge_time
@@ -283,16 +302,24 @@ def _run_daily_purge_if_needed():
     if now - _last_auto_purge_time < 86400:
         return
     _last_auto_purge_time = now
-    try:
-        cutoff = datetime.utcnow() - timedelta(days=90)
-        ActivityLog.query.filter(ActivityLog.created_at < cutoff).delete()
-        LoginEvent.query.filter(LoginEvent.created_at < cutoff).delete()
-        ErrorLog.query.filter(ErrorLog.created_at < cutoff).delete()
-        from models import AdminAuditLog
-        AdminAuditLog.query.filter(AdminAuditLog.created_at < cutoff).delete()
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
+
+    def _do_purge(app_obj):
+        with app_obj.app_context():
+            try:
+                cutoff = datetime.utcnow() - timedelta(days=90)
+                ActivityLog.query.filter(ActivityLog.created_at < cutoff).delete()
+                LoginEvent.query.filter(LoginEvent.created_at < cutoff).delete()
+                ErrorLog.query.filter(ErrorLog.created_at < cutoff).delete()
+                from models import AdminAuditLog
+                AdminAuditLog.query.filter(AdminAuditLog.created_at < cutoff).delete()
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+
+    if app.config.get("TESTING"):
+        _do_purge(app)
+    else:
+        _io_pool.submit(_do_purge, app._get_current_object())
 
 @app.before_request
 def check_maintenance_and_session():
@@ -448,6 +475,7 @@ def analyze_vision():
                 image_mime_type=image_mime,
                 success=False,
                 error_message=vision_result["error"],
+                sync=False,
             )
             log_error("gemini", vision_result["error"], path=request.path)
             return jsonify({"error": vision_result["error"]}), 422

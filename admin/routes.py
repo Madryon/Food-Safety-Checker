@@ -498,6 +498,13 @@ _DASHBOARD_KPI_TIMESTAMP = 0.0
 _DASHBOARD_KPI_TTL = 60.0  # 60-second in-memory caching for summary stats
 
 
+def invalidate_dashboard_kpi_cache():
+    """Invalidate the Admin Dashboard KPI cache on write / admin actions."""
+    global _DASHBOARD_KPI_TIMESTAMP
+    _DASHBOARD_KPI_TIMESTAMP = 0.0
+
+
+
 @admin_bp.route("/")
 @admin_bp.route("/dashboard")
 @admin_required
@@ -743,12 +750,6 @@ def dashboard():
                 pass
             print(f"[!] Recent logins warning: {e}")
             recent_logins_data = []
-        except Exception as e:
-            try:
-                db.session.rollback()
-            except Exception:
-                pass
-            print(f"[!] Admin keys count warning: {e}")
 
         return render_template(
             "admin/dashboard.html",
@@ -976,8 +977,10 @@ def user_action(user_id):
         db.session.commit()
         log_admin_audit(current_user.id, "delete_user", details=f"Permanently deleted user '{username}' (ID {user_id}) and private diet records")
         flash(f"User '{username}' and all associated data were permanently deleted.", "info")
+        invalidate_dashboard_kpi_cache()
         return redirect(url_for("admin.users_list"))
 
+    invalidate_dashboard_kpi_cache()
     return redirect(back_url)
 
 
@@ -1102,6 +1105,7 @@ def revoke_key(key_id):
     key.revoked = True
     db.session.commit()
     log_admin_audit(current_user.id, "revoke_admin_key", details=f"Revoked invite key #{key.id}")
+    invalidate_dashboard_kpi_cache()
     flash(f"Admin Invite Key #{key_id} has been revoked.", "warning")
     return redirect(url_for("admin.keys_page"))
 
