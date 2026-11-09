@@ -8,11 +8,104 @@ and guaranteeing instant (<5ms), medically accurate FSSAI safety reports even wh
 import re
 from typing import Dict, Any, Optional, List
 
+
+def normalize_food_terms(text: str) -> str:
+    """
+    Phonetic and typo-tolerant query normalizer for Indian & FMCG foods.
+    Corrects common spelling mistakes (e.g. 'panner' -> 'paneer', 'choclate' -> 'chocolate',
+    'nodles' -> 'noodles', 'biskit' -> 'biscuit') and brand typos/spacing.
+    """
+    if not text:
+        return ""
+    t = text.lower().strip()
+    patterns = [
+        # Paneer variations & typos
+        (r'\b(panner|paner|panneer|panir|ponir|paneeer)\b', 'paneer'),
+        # Dairy brand variations
+        (r'\bmotherdairy\b', 'mother dairy'),
+        (r'\bmother\s+dary\b', 'mother dairy'),
+        (r'\bmother\s+diery\b', 'mother dairy'),
+        (r'\bmilkymist\b', 'milky mist'),
+        (r'\bmilky\s+misst\b', 'milky mist'),
+        # Sodas & beverages
+        (r'\bcocacola\b', 'coca cola'),
+        (r'\bcoca\s*coala\b', 'coca cola'),
+        (r'\bcok\b', 'coke'),
+        (r'\bpepci\b', 'pepsi'),
+        (r'\bpepsico\b', 'pepsi'),
+        (r'\bthumbs\s*up\b', 'thums up'),
+        (r'\bthump\s*up\b', 'thums up'),
+        # Noodles & pasta
+        (r'\bmaggie\b', 'maggi'),
+        (r'\bmeggi\b', 'maggi'),
+        (r'\bnodles\b', 'noodles'),
+        (r'\bnodle\b', 'noodles'),
+        (r'\bnudles\b', 'noodles'),
+        (r'\bnudle\b', 'noodles'),
+        (r'\bspageti\b', 'spaghetti'),
+        # Bakery & biscuits
+        (r'\bbiskit\b', 'biscuit'),
+        (r'\bbiscit\b', 'biscuit'),
+        (r'\bbiskut\b', 'biscuit'),
+        (r'\bbicuit\b', 'biscuit'),
+        (r'\bcooky\b', 'cookie'),
+        # Chocolates & confectionery
+        (r'\bchoclate\b', 'chocolate'),
+        (r'\bchoclet\b', 'chocolate'),
+        (r'\bchocalate\b', 'chocolate'),
+        (r'\bchocklate\b', 'chocolate'),
+        (r'\bcadbury\'?s\b', 'cadbury'),
+        # Snacks & namkeen
+        (r'\bkurkura\b', 'kurkure'),
+        (r'\blays\b', "lay's"),
+        (r'\bhaldiraam\b', 'haldiram'),
+        (r'\bhaldirams\b', 'haldiram'),
+        (r'\bmakhan\b', 'butter'),
+        (r'\bmakkhan\b', 'butter'),
+        (r'\bdaahi\b', 'dahi'),
+        (r'\byoghurt\b', 'yogurt'),
+    ]
+    for pat, rep in patterns:
+        t = re.sub(pat, rep, t, flags=re.IGNORECASE)
+    return t
+
+
+def correct_food_title(title: str) -> str:
+    """Format and fix typos in product display titles so users see clean, proper names."""
+    if not title:
+        return ""
+    t = title
+    replacements = [
+        (r'(?i)\b(panner|paner|panneer|panir|ponir|paneeer)\b', 'Paneer'),
+        (r'(?i)\bmother\s*dary\b', 'Mother Dairy'),
+        (r'(?i)\bmotherdairy\b', 'Mother Dairy'),
+        (r'(?i)\bcocacola\b', 'Coca-Cola'),
+        (r'(?i)\bcok\b', 'Coke'),
+        (r'(?i)\bmaggie\b', 'Maggi'),
+        (r'(?i)\bmeggi\b', 'Maggi'),
+        (r'(?i)\b(biskit|biscit|biskut|bicuit)\b', 'Biscuit'),
+        (r'(?i)\b(choclate|choclet|chocalate|chocklate)\b', 'Chocolate'),
+        (r'(?i)\b(nodles|nodle|nudles|nudle)\b', 'Noodles'),
+        (r'(?i)\bpepci\b', 'Pepsi'),
+        (r'(?i)\bkurkura\b', 'Kurkure'),
+        (r'(?i)\b(haldiraam|haldirams)\b', "Haldiram's"),
+        (r'(?i)\b(makhan|makkhan)\b', 'Butter'),
+        (r'(?i)\bdaahi\b', 'Dahi'),
+        (r'(?i)\byoghurt\b', 'Yogurt'),
+    ]
+    for pat, rep in replacements:
+        t = re.sub(pat, rep, t)
+    return t
+
 # ── 1. Curated Food Knowledge Base ───────────────────────────────────────────
 FOOD_KNOWLEDGE_CATALOG: List[Dict[str, Any]] = [
     # ── Dairy: Paneer & Milk & Butter ──
     {
-        "keywords": ["mother dairy paneer", "mother dairy fresh paneer", "mother dairy classic paneer", "mother dairy malai paneer"],
+        "keywords": [
+            "mother dairy paneer", "mother dairy fresh paneer", "mother dairy classic paneer", "mother dairy malai paneer",
+            "mother dairy panner", "mother dairy paner", "mother dairy panneer", "mother dairy panir", "mother dairy ponir",
+            "motherdairy paneer", "motherdairy panner", "mother dairy paneer 200g"
+        ],
         "product_name": "Mother Dairy Classic Paneer",
         "brand": "Mother Dairy",
         "category": "Dairy & Cottage Cheese",
@@ -44,7 +137,10 @@ FOOD_KNOWLEDGE_CATALOG: List[Dict[str, Any]] = [
         "image_url": ""
     },
     {
-        "keywords": ["amul paneer", "amul fresh paneer", "amul malai paneer"],
+        "keywords": [
+            "amul paneer", "amul fresh paneer", "amul malai paneer",
+            "amul panner", "amul paner", "amul panneer", "amul panir"
+        ],
         "product_name": "Amul Fresh Malai Paneer",
         "brand": "Amul",
         "category": "Dairy & Cottage Cheese",
@@ -76,7 +172,10 @@ FOOD_KNOWLEDGE_CATALOG: List[Dict[str, Any]] = [
         "image_url": ""
     },
     {
-        "keywords": ["paneer", "cottage cheese", "fresh paneer", "malai paneer", "raw paneer", "desi paneer"],
+        "keywords": [
+            "paneer", "cottage cheese", "fresh paneer", "malai paneer", "raw paneer", "desi paneer",
+            "panner", "paner", "panneer", "panir", "ponir", "fresh panner", "malai panner", "raw panner"
+        ],
         "product_name": "Fresh Dairy Paneer (Cottage Cheese)",
         "brand": "Fresh Dairy",
         "category": "Dairy & Cottage Cheese",
@@ -539,10 +638,13 @@ FOOD_KNOWLEDGE_CATALOG: List[Dict[str, Any]] = [
 # ── 2. Smart Search Query Matcher ────────────────────────────────────────────
 def find_in_knowledge_base(query: str, brand: str = "", food: str = "") -> Optional[Dict[str, Any]]:
     """
-    Search the curated food knowledge base with multi-token semantic matching.
+    Search the curated food knowledge base with multi-token semantic matching and typo tolerance.
     Guarantees 100% accurate results for common foods (e.g. Mother Dairy Paneer, Diet Coke, Maggi).
     """
-    normalized = f"{brand} {food} {query}".lower().strip()
+    norm_q = normalize_food_terms(query)
+    norm_b = normalize_food_terms(brand)
+    norm_f = normalize_food_terms(food)
+    normalized = f"{norm_b} {norm_f} {norm_q}".lower().strip()
     norm_tokens = set(re.findall(r'[a-z0-9]+', normalized))
 
     best_match = None
@@ -550,12 +652,12 @@ def find_in_knowledge_base(query: str, brand: str = "", food: str = "") -> Optio
 
     for item in FOOD_KNOWLEDGE_CATALOG:
         for kw in item["keywords"]:
-            kw_low = kw.lower()
-            kw_tokens = set(re.findall(r'[a-z0-9]+', kw_low))
+            kw_norm = normalize_food_terms(kw).lower()
+            kw_tokens = set(re.findall(r'[a-z0-9]+', kw_norm))
 
             # Exact substring match
-            if kw_low in normalized:
-                score = len(kw_low) * 10
+            if kw_norm in normalized or kw.lower() in normalized:
+                score = max(len(kw_norm), len(kw)) * 10
                 if score > best_score:
                     best_score = score
                     best_match = item
@@ -581,17 +683,21 @@ def synthesize_food_profile(query: str, brand: str = "", variant: str = "") -> D
     when a product is not in the curated knowledge base.
     Prevents absurd fallbacks (like 55 calories for Paneer, or fruit juice for Diet Coke).
     """
-    q_low = f"{brand} {variant} {query}".lower()
+    norm_q = normalize_food_terms(query)
+    norm_b = normalize_food_terms(brand)
+    norm_v = normalize_food_terms(variant)
+    q_low = f"{norm_b} {norm_v} {norm_q}".lower()
+
     clean_brand = brand if brand and brand.lower() not in ("not sure", "any", "unknown", "generic") else ""
     if not clean_brand:
         # Detect brand from query
         for b_name in ["Mother Dairy", "Amul", "Britannia", "Nestle", "Parle", "Cadbury", "PepsiCo", "Coca-Cola", "ITC", "Haldiram's", "Tata", "Dabur", "Marico", "KMF Nandini", "Milky Mist", "Patanjali"]:
-            if b_name.lower() in q_low:
+            if b_name.lower() in q_low or normalize_food_terms(b_name).lower() in q_low:
                 clean_brand = b_name
                 break
 
     display_brand = clean_brand or "Commercial Food"
-    prod_title = query.title()
+    prod_title = correct_food_title(query.title())
     if clean_brand and clean_brand.lower() not in prod_title.lower():
         prod_title = f"{clean_brand} {prod_title}".strip()
 
@@ -624,8 +730,9 @@ def synthesize_food_profile(query: str, brand: str = "", variant: str = "") -> D
         }
 
     # Rule 2: Paneer / Cottage Cheese / Chenna / Tofu
-    if any(k in q_low for k in ["paneer", "cottage cheese", "chenna", "tofu"]):
+    if any(k in q_low for k in ["paneer", "panner", "paner", "panneer", "panir", "ponir", "paneeer", "cottage cheese", "chenna", "chhena", "tofu"]):
         is_tofu = "tofu" in q_low
+        prod_title = correct_food_title(prod_title)
         ing = "Water, Non-GMO Soya Beans, Coagulant (Magnesium Chloride / Calcium Sulphate)." if is_tofu else "Pasteurised Milk, Acidity Regulator (Citric Acid / INS 330 / Lactic Acid)."
         nutr = {"energy_kcal": 140, "protein_g": 15.0, "total_fat_g": 8.0, "saturated_fat_g": 1.2, "trans_fat_g": 0.0, "carbohydrates_g": 2.0, "total_sugar_g": 0.5, "sodium_mg": 15, "fiber_g": 1.5} if is_tofu else {"energy_kcal": 289, "protein_g": 18.3, "total_fat_g": 23.5, "saturated_fat_g": 15.0, "trans_fat_g": 0.8, "carbohydrates_g": 2.8, "total_sugar_g": 2.2, "sodium_mg": 28, "fiber_g": 0.0}
         return {
@@ -638,7 +745,7 @@ def synthesize_food_profile(query: str, brand: str = "", variant: str = "") -> D
             "verdict": "safe",
             "reasoning": f"{prod_title} scored {'92' if is_tofu else '90'}/100 (SAFE). Excellent whole food protein source with zero added sugars, refined palm oil, or chemical preservatives.",
             "flags": [],
-            "pros": ["High biological protein density", "Rich in minerals (calcium and phosphorus)", "Zero added sugars or refined starches"],
+            "pros": ["High biological protein density (18.3g/100g)" if not is_tofu else "Complete plant protein", "Rich in minerals (calcium and phosphorus)", "Zero added sugars or refined starches"],
             "cons": ["Calorie-dense milk fats" if not is_tofu else "Soy allergen"],
             "alternatives": [
                 {"name": "Low Fat Dairy Paneer", "category": "Lean Dairy", "why_better": "Provides 20g+ protein with reduced fat content."},
@@ -831,6 +938,31 @@ def synthesize_food_profile(query: str, brand: str = "", variant: str = "") -> D
             "allergens": [],
             "claims": ["100% Vegetarian"],
             "fssai_notes": "Meets FSSAI standards for fried extruded snacks.",
+            "image_url": "",
+            "data_source": "FoodCheck AI Knowledge Engine"
+        }
+
+    # Safeguard for any unclassified dairy / milk / paneer product
+    if any(k in q_low for k in ["milk", "dairy", "paneer", "panner", "paner", "panneer", "cheese", "curd", "dahi", "cream", "makkhan"]):
+        return {
+            "product_name": correct_food_title(prod_title),
+            "brand": display_brand or "Fresh Dairy",
+            "category": "Dairy & Milk Products",
+            "ingredients_text": "Pasteurised Milk, Acidity Regulator (Citric Acid) / Active Lactic Cultures.",
+            "nutrition_facts": {"energy_kcal": 280, "protein_g": 18.0, "total_fat_g": 22.0, "saturated_fat_g": 14.0, "trans_fat_g": 0.7, "carbohydrates_g": 2.8, "total_sugar_g": 2.2, "sodium_mg": 30, "fiber_g": 0.0},
+            "score": 90,
+            "verdict": "safe",
+            "reasoning": f"{prod_title} scored 90/100 (SAFE). Wholesome dairy staple rich in bio-available protein and calcium with no added sugars or vegetable oils.",
+            "flags": [],
+            "pros": ["High bio-available dairy protein (18g/100g)", "No added preservatives, synthetic colours, or vegetable oil fats", "Rich in calcium and phosphorus"],
+            "cons": ["Contains natural milk fat; portion control recommended for calorie-conscious diets"],
+            "alternatives": [
+                {"name": "Low Fat Dairy Alternative", "category": "Lean Dairy", "why_better": "Provides high protein with lower saturated fat."},
+                {"name": "Organic Fresh Soya Tofu", "category": "Plant-Based", "why_better": "Zero cholesterol with comparable protein density."}
+            ],
+            "allergens": ["Milk"],
+            "claims": ["100% Vegetarian", "Rich in Milk Protein", "Pasteurised"],
+            "fssai_notes": "Meets FSSAI standards for thermal and acid coagulated dairy products.",
             "image_url": "",
             "data_source": "FoodCheck AI Knowledge Engine"
         }

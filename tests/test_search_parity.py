@@ -24,6 +24,25 @@ class TestSearchParity(unittest.TestCase):
         nutr = data.get("nutrition_facts") or {}
         self.assertGreaterEqual(nutr.get("protein_g", 0), 15.0)
 
+    def test_mother_dairy_panner_typo_resilience(self):
+        # Typo with double 'n' ('Mother Dairy Panner') MUST resolve to authentic Paneer (not generic 9g protein / 50g carbs)
+        resp = self.client.post("/api/search-food", json={"query": "Mother Dairy Panner"})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertIn("Mother Dairy", data["product_name"])
+        self.assertIn("Paneer", data["product_name"])
+        self.assertNotIn("Panner", data["product_name"])
+        self.assertEqual(data["brand"], "Mother Dairy")
+        self.assertGreaterEqual(data["score"], 85)
+        self.assertEqual(data["verdict"], "safe")
+        nutr = data.get("nutrition_facts") or {}
+        self.assertGreaterEqual(nutr.get("protein_g", 0), 18.0)
+        self.assertLessEqual(nutr.get("carbohydrates_g", 999), 5.0)
+        # Verify NO vegetable oil or generic fallback ingredients
+        ing_text = data.get("ingredients_text", "")
+        self.assertNotIn("Vegetable Oil", ing_text)
+        self.assertIn("Milk", ing_text)
+
     def test_diet_coke_no_crash(self):
         resp = self.client.post("/api/search-food", json={"query": "Diet Coke"})
         self.assertEqual(resp.status_code, 200)

@@ -764,10 +764,16 @@ def get_search_report(food: str = "", brand: str = "", variant: str = "", query:
     """
     from concurrent.futures import ThreadPoolExecutor
     from services.ai_provider import find_food_product_ai
+    from services.food_knowledge import (
+        find_in_knowledge_base,
+        synthesize_food_profile,
+        normalize_food_terms,
+        correct_food_title,
+    )
 
-    # Harmonize parameters
-    clean_query = (query or "").strip()
-    clean_food = (food or "").strip()
+    # Harmonize and normalize parameters
+    clean_query = normalize_food_terms((query or "").strip())
+    clean_food = normalize_food_terms((food or "").strip())
     clean_brand = (brand or "").strip()
     clean_variant = (variant or "").strip()
 
@@ -784,6 +790,9 @@ def get_search_report(food: str = "", brand: str = "", variant: str = "", query:
         q_low = clean_query.lower()
         BRAND_ALIASES = [
             ("mother dairy", "Mother Dairy"),
+            ("motherdairy", "Mother Dairy"),
+            ("mother dary", "Mother Dairy"),
+            ("mother diery", "Mother Dairy"),
             ("amul", "Amul"),
             ("diet coke", "Coca-Cola"),
             ("coke zero", "Coca-Cola"),
@@ -824,8 +833,6 @@ def get_search_report(food: str = "", brand: str = "", variant: str = "", query:
     search_term = clean_query or f"{actual_search_brand} {clean_variant or clean_food}".strip()
 
     # ── Step 0: Fast Ground-Truth Knowledge Base Match (0ms, 100% Precision) ──
-    from services.food_knowledge import find_in_knowledge_base, synthesize_food_profile
-
     kb_match = find_in_knowledge_base(clean_query, actual_search_brand, clean_food)
     if kb_match:
         logger.info(f"✨ Found instant knowledge base match: {kb_match['product_name']}")
@@ -1003,6 +1010,8 @@ def get_search_report(food: str = "", brand: str = "", variant: str = "", query:
         detected_labels = synth.get("claims", [])
         image_url = ""
         data_source = synth.get("data_source", "FoodCheck AI Knowledge Engine")
+
+    product_name = correct_food_title(product_name)
 
     # ── Step 3: DIET LABELS VALIDATION ───────────────────────────────────────
     diet_validations = validate_diet_labels(

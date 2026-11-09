@@ -646,6 +646,41 @@ def _generate_generic_food_profile(food: str, brand: str = "", variant: str = ""
             "claims": ["100% Vegetarian"],
             "data_source": "FoodCheck AI Knowledge Engine"
         }
+    elif any(k in f_lower for k in ["paneer", "panner", "paner", "panneer", "cottage cheese", "chenna", "tofu"]):
+        is_tofu = "tofu" in f_lower
+        clean_title = re.sub(r'(?i)\b(panner|paner|panneer|panir)\b', 'Paneer', product_name)
+        return {
+            "product_name": clean_title,
+            "brand": clean_brand if clean_brand != "Fresh" else ("Plant Protein" if is_tofu else "Fresh Dairy"),
+            "category": "Plant-Based Protein" if is_tofu else "Dairy & Cottage Cheese",
+            "ingredients_text": "Water, Non-GMO Soya Beans, Coagulant (Magnesium Chloride / Calcium Sulphate)." if is_tofu else "Pasteurised Milk, Acidity Regulator (Citric Acid / INS 330 / Lactic Acid).",
+            "nutrition_facts": {"energy_kcal": 140, "protein_g": 15.0, "total_fat_g": 8.0, "saturated_fat_g": 1.2, "trans_fat_g": 0.0, "carbohydrates_g": 2.0, "total_sugar_g": 0.5, "sodium_mg": 15, "fiber_g": 1.5} if is_tofu else {"energy_kcal": 289, "protein_g": 18.3, "total_fat_g": 23.5, "saturated_fat_g": 15.0, "trans_fat_g": 0.8, "carbohydrates_g": 2.8, "total_sugar_g": 2.2, "sodium_mg": 28, "fiber_g": 0.0},
+            "allergens": ["Soy"] if is_tofu else ["Milk"],
+            "claims": ["100% Vegetarian", "Rich in Protein"],
+            "data_source": "FoodCheck AI Knowledge Engine"
+        }
+    elif re.search(r'\b(butter|ghee|makhan)\b', f_lower) and not re.search(r'\b(makhana|peanut butter|almond butter)\b', f_lower):
+        return {
+            "product_name": product_name,
+            "brand": clean_brand if clean_brand != "Fresh" else "Dairy",
+            "category": "Dairy & Spreads",
+            "ingredients_text": "Pasteurised Butter (Milk Fat 80%), Common Salt, Moisture.",
+            "nutrition_facts": {"energy_kcal": 720, "protein_g": 0.7, "total_fat_g": 80.0, "saturated_fat_g": 51.0, "trans_fat_g": 3.2, "carbohydrates_g": 0.0, "total_sugar_g": 0.0, "sodium_mg": 820, "fiber_g": 0.0},
+            "allergens": ["Milk"],
+            "claims": ["100% Vegetarian"],
+            "data_source": "FoodCheck AI Knowledge Engine"
+        }
+    elif any(k in f_lower for k in ["milk", "dahi", "curd", "yogurt", "lassi", "chaach", "buttermilk"]):
+        return {
+            "product_name": product_name,
+            "brand": clean_brand if clean_brand != "Fresh" else "Dairy",
+            "category": "Dairy & Beverages",
+            "ingredients_text": "Pasteurised Milk, Active Lactic Cultures.",
+            "nutrition_facts": {"energy_kcal": 65, "protein_g": 3.4, "total_fat_g": 3.5, "saturated_fat_g": 2.2, "trans_fat_g": 0.0, "carbohydrates_g": 4.8, "total_sugar_g": 4.8, "sodium_mg": 50, "fiber_g": 0.0},
+            "allergens": ["Milk"],
+            "claims": ["100% Vegetarian", "Active Cultures"],
+            "data_source": "FoodCheck AI Knowledge Engine"
+        }
     else:
         # Default wholesome food template
         return {

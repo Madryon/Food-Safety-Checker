@@ -58,13 +58,15 @@ def is_relevant_off_product(product: Dict[str, Any], search_query: str, search_b
     if not p_name or len(p_name) < 2:
         return False
 
-    q_low = (search_query or "").lower().strip()
-    b_low = (search_brand or "").lower().strip()
+    from services.food_knowledge import normalize_food_terms
+
+    q_low = normalize_food_terms(search_query or "").lower().strip()
+    b_low = normalize_food_terms(search_brand or "").lower().strip()
 
     # ── 1. Food Type Integrity Guardrails ────────────────────────────────────
     # If the user searched for 'paneer', candidate MUST contain 'paneer' or 'cottage cheese'
-    if "paneer" in q_low:
-        if "paneer" not in p_name and "cottage cheese" not in p_name:
+    if any(p in q_low for p in ["paneer", "panner", "paner", "panneer", "panir"]):
+        if "paneer" not in p_name and "cottage cheese" not in p_name and "chenna" not in p_name:
             return False
 
     # If the user searched for 'coke' or 'cola', candidate MUST contain 'coke' or 'cola'
