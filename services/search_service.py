@@ -764,19 +764,40 @@ def _score_food_rule_based(
 
 # ── FULL SEARCH REPORT ───────────────────────────────────────────────────────
 
-def get_search_report(food: str, brand: str, variant: str) -> Dict[str, Any]:
+def get_search_report(food: str = "", brand: str = "", variant: str = "", query: str = "") -> Dict[str, Any]:
     """
     Build a comprehensive food safety report from text search.
-    Guarantees complete JSON response with both flat keys and nested keys.
+    Accepts EITHER free-form query (e.g. 'Maggi 2-Minute Noodles', 'Britannia Good Day')
+    OR structured (food, brand, variant).
+    Guarantees complete JSON response with both flat keys and nested {vision, health, news} keys.
     """
     from concurrent.futures import ThreadPoolExecutor
-
-    # Clean brand / food strings
-    brand_is_generic = (not brand or brand.lower() in ("not sure", "any", "unknown", "generic", "not specified", "none", "n/a"))
-    actual_search_brand = "" if brand_is_generic else brand
-    display_brand = "Generic / Assorted" if brand_is_generic else brand
-
     from services.ai_provider import find_food_product_ai
+
+    # Harmonize parameters
+    clean_query = (query or "").strip()
+    clean_food = (food or "").strip()
+    clean_brand = (brand or "").strip()
+    clean_variant = (variant or "").strip()
+
+    if not clean_food and clean_query:
+        clean_food = clean_query
+    if not clean_query and clean_food:
+        clean_query = f"{clean_brand} {clean_variant or clean_food}".strip()
+
+    # Detect known brand if brand is not specified or generic
+    brand_is_generic = (not clean_brand or clean_brand.lower() in ("not sure", "any", "unknown", "generic", "not specified", "none", "n/a", "generic / assorted"))
+    actual_search_brand = "" if brand_is_generic else clean_brand
+
+    if not actual_search_brand and clean_query:
+        q_low = clean_query.lower()
+        for kb in ("britannia", "nestle", "parle", "amul", "cadbury", "itc", "haldiram", "lays", "pepsi", "coca-cola", "maggi", "sunfeast", "kellogg", "tata", "mccain"):
+            if kb in q_low:
+                actual_search_brand = kb.title()
+                break
+
+    display_brand = actual_search_brand or ("Generic / Assorted" if brand_is_generic else clean_brand or "Commercial Food")
+    search_term = clean_query or f"{actual_search_brand} {clean_variant or clean_food}".strip()
 
     # ── Step 1: Parallel AI product search + OFF lookup + news ───────────────
     off_result: Optional[Dict] = None
@@ -784,9 +805,17 @@ def get_search_report(food: str, brand: str, variant: str) -> Dict[str, Any]:
     news_articles: List = []
 
     with ThreadPoolExecutor(max_workers=3, thread_name_prefix="search_io") as pool:
-        fut_ai = pool.submit(find_food_product_ai, food, actual_search_brand, variant)
-        fut_off = pool.submit(_search_off_precise, food, actual_search_brand, variant)
-        fut_news = pool.submit(_safe_news, actual_search_brand or food)
+        fut_ai = pool.submit(find_food_product_ai, clean_food, actual_search_brand, clean_variant)
+
+        def _fetch_off():
+            res = _search_off_precise(clean_food, actual_search_brand, clean_variant)
+            if not res:
+                from services.product_lookup import search as off_search
+                res = off_search(search_term, actual_search_brand)
+            return res
+
+        fut_off = pool.submit(_fetch_off)
+        fut_news = pool.submit(_safe_news, actual_search_brand or search_term)
 
         try:
             ai_product = fut_ai.result(timeout=6)
@@ -795,19 +824,10 @@ def get_search_report(food: str, brand: str, variant: str) -> Dict[str, Any]:
             ai_product = None
 
         try:
-            off_result = fut_off.result(timeout=5)
+            off_result = fut_off.result(timeout=4)
         except Exception as e:
-            logger.warning(f"OFF precise lookup failed: {e}")
+            logger.warning(f"OFF lookup failed or timed out: {e}")
             off_result = None
-
-        if off_result is None and actual_search_brand:
-            try:
-                from services.product_lookup import search as off_search
-                q = variant if (variant and variant != "Not sure / Any variant") else f"{actual_search_brand} {food}"
-                off_result = off_search(q, actual_search_brand)
-            except Exception as e:
-                logger.warning(f"OFF generic fallback also failed: {e}")
-                off_result = None
 
         try:
             news_articles = fut_news.result(timeout=4) or []
@@ -816,49 +836,52 @@ def get_search_report(food: str, brand: str, variant: str) -> Dict[str, Any]:
             news_articles = []
 
     # ── Step 2: Build vision-like payload & merge sources ────────────────────
-    variant_label = variant if (variant and variant != "Not sure / Any variant") else ""
+    variant_label = clean_variant if (clean_variant and clean_variant != "Not sure / Any variant") else ""
 
     # Case A: Open Food Facts has rich packaging ingredients
     if off_result and off_result.get("ingredients_text") and len(off_result.get("ingredients_text", "")) > 15:
-        ingredients_text = _build_ingredients_text(off_result, food, display_brand, variant)
+        ingredients_text = _build_ingredients_text(off_result, clean_food, display_brand, clean_variant)
         nutrition_facts = off_result.get("nutriments") or {}
         if ai_product and ai_product.get("nutrition_facts"):
             for k, v in ai_product["nutrition_facts"].items():
                 if nutrition_facts.get(k) is None and v is not None:
                     nutrition_facts[k] = v
-        product_name = off_result.get("product_name") or (ai_product.get("product_name") if ai_product else None) or f"{display_brand} {variant_label or food}".strip()
+        product_name = off_result.get("product_name") or (ai_product.get("product_name") if ai_product else None) or f"{display_brand} {variant_label or clean_food}".strip()
         brand_final = off_result.get("brands") or (ai_product.get("brand") if ai_product else None) or display_brand
         detected_labels = off_result.get("labels") or (ai_product.get("claims") if ai_product else [])
+        image_url = off_result.get("image_url") or (ai_product.get("image_url") if ai_product else None)
         data_source = "Open Food Facts"
 
     # Case B: AI Product Search (Gemini / Groq / FMCG Knowledgebase)
     elif ai_product and ai_product.get("ingredients_text"):
         ingredients_text = ai_product["ingredients_text"]
         nutrition_facts = ai_product.get("nutrition_facts") or {}
-        product_name = ai_product.get("product_name") or f"{display_brand} {variant_label or food}".strip()
+        product_name = ai_product.get("product_name") or f"{display_brand} {variant_label or clean_food}".strip()
         brand_final = ai_product.get("brand") or display_brand
         detected_labels = ai_product.get("claims") or []
+        image_url = ai_product.get("image_url") or (off_result.get("image_url") if off_result else None)
         data_source = ai_product.get("data_source") or "Google Gemini AI Search"
 
     # Case C: Fallback profile
     else:
         ingredients_text = (
-            f"Product: {display_brand} {variant_label or food}.\n"
-            f"Category: {food}.\n"
+            f"Product: {display_brand} {variant_label or clean_food}.\n"
+            f"Category: {clean_food}.\n"
             f"Brand: {display_brand}.\n"
             "Note: Ingredients estimated based on standard product category formulation."
         )
         nutrition_facts = {}
-        product_name = f"{display_brand} {variant_label or food}".strip()
+        product_name = f"{display_brand} {variant_label or clean_food}".strip()
         brand_final = display_brand
         detected_labels = []
+        image_url = None
         data_source = "FoodCheck Safety Engine"
 
     # ── Step 3: DIET LABELS VALIDATION ───────────────────────────────────────
     diet_validations = validate_diet_labels(
-        food=food,
+        food=clean_food,
         brand=brand_final,
-        variant=variant,
+        variant=clean_variant,
         ingredients_text=ingredients_text,
         nutrition_facts=nutrition_facts,
         detected_labels=detected_labels,
@@ -901,7 +924,48 @@ def get_search_report(food: str, brand: str, variant: str) -> Dict[str, Any]:
                 elif health_data["score"] < 70:
                     health_data["verdict"] = "moderate"
 
-    # Attach diet validations to health payload
+    # Derive pros, cons, and FSSAI notes for complete parity with image analysis
+    score_val = health_data.get("score", 50)
+    verdict_val = health_data.get("verdict", "moderate")
+    flags_list = health_data.get("flags", [])
+    alternatives_list = health_data.get("alternatives", [])
+
+    pros = []
+    if score_val >= 70:
+        pros.append("Well-balanced nutritional profile compliant with FSSAI health guidelines.")
+    elif score_val >= 40:
+        pros.append("Convenient ready-to-consume commercial product formulation.")
+    else:
+        pros.append("Widely available packaged food option; best consumed in strict moderation.")
+
+    prot = nutrition_facts.get("protein_g")
+    if prot is not None and prot >= 8.0:
+        pros.append(f"Good source of dietary protein ({prot}g per 100g).")
+    fib = nutrition_facts.get("fiber_g")
+    if fib is not None and fib >= 3.0:
+        pros.append(f"Provides dietary fiber ({fib}g per 100g) aiding digestive health.")
+    if "whole wheat" in ingredients_text.lower() or "oats" in ingredients_text.lower():
+        pros.append("Contains whole grains rather than 100% refined flour.")
+
+    cons = [f.get("explanation") for f in flags_list if f.get("severity") in ("high", "medium")]
+    if not cons:
+        cons = ["Contains processed ingredients; balance with fresh, whole foods in daily diet."]
+
+    fssai_notes = (
+        f"FSSAI Packaged Food Evaluation: Safety score {score_val}/100 ({verdict_val.upper()}). "
+        f"{'Formulation meets recommended thresholds for dietary additives.' if score_val >= 70 else 'Review saturated fats, sodium, and chemical INS food additives before frequent consumption.'}"
+    )
+
+    # Attach all extended fields to health payload
+    health_data["summary"] = health_data.get("reasoning", "")
+    health_data["health_score"] = score_val
+    health_data["safety_score"] = score_val
+    health_data["red_flags"] = flags_list
+    health_data["harmful_additives"] = [f for f in flags_list if f.get("severity") in ("high", "medium")]
+    health_data["healthier_swaps"] = alternatives_list
+    health_data["pros"] = pros
+    health_data["cons"] = cons
+    health_data["fssai_notes"] = fssai_notes
     health_data["diet_labels"] = diet_validations
     health_data["diet_validation"] = diet_validations
 
@@ -909,27 +973,41 @@ def get_search_report(food: str, brand: str, variant: str) -> Dict[str, Any]:
         "product_name": product_name,
         "brand": brand_final,
         "ingredients_text": ingredients_text,
+        "ingredients": ingredients_text,
         "nutrition_facts": nutrition_facts,
         "off_match": off_result,
         "data_source": data_source,
+        "image_url": image_url,
         "diet_labels": diet_validations,
         "diet_validation": diet_validations,
     }
 
     # ── Step 5: Unified Return Payload (BOTH Flat & Nested schemas) ──────────
     return {
+        "status": "ok",
         # Flat schema (for tools, test suites, or direct consumers):
         "product_name": product_name,
         "brand": brand_final,
         "ingredients_text": ingredients_text,
+        "ingredients": ingredients_text,
         "nutrition_facts": nutrition_facts,
         "off_match": off_result,
         "data_source": data_source,
-        "score": health_data.get("score"),
-        "verdict": health_data.get("verdict"),
-        "flags": health_data.get("flags", []),
+        "image_url": image_url,
+        "score": score_val,
+        "health_score": score_val,
+        "safety_score": score_val,
+        "verdict": verdict_val,
+        "summary": health_data.get("reasoning", ""),
         "reasoning": health_data.get("reasoning", ""),
-        "alternatives": health_data.get("alternatives", []),
+        "flags": flags_list,
+        "red_flags": flags_list,
+        "harmful_additives": [f for f in flags_list if f.get("severity") in ("high", "medium")],
+        "pros": pros,
+        "cons": cons,
+        "alternatives": alternatives_list,
+        "healthier_swaps": alternatives_list,
+        "fssai_notes": fssai_notes,
         "diet_labels": diet_validations,
         "diet_validation": diet_validations,
         "_ai_provider": health_data.get("_ai_provider"),

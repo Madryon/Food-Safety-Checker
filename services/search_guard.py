@@ -239,8 +239,8 @@ def validate_field(text: str, field_name: str) -> Tuple[bool, str]:
     if not text or not text.strip():
         return False, f"{field_name} is required."
     text = text.strip()
-    if len(text) > 60:
-        return False, f"{field_name} is too long (max 60 characters)."
+    if len(text) > 120:
+        return False, f"{field_name} is too long (max 120 characters)."
     # Basic character whitelist
     if not _FIELD_RE.match(text):
         return False, f"{field_name} contains invalid characters."

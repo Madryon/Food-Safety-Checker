@@ -696,12 +696,8 @@ def _log_rejection(food: str, brand: str, variant: str, reason: str, ip: str):
 def search_suggest():
     """
     GET /api/search/suggest?type=food|brand|variant&q=...&food=...&brand=...
-    Returns up to 8 autocomplete suggestions for the wizard.
+    Returns up to 8 autocomplete suggestions for any user (Guest or Logged-in).
     """
-    # Auth check: Search is exclusive to authenticated users
-    is_authed = bool((current_user and current_user.is_authenticated) or session.get("user_id"))
-    if not is_authed:
-        return jsonify({"error": "Please sign in to use Search Food Safety.", "auth_required": True, "suggestions": []}), 401
     from services.search_service import (
         get_food_suggestions,
         get_brand_suggestions,
@@ -712,14 +708,13 @@ def search_suggest():
     food = request.args.get("food", "").strip()
     brand = request.args.get("brand", "").strip()
 
-    # Basic sanitize — suggestions are read-only, no topic guard needed
-    q = q[:60]
-    food = food[:60]
+    q = q[:120]
+    food = food[:120]
     brand = brand[:60]
 
     try:
-        if suggest_type == "food":
-            items = get_food_suggestions(q)
+        if suggest_type == "food" or not suggest_type:
+            items = get_food_suggestions(q or food)
         elif suggest_type == "brand":
             items = get_brand_suggestions(q, food)
         elif suggest_type == "variant":
@@ -733,24 +728,20 @@ def search_suggest():
     return jsonify({"suggestions": items})
 
 
-# ── SEARCH FOOD SAFETY: Analyze ───────────────────────────────────────────────
+# ── SEARCH FOOD SAFETY: Unified Search & Analysis Pipeline ────────────────────
+@app.route("/api/search-food", methods=["POST"])
 @app.route("/api/search/analyze", methods=["POST"])
-@limiter.limit("10 per minute")
+@app.route("/analyze-text", methods=["POST"])
+@limiter.limit("30 per minute")
 @csrf.exempt
-def search_analyze():
+def search_food():
     """
-    POST /api/search/analyze
-    Body: {food, brand, variant, _hp}
-    Returns unified report: {vision, health, news} — same schema as photo scan.
+    POST /api/search-food or /api/search/analyze or /analyze-text
+    Body: { "query": "<food_name>", "category": "...", "brand": "...", "variant": "..." }
+    Accepts both free-form queries (e.g. 'Maggi 2-Minute Noodles') and structured wizard inputs.
+    Open to ALL users (Guest or Logged-in).
+    Returns unified report: { vision, health, news, safety_score, verdict, ... }
     """
-    # Auth check: Search is exclusive to authenticated users
-    is_authed = bool((current_user and current_user.is_authenticated) or session.get("user_id"))
-    if not is_authed:
-        return jsonify({
-            "error": "Please sign in to use Search Food Safety.",
-            "auth_required": True
-        }), 401
-
     from services.search_guard import (
         validate_field,
         topic_guard,
@@ -777,81 +768,106 @@ def search_analyze():
         app.logger.warning(f"Search honeypot triggered from {client_ip}")
         return jsonify({"error": "Invalid request."}), 400
 
-    # Flexible parameter support (e.g. food/product_name/query, brand/company, variant/flavor)
-    food = str(
-        data.get("food") or data.get("product_name") or data.get("query") or data.get("product") or data.get("name") or ""
+    # Flexible parameter support (e.g. query/food/product_name/name, category, brand/company, variant/flavor)
+    query = str(
+        data.get("query")
+        or data.get("food")
+        or data.get("product_name")
+        or data.get("product")
+        or data.get("name")
+        or ""
     ).strip()
+    category = str(data.get("category") or "").strip()
     brand = str(
         data.get("brand") or data.get("company") or data.get("brand_name") or ""
     ).strip()
     variant = str(
         data.get("variant") or data.get("flavor") or ""
-    ).strip() or "Not sure / Any variant"
+    ).strip()
 
-    if not food:
-        return jsonify({"error": "Food or product name is required."}), 400
+    if not query:
+        return jsonify({"error": "Please enter a food or product name to search."}), 400
 
-    # If brand not specified, default gracefully
-    if not brand:
-        brand = "Generic"
-
-    # 3. Field format validation
-    ok, err = validate_field(food, "Food")
+    # 3. Field format validation (up to 120 chars)
+    ok, err = validate_field(query[:120], "Food query")
     if not ok:
-        _log_rejection(food, brand, variant, err, client_ip)
+        _log_rejection(query, brand, variant, err, client_ip)
         record_rejection(client_ip)
         return jsonify({"error": err}), 400
 
     if brand and brand.lower() not in ("generic", "not sure", "any", "unknown", "not specified"):
         ok, err = validate_field(brand, "Brand")
         if not ok:
-            _log_rejection(food, brand, variant, err, client_ip)
+            _log_rejection(query, brand, variant, err, client_ip)
             record_rejection(client_ip)
             return jsonify({"error": err}), 400
 
-    # Variant is optional — only validate if provided and not the placeholder
     if variant and variant != "Not sure / Any variant":
         ok, err = validate_field(variant, "Variant")
         if not ok:
-            _log_rejection(food, brand, variant, err, client_ip)
+            _log_rejection(query, brand, variant, err, client_ip)
             record_rejection(client_ip)
             return jsonify({"error": err}), 400
 
     # 4. Topic guard (OFF + curated lists + classifier)
-    guard_ok, guard_msg = topic_guard(food, brand)
+    guard_ok, guard_msg = topic_guard(query, brand)
     if not guard_ok:
-        _log_rejection(food, brand, variant, guard_msg, client_ip)
+        _log_rejection(query, brand, variant, guard_msg, client_ip)
         record_rejection(client_ip)
         return jsonify({"error": guard_msg}), 422
 
     # 5. 24-hour result cache
-    cache_key = f"{food.lower()}::{brand.lower()}::{variant.lower()}"
+    cache_key = f"search::{query.lower()}::{brand.lower()}::{variant.lower()}"
     cached = _search_cache_get(cache_key)
     if cached:
         record_success(client_ip)
-        log_activity(action="search_analyze_cached", details={"food": food, "brand": brand})
+        log_activity(action="search_food_cached", details={"query": query, "brand": brand})
         return jsonify(cached)
 
-    # 6. Build report
+    # 6. Build report via ThreadPoolExecutor parallel pipeline
+    start_time = time.time()
     try:
-        report = get_search_report(food, brand, variant)
+        report = get_search_report(food=query, brand=brand, variant=variant, query=query)
         _search_cache_set(cache_key, report)
         record_success(client_ip)
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        # 7. Log scan in database so it appears in Admin Console just like a photo scan
+        scan_id = log_scan(
+            product_name=report.get("product_name") or query,
+            brand=report.get("brand") or brand or "Unknown",
+            source="search",
+            health_verdict=(report.get("health") or {}).get("verdict"),
+            health_score=(report.get("health") or {}).get("score"),
+            key_flags=[f.get("type") for f in (report.get("health") or {}).get("flags", []) if isinstance(f, dict)],
+            gemini_used=True,
+            response_time_ms=duration_ms,
+            image_size_bytes=0,
+            image_mime_type="text/plain",
+            success=True,
+            user_id=current_user.id if (current_user and current_user.is_authenticated) else None,
+            ip=client_ip,
+        )
+        report["scan_id"] = scan_id
+        if "vision" in report and isinstance(report["vision"], dict):
+            report["vision"]["scan_id"] = scan_id
+
         log_activity(
-            action="search_analyze",
+            action="search_food",
             details={
-                "food": food,
-                "brand": brand,
-                "variant": variant,
+                "query": query,
+                "product": report.get("product_name"),
+                "brand": report.get("brand"),
                 "score": (report.get("health") or {}).get("score"),
+                "scan_id": scan_id,
             },
         )
         return jsonify(report)
     except Exception as e:
-        app.logger.error(f"Search analyze error: {e}", exc_info=True)
-        log_error("search_analyze", str(e), path=request.path)
+        app.logger.error(f"Search food error: {e}", exc_info=True)
+        log_error("search_food", str(e), path=request.path)
         return jsonify({
-            "error": "Analysis failed. Please try again.",
+            "error": "Food analysis failed. Please try again.",
             "detail": str(e)[:200],
         }), 500
 
