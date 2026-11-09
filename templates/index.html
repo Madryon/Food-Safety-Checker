@@ -2120,7 +2120,11 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             });
         }
 
-        var flags = Array.isArray(h.flags) ? h.flags : [];
+        var flags = (Array.isArray(h.flags) ? h.flags : []).filter(function (f) {
+            if (!f) return false;
+            var t = (typeof f === 'object') ? (f.type || '') : String(f);
+            return t !== 'AI_ANALYSIS_BUSY' && t !== 'AI_ANALYSIS_OFFLINE';
+        });
         fill('flags-card', flags.length ? '<h3>⚠️ Health Flags</h3><div class="flags-list">' + flags.map(function (f) {
             if (!f) return '';
             var typeStr = (typeof f === 'object') ? (f.type || 'NOTE') : String(f);

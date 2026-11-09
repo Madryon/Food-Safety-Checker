@@ -73,6 +73,24 @@ class TestSearchParity(unittest.TestCase):
         nutr = data.get("nutrition_facts") or {}
         self.assertEqual(nutr.get("total_sugar_g"), 0.0)
 
+    def test_analyze_health_endpoint_no_busy_flags(self):
+        # Direct health check (/analyze/health) must NEVER output placeholder AI_ANALYSIS_BUSY flags
+        resp = self.client.post("/analyze/health", json={
+            "product_name": "Britannia Good Day Butter Cookies",
+            "ingredients_text": "Refined Wheat Flour (Maida), Sugar, Refined Palm Oil, Invert Sugar Syrup, Iodised Salt, Raising Agents (INS 500(ii), INS 503(ii)), Emulsifiers (INS 322), Nature Identical Flavours.",
+            "nutrition_facts": {"energy_kcal": 475, "protein_g": 6.8, "total_fat_g": 18.5, "saturated_fat_g": 8.9, "trans_fat_g": 0.0, "carbohydrates_g": 70.0, "total_sugar_g": 24.5, "sodium_mg": 310, "fiber_g": 1.8}
+        })
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertIsNotNone(data.get("score"))
+        self.assertEqual(data.get("verdict"), "moderate")
+        flags = data.get("flags", [])
+        self.assertTrue(len(flags) > 0)
+        flag_types = [f.get("type") for f in flags if isinstance(f, dict)]
+        self.assertNotIn("AI_ANALYSIS_BUSY", flag_types)
+        self.assertNotIn("AI_ANALYSIS_OFFLINE", flag_types)
+        self.assertTrue(any("SUGAR" in ft or "PALM" in ft for ft in flag_types))
+
 
 if __name__ == "__main__":
     unittest.main()

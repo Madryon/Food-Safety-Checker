@@ -899,11 +899,19 @@ Raw JSON only. No markdown formatting."""
         logger.info(f"⚡ Health score generated via {provider_used} in {elapsed_ms}ms (Score: {parsed_result['score']})")
         return parsed_result
 
-    # Safe fallback response if all AI providers exhausted
-    logger.error(f"All AI health providers exhausted. Last error: {last_error}")
-    return _health_fallback_response(
-        last_error or "All AI provider quotas are currently in cooldown. Please retry in 30 seconds."
+    # If external AI providers (Groq/Gemini/OpenAI) are unavailable, exhausted, or hit quotas:
+    # Run our comprehensive, medical-grade FSSAI Safety Intelligence Engine.
+    # NEVER emit dummy placeholder flags like AI_ANALYSIS_BUSY!
+    logger.info(f"External AI unavailable ({last_error}). Evaluating health via FSSAI Safety Intelligence Engine.")
+    from services.fssai_evaluator import evaluate_food_safety_fssai
+    fssai_result = evaluate_food_safety_fssai(
+        ingredients_text=ingredients_text,
+        nutrition_facts=nutrition_facts or {},
+        product_name=product_name,
     )
+    _normalize_health_result(fssai_result)
+    fssai_result["_latency_ms"] = elapsed_ms
+    return fssai_result
 
 
 def _validate_health_schema(data: Any) -> bool:
@@ -934,31 +942,26 @@ def _normalize_health_result(res: Dict[str, Any]):
     if not isinstance(res.get("alternatives"), list):
         res["alternatives"] = []
 
+    # Filter out any placeholder/error flags so real nutrition flags are always shown
+    res["flags"] = [
+        f for f in res["flags"]
+        if isinstance(f, dict) and f.get("type") not in ("AI_ANALYSIS_BUSY", "AI_ANALYSIS_OFFLINE")
+    ]
 
-def _health_fallback_response(error_msg: str) -> Dict[str, Any]:
-    """Safe fallback response when all AI providers fail."""
-    # Sanitize error message to prevent leaking internal stack traces or API metadata
-    user_msg = "Automated AI scoring temporarily busy. Safety evaluated based on FSSAI nutrition guidelines."
-    return {
-        "score": 50,
-        "verdict": "moderate",
-        "flags": [
-            {
-                "type": "AI_ANALYSIS_BUSY",
-                "severity": "medium",
-                "explanation": user_msg,
-            }
-        ],
-        "reasoning": "Product ingredients and nutrition evaluated in accordance with standard FSSAI packaged food thresholds.",
-        "alternatives": [
-            {
-                "name": "Fresh whole fruits or homemade food",
-                "category": "Natural Whole Food",
-                "why_better": "Zero chemical preservatives, added sugars, or industrial food additives.",
-            }
-        ],
-        "_ai_provider": "FSSAI Safety Validator",
-    }
+
+def _health_fallback_response(
+    error_msg: str = "",
+    ingredients_text: str = "",
+    nutrition_facts: Optional[Dict[str, Any]] = None,
+    product_name: str = "",
+) -> Dict[str, Any]:
+    """Safe fallback response using FSSAI Safety Intelligence Engine."""
+    from services.fssai_evaluator import evaluate_food_safety_fssai
+    return evaluate_food_safety_fssai(
+        ingredients_text=ingredients_text,
+        nutrition_facts=nutrition_facts or {},
+        product_name=product_name,
+    )
 
 
 # ── Unified Food Packaging Vision Extraction ───────────────────────────────
