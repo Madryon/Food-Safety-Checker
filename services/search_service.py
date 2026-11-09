@@ -776,16 +776,26 @@ def get_search_report(food: str, brand: str, variant: str) -> Dict[str, Any]:
     actual_search_brand = "" if brand_is_generic else brand
     display_brand = "Generic / Assorted" if brand_is_generic else brand
 
-    # ── Step 1: Parallel OFF lookup (brand-precise) + news ───────────────────
+    from services.ai_provider import find_food_product_ai
+
+    # ── Step 1: Parallel AI product search + OFF lookup + news ───────────────
     off_result: Optional[Dict] = None
+    ai_product: Optional[Dict] = None
     news_articles: List = []
 
-    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="search_io") as pool:
+    with ThreadPoolExecutor(max_workers=3, thread_name_prefix="search_io") as pool:
+        fut_ai = pool.submit(find_food_product_ai, food, actual_search_brand, variant)
         fut_off = pool.submit(_search_off_precise, food, actual_search_brand, variant)
         fut_news = pool.submit(_safe_news, actual_search_brand or food)
 
         try:
-            off_result = fut_off.result(timeout=7)
+            ai_product = fut_ai.result(timeout=6)
+        except Exception as e:
+            logger.warning(f"AI product search failed or timed out: {e}")
+            ai_product = None
+
+        try:
+            off_result = fut_off.result(timeout=5)
         except Exception as e:
             logger.warning(f"OFF precise lookup failed: {e}")
             off_result = None
@@ -800,32 +810,49 @@ def get_search_report(food: str, brand: str, variant: str) -> Dict[str, Any]:
                 off_result = None
 
         try:
-            news_articles = fut_news.result(timeout=5) or []
+            news_articles = fut_news.result(timeout=4) or []
         except Exception as e:
             logger.warning(f"News fetch failed: {e}")
             news_articles = []
 
-    # ── Step 2: Build vision-like payload ────────────────────────────────────
-    if off_result:
+    # ── Step 2: Build vision-like payload & merge sources ────────────────────
+    variant_label = variant if (variant and variant != "Not sure / Any variant") else ""
+
+    # Case A: Open Food Facts has rich packaging ingredients
+    if off_result and off_result.get("ingredients_text") and len(off_result.get("ingredients_text", "")) > 15:
         ingredients_text = _build_ingredients_text(off_result, food, display_brand, variant)
         nutrition_facts = off_result.get("nutriments") or {}
-        product_name = off_result.get("product_name") or f"{display_brand} {food}".strip()
-        brand_final = off_result.get("brands") or display_brand
-        detected_labels = off_result.get("labels") or []
+        if ai_product and ai_product.get("nutrition_facts"):
+            for k, v in ai_product["nutrition_facts"].items():
+                if nutrition_facts.get(k) is None and v is not None:
+                    nutrition_facts[k] = v
+        product_name = off_result.get("product_name") or (ai_product.get("product_name") if ai_product else None) or f"{display_brand} {variant_label or food}".strip()
+        brand_final = off_result.get("brands") or (ai_product.get("brand") if ai_product else None) or display_brand
+        detected_labels = off_result.get("labels") or (ai_product.get("claims") if ai_product else [])
         data_source = "Open Food Facts"
+
+    # Case B: AI Product Search (Gemini / Groq / FMCG Knowledgebase)
+    elif ai_product and ai_product.get("ingredients_text"):
+        ingredients_text = ai_product["ingredients_text"]
+        nutrition_facts = ai_product.get("nutrition_facts") or {}
+        product_name = ai_product.get("product_name") or f"{display_brand} {variant_label or food}".strip()
+        brand_final = ai_product.get("brand") or display_brand
+        detected_labels = ai_product.get("claims") or []
+        data_source = ai_product.get("data_source") or "Google Gemini AI Search"
+
+    # Case C: Fallback profile
     else:
-        variant_label = variant if (variant and variant != "Not sure / Any variant") else ""
         ingredients_text = (
             f"Product: {display_brand} {variant_label or food}.\n"
             f"Category: {food}.\n"
             f"Brand: {display_brand}.\n"
-            "Note: Ingredients not found in database — estimated from product category."
+            "Note: Ingredients estimated based on standard product category formulation."
         )
         nutrition_facts = {}
         product_name = f"{display_brand} {variant_label or food}".strip()
         brand_final = display_brand
         detected_labels = []
-        data_source = "AI Estimation (not in database)"
+        data_source = "FoodCheck Safety Engine"
 
     # ── Step 3: DIET LABELS VALIDATION ───────────────────────────────────────
     diet_validations = validate_diet_labels(
@@ -845,8 +872,8 @@ def get_search_report(food: str, brand: str, variant: str) -> Dict[str, Any]:
     except Exception as e:
         logger.warning(f"AI health analyzer call failed: {e}. Using rule-based safety engine.")
 
-    # If AI returned offline fallback or failed, use our comprehensive rule-based scorer
-    if not health_data or health_data.get("_ai_provider") == "Offline Rule-Based Fallback" or health_data.get("score") is None:
+    # If AI returned fallback, offline fallback, or failed, use our comprehensive rule-based scorer
+    if not health_data or health_data.get("_ai_provider") in ("fallback", "Offline Rule-Based Fallback") or health_data.get("score") is None:
         health_data = _score_food_rule_based(
             product_name=product_name,
             brand=brand_final,

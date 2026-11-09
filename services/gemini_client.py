@@ -86,9 +86,12 @@ def get_active_gemini_keys() -> List[str]:
     if active:
         return active
 
-    # If all keys are in cooldown, sort by which one finishes cooldown first
-    logger.warning("All Gemini API keys are currently marked in cooldown. Re-trying with earliest key.")
-    return sorted(all_keys, key=lambda k: _KEY_COOLDOWNS.get(k, 0))
+    # If all keys are in cooldown, only retry temporary ones (< 600s), skipping permanently invalid keys
+    retryable = [k for k in all_keys if (_KEY_COOLDOWNS.get(k, 0) - now) < 600]
+    if retryable:
+        logger.warning("All Gemini API keys are currently marked in cooldown. Re-trying with earliest key.")
+        return sorted(retryable, key=lambda k: _KEY_COOLDOWNS.get(k, 0))
+    return []
 
 
 def record_key_quota_exhaustion(api_key: str, cooldown_seconds: int = 60):

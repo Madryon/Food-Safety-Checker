@@ -255,12 +255,24 @@ def validate_field(text: str, field_name: str) -> Tuple[bool, str]:
 
 
 def is_food_product(food: str) -> bool:
-    """Quick check: is the food field an edible food category?"""
+    """Quick check: is the food field an edible food category or known food item?"""
     food_lower = food.lower().strip()
-    return any(
-        cat in food_lower or food_lower in cat
-        for cat in FOOD_CATEGORIES
-    )
+    if any(cat in food_lower or food_lower in cat for cat in FOOD_CATEGORIES):
+        return True
+    if any(b in food_lower or food_lower in b for b in _KNOWN_BRANDS_LOWER):
+        return True
+    common_food_kw = [
+        "biscuit", "cookie", "rusk", "wafer", "noodle", "pasta", "ramen", "maggi",
+        "chip", "crisp", "snack", "namkeen", "bhujia", "sev", "papad", "popcorn",
+        "chocolate", "candy", "sweet", "bar", "toffee", "gum", "cake", "bread",
+        "bun", "butter", "cheese", "paneer", "milk", "curd", "yogurt", "cream",
+        "ghee", "oil", "juice", "drink", "beverage", "soda", "cola", "shake",
+        "tea", "coffee", "cereal", "oats", "corn flakes", "muesli", "granola",
+        "sauce", "ketchup", "jam", "spread", "mayonnaise", "dip", "soup",
+        "dal", "rice", "flour", "atta", "maida", "suji", "besan", "wheat",
+        "salt", "sugar", "spice", "masala", "powder", "pickle", "protein", "whey"
+    ]
+    return any(kw in food_lower for kw in common_food_kw)
 
 
 def is_known_brand(brand: str) -> bool:
@@ -268,13 +280,12 @@ def is_known_brand(brand: str) -> bool:
     brand_lower = brand.lower().strip()
     if not brand_lower or brand_lower in (
         "not sure", "any", "unknown", "generic", "various",
-        "any brand", "not specified", "none", "n/a", "na", "all"
+        "any brand", "not specified", "none", "n/a", "na", "all", "generic / assorted"
     ):
         return True
-    return any(
-        b in brand_lower or brand_lower in b
-        for b in _KNOWN_BRANDS_LOWER
-    )
+    if any(b in brand_lower or brand_lower in b for b in _KNOWN_BRANDS_LOWER):
+        return True
+    return any(cat in brand_lower or brand_lower in cat for cat in FOOD_CATEGORIES)
 
 
 # ── Open Food Facts Brand Verification ──────────────────────────────────────
@@ -347,7 +358,7 @@ def classify_food_brand_gemini(food: str, brand: str) -> Tuple[bool, bool]:
         user_data_json = _json.dumps({"food_name": food, "brand_name": brand}, ensure_ascii=False)
         full_prompt = f"{system_prompt}\n\nDATA: {user_data_json}"
 
-        raw = generate_content_with_retry(full_prompt, timeout=8)
+        raw = generate_content_with_retry(full_prompt, timeout=3)
         # Strip markdown code fences
         clean = raw.strip()
         if clean.startswith("```"):
@@ -366,50 +377,38 @@ def classify_food_brand_gemini(food: str, brand: str) -> Tuple[bool, bool]:
 def topic_guard(food: str, brand: str) -> Tuple[bool, str]:
     """
     Multi-layer topic guard. Returns (is_valid_food_query, rejection_message).
-    - Layer 1: Local curated lists (fast, no network)
-    - Layer 2: Open Food Facts verification (network, with 4s timeout)
-    - Layer 3: Gemini binary classification (network, only if OFF fails too)
+    - Layer 1: Local curated lists & keywords (fast, 0ms)
+    - Layer 2: Open Food Facts verification (network, with 3s timeout)
+    - Layer 3: Gemini binary classification (permissive fallback)
     """
     food_ok = is_food_product(food)
     brand_ok = is_known_brand(brand)
 
-    # Both known locally — accept immediately
-    # If brand is generic or empty and food is a recognized food product, accept
     brand_lower = brand.lower().strip()
-    if food_ok and (not brand_lower or brand_lower in ("not sure", "any", "unknown", "generic", "various", "any brand", "not specified", "none", "n/a", "all")):
+    is_gen = (not brand_lower or brand_lower in ("not sure", "any", "unknown", "generic", "various", "any brand", "not specified", "none", "n/a", "all", "generic / assorted"))
+
+    # If food is recognized and brand is generic or recognized: accept immediately
+    if food_ok and (is_gen or brand_ok):
+        return True, ""
+    if food_ok or brand_ok:
         return True, ""
 
-    # Both known locally — accept immediately
-    if food_ok and brand_ok:
-        return True, ""
-
-    # Try Open Food Facts for unknowns
+    # Try Open Food Facts for unknowns (fast)
     if not food_ok:
         food_ok = verify_food_off(food)
-    if not brand_ok:
+    if not brand_ok and not is_gen:
         brand_ok = verify_brand_off(brand)
 
-    # If brand is generic or empty and food is a recognized food product, accept
-    brand_lower = brand.lower().strip()
-    if food_ok and (not brand_lower or brand_lower in ("not sure", "any", "unknown", "generic", "various", "any brand", "not specified", "none", "n/a", "all")):
+    if food_ok or brand_ok:
         return True, ""
 
-    # Both known locally — accept immediately
-    if food_ok and brand_ok:
-        return True, ""
-
-    # Last resort: Gemini classification
+    # Last resort: Gemini binary classification with permissive fallback
     gemini_food, gemini_brand = classify_food_brand_gemini(food, brand)
-    if gemini_food and gemini_brand:
+    if gemini_food or gemini_brand:
         return True, ""
 
-    if not gemini_food:
-        return False, (
-            f"'{food}' doesn't look like a food product. "
-            "Please search only for food products and brands, e.g. Biscuit > Britannia > Good Day."
-        )
     return False, (
-        f"'{brand}' doesn't look like a food brand. "
+        f"'{food}' doesn't look like a food product. "
         "Please search only for food products and brands, e.g. Biscuit > Britannia > Good Day."
     )
 

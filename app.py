@@ -319,7 +319,7 @@ def _run_daily_purge_if_needed():
     if app.config.get("TESTING"):
         _do_purge(app)
     else:
-        _io_pool.submit(_do_purge, app._get_current_object())
+        _io_pool.submit(_do_purge, app)
 
 @app.before_request
 def check_maintenance_and_session():
@@ -698,6 +698,10 @@ def search_suggest():
     GET /api/search/suggest?type=food|brand|variant&q=...&food=...&brand=...
     Returns up to 8 autocomplete suggestions for the wizard.
     """
+    # Auth check: Search is exclusive to authenticated users
+    is_authed = bool((current_user and current_user.is_authenticated) or session.get("user_id"))
+    if not is_authed:
+        return jsonify({"error": "Please sign in to use Search Food Safety.", "auth_required": True, "suggestions": []}), 401
     from services.search_service import (
         get_food_suggestions,
         get_brand_suggestions,
@@ -739,6 +743,14 @@ def search_analyze():
     Body: {food, brand, variant, _hp}
     Returns unified report: {vision, health, news} — same schema as photo scan.
     """
+    # Auth check: Search is exclusive to authenticated users
+    is_authed = bool((current_user and current_user.is_authenticated) or session.get("user_id"))
+    if not is_authed:
+        return jsonify({
+            "error": "Please sign in to use Search Food Safety.",
+            "auth_required": True
+        }), 401
+
     from services.search_guard import (
         validate_field,
         topic_guard,
