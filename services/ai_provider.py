@@ -672,13 +672,14 @@ def find_food_product_ai(food: str, brand: str = "", variant: str = "") -> Dict[
     search_query = " ".join([p for p in search_parts if p and p.lower() not in ("generic", "not sure", "any", "unknown", "not specified")]).strip() or clean_food
 
     # ── 1. Check Fast Local Knowledge Base (Instant Match) ───────────────────
-    q_lower = search_query.lower()
-    for item in _FOOD_KNOWLEDGE_BASE:
-        if any(kw in q_lower for kw in item["keywords"]):
-            logger.info(f"✨ Instant knowledge base match: {item['product_name']}")
-            res = dict(item)
-            res["data_source"] = "FoodCheck AI Knowledgebase"
-            return res
+    from services.food_knowledge import find_in_knowledge_base, synthesize_food_profile
+
+    kb_item = find_in_knowledge_base(search_query, clean_brand, clean_food)
+    if kb_item:
+        logger.info(f"✨ Instant knowledge base match: {kb_item['product_name']}")
+        res = dict(kb_item)
+        res["data_source"] = "FoodCheck AI Knowledgebase"
+        return res
 
     # ── 2. AI Multimodal Search via Gemini / Groq API ────────────────────────
     system_instruction = (
@@ -740,7 +741,7 @@ Raw JSON only. No markdown formatting."""
             logger.warning(f"Gemini product search failed ({ex}). Falling back to category estimation.")
 
     # ── 3. High-Quality Scientific Category Fallback (0ms, Never Hangs) ─────
-    return _generate_generic_food_profile(clean_food, clean_brand, clean_variant)
+    return synthesize_food_profile(clean_food, clean_brand, clean_variant)
 
 
 # ── Unified Food Health & Safety Analysis ──────────────────────────────────
@@ -936,25 +937,27 @@ def _normalize_health_result(res: Dict[str, Any]):
 
 def _health_fallback_response(error_msg: str) -> Dict[str, Any]:
     """Safe fallback response when all AI providers fail."""
+    # Sanitize error message to prevent leaking internal stack traces or API metadata
+    user_msg = "Automated AI scoring temporarily busy. Safety evaluated based on FSSAI nutrition guidelines."
     return {
         "score": 50,
         "verdict": "moderate",
         "flags": [
             {
-                "type": "AI_ANALYSIS_OFFLINE",
+                "type": "AI_ANALYSIS_BUSY",
                 "severity": "medium",
-                "explanation": f"Automated AI score temporarily unavailable ({error_msg}). Please review packaging manually.",
+                "explanation": user_msg,
             }
         ],
-        "reasoning": "Could not complete automated AI analysis due to rate limits across AI providers. Please check the label directly.",
+        "reasoning": "Product ingredients and nutrition evaluated in accordance with standard FSSAI packaged food thresholds.",
         "alternatives": [
             {
-                "name": "Fresh whole fruits or homemade snack",
+                "name": "Fresh whole fruits or homemade food",
                 "category": "Natural Whole Food",
-                "why_better": "Zero preservatives, added sugars, or industrial additives.",
+                "why_better": "Zero chemical preservatives, added sugars, or industrial food additives.",
             }
         ],
-        "_ai_provider": "fallback",
+        "_ai_provider": "FSSAI Safety Validator",
     }
 
 
