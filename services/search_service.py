@@ -117,11 +117,11 @@ def get_brand_suggestions(q: str, food: str = "", limit: int = 8) -> List[str]:
     """Return brand suggestions matching q, optionally filtered to food category."""
     q_lower = q.lower().strip()
     if not q_lower:
-        return [b for b in KNOWN_BRANDS if len(b) < 20][:limit]
+        return [b.title() for b in KNOWN_BRANDS if len(b) < 20][:limit]
 
-    # Local list first
+    # Local list first - title-case for display
     local = [
-        b for b in KNOWN_BRANDS
+        b.title() for b in KNOWN_BRANDS
         if q_lower in b.lower() or b.lower().startswith(q_lower)
     ][:limit]
 
