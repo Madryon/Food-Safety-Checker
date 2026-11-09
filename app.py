@@ -622,6 +622,179 @@ def news_endpoint():
         return jsonify({"articles": []}), 200
 
 
+# ── SEARCH FOOD SAFETY: 24-hour result cache ─────────────────────────────────
+SEARCH_RESULT_CACHE: dict = {}
+_SEARCH_RESULT_TTL = 86400  # 24 hours
+_SEARCH_REJECTION_LOG: list = []  # Capped at 1000 entries
+_SEARCH_LOG_LOCK = threading.Lock()
+
+
+def _search_cache_get(key: str):
+    entry = SEARCH_RESULT_CACHE.get(key)
+    if entry and (time.monotonic() - entry[0]) < _SEARCH_RESULT_TTL:
+        return entry[1]
+    SEARCH_RESULT_CACHE.pop(key, None)
+    return None
+
+
+def _search_cache_set(key: str, value):
+    with _cache_lock:
+        SEARCH_RESULT_CACHE[key] = (time.monotonic(), value)
+        if len(SEARCH_RESULT_CACHE) > 500:
+            oldest = sorted(SEARCH_RESULT_CACHE, key=lambda k: SEARCH_RESULT_CACHE[k][0])[:100]
+            for k in oldest:
+                SEARCH_RESULT_CACHE.pop(k, None)
+
+
+def _log_rejection(food: str, brand: str, variant: str, reason: str, ip: str):
+    """Log rejected queries without personal data."""
+    entry = {
+        "ts": time.time(),
+        "food_len": len(food),
+        "brand_len": len(brand),
+        "variant_len": len(variant),
+        "reason": reason[:100],
+        "ip_hash": str(hash(ip))[-8:],
+    }
+    with _SEARCH_LOG_LOCK:
+        _SEARCH_REJECTION_LOG.append(entry)
+        if len(_SEARCH_REJECTION_LOG) > 1000:
+            del _SEARCH_REJECTION_LOG[:100]
+
+
+# ── SEARCH FOOD SAFETY: Autocomplete Suggestions ─────────────────────────────
+@app.route("/api/search/suggest")
+@limiter.limit("60 per minute")
+def search_suggest():
+    """
+    GET /api/search/suggest?type=food|brand|variant&q=...&food=...&brand=...
+    Returns up to 8 autocomplete suggestions for the wizard.
+    """
+    from services.search_service import (
+        get_food_suggestions,
+        get_brand_suggestions,
+        get_variant_suggestions,
+    )
+    suggest_type = request.args.get("type", "food").strip().lower()
+    q = request.args.get("q", "").strip()
+    food = request.args.get("food", "").strip()
+    brand = request.args.get("brand", "").strip()
+
+    # Basic sanitize — suggestions are read-only, no topic guard needed
+    q = q[:60]
+    food = food[:60]
+    brand = brand[:60]
+
+    try:
+        if suggest_type == "food":
+            items = get_food_suggestions(q)
+        elif suggest_type == "brand":
+            items = get_brand_suggestions(q, food)
+        elif suggest_type == "variant":
+            items = get_variant_suggestions(brand, food, q)
+        else:
+            items = []
+    except Exception as e:
+        app.logger.warning(f"Search suggest failed ({suggest_type}): {e}")
+        items = []
+
+    return jsonify({"suggestions": items})
+
+
+# ── SEARCH FOOD SAFETY: Analyze ───────────────────────────────────────────────
+@app.route("/api/search/analyze", methods=["POST"])
+@limiter.limit("10 per minute")
+@csrf.exempt
+def search_analyze():
+    """
+    POST /api/search/analyze
+    Body: {food, brand, variant, _hp}
+    Returns unified report: {vision, health, news} — same schema as photo scan.
+    """
+    from services.search_guard import (
+        validate_field,
+        topic_guard,
+        check_cooldown,
+        record_rejection,
+        record_success,
+    )
+    from services.search_service import get_search_report
+
+    client_ip = get_client_ip()
+
+    # 1. Cooldown check
+    blocked, block_msg = check_cooldown(client_ip)
+    if blocked:
+        return jsonify({"error": block_msg}), 429
+
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"error": "Invalid request body."}), 400
+
+    # 2. Honeypot check (bots fill this hidden field)
+    if data.get("_hp", ""):
+        app.logger.warning(f"Search honeypot triggered from {client_ip}")
+        return jsonify({"error": "Invalid request."}), 400
+
+    food = str(data.get("food", "")).strip()
+    brand = str(data.get("brand", "")).strip()
+    variant = str(data.get("variant", "") or "").strip() or "Not sure / Any variant"
+
+    # 3. Field format validation
+    for field_val, field_name in [(food, "Food"), (brand, "Brand")]:
+        ok, err = validate_field(field_val, field_name)
+        if not ok:
+            _log_rejection(food, brand, variant, err, client_ip)
+            record_rejection(client_ip)
+            return jsonify({"error": err}), 400
+
+    # Variant is optional — only validate if provided and not the placeholder
+    if variant and variant != "Not sure / Any variant":
+        ok, err = validate_field(variant, "Variant")
+        if not ok:
+            _log_rejection(food, brand, variant, err, client_ip)
+            record_rejection(client_ip)
+            return jsonify({"error": err}), 400
+
+    # 4. Topic guard (OFF + Gemini classify)
+    guard_ok, guard_msg = topic_guard(food, brand)
+    if not guard_ok:
+        _log_rejection(food, brand, variant, guard_msg, client_ip)
+        record_rejection(client_ip)
+        return jsonify({"error": guard_msg}), 422
+
+    # 5. 24-hour result cache
+    cache_key = f"{food.lower()}::{brand.lower()}::{variant.lower()}"
+    cached = _search_cache_get(cache_key)
+    if cached:
+        record_success(client_ip)
+        log_activity(action="search_analyze_cached", details={"food": food, "brand": brand})
+        return jsonify(cached)
+
+    # 6. Build report
+    try:
+        report = get_search_report(food, brand, variant)
+        _search_cache_set(cache_key, report)
+        record_success(client_ip)
+        log_activity(
+            action="search_analyze",
+            details={
+                "food": food,
+                "brand": brand,
+                "variant": variant,
+                "score": (report.get("health") or {}).get("score"),
+            },
+        )
+        return jsonify(report)
+    except Exception as e:
+        app.logger.error(f"Search analyze error: {e}", exc_info=True)
+        log_error("search_analyze", str(e), path=request.path)
+        return jsonify({
+            "error": "Analysis failed. Please try again.",
+            "detail": str(e)[:200],
+        }), 500
+
+
 @app.route("/health")
 def health_check():
     ai_status = get_ai_status_summary()

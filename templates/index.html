@@ -773,6 +773,143 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
     background: var(--accent); color: var(--on-accent);
 }
 
+
+/* ===== Search Food Safety Section ===== */
+.search-divider {
+  display: flex; align-items: center; gap: 12px;
+  margin: 32px 0 24px; color: var(--muted); font-size: 0.9rem; font-weight: 500;
+}
+.search-divider::before, .search-divider::after {
+  content: ''; flex: 1; height: 1px; background: var(--border);
+}
+.search-food-section {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: 0 0 0 2px color-mix(in srgb, #3b82f6 45%, transparent),
+              0 4px 24px color-mix(in srgb, #3b82f6 12%, transparent);
+  padding: 28px;
+  position: relative;
+  transition: box-shadow 0.3s;
+}
+[data-theme="dark"] .search-food-section,
+[data-theme="tech"] .search-food-section {
+  box-shadow: 0 0 0 2px #3b82f6,
+              0 4px 32px color-mix(in srgb, #3b82f6 28%, transparent);
+}
+.search-food-section:focus-within {
+  box-shadow: 0 0 0 2.5px #3b82f6,
+              0 6px 36px color-mix(in srgb, #3b82f6 35%, transparent);
+}
+.search-header { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+.search-header h2 { margin: 0; font-size: 1.3rem; font-weight: 800; }
+.new-pill {
+  background: #3b82f6; color: #fff; font-size: 0.65rem; font-weight: 800;
+  padding: 2px 8px; border-radius: 999px; letter-spacing: 0.08em;
+  text-transform: uppercase; flex-shrink: 0;
+}
+/* Progress steps */
+.search-steps {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 20px;
+}
+.step-dot {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 2px solid var(--border);
+  display: grid; place-items: center; font-size: 0.8rem; font-weight: 700;
+  color: var(--muted); transition: all 0.25s; flex-shrink: 0;
+}
+.step-dot.active {
+  border-color: #3b82f6; background: #3b82f6; color: #fff;
+  box-shadow: 0 0 0 4px color-mix(in srgb, #3b82f6 20%, transparent);
+}
+.step-dot.done { border-color: #22c55e; background: #22c55e; color: #fff; }
+.step-line {
+  flex: 1; height: 2px; background: var(--border); border-radius: 1px;
+  transition: background 0.25s; max-width: 40px;
+}
+.step-line.done { background: #22c55e; }
+.step-label { margin-left: 8px; font-size: 0.85rem; color: var(--muted); white-space: nowrap; }
+/* Chips */
+.search-chips {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; min-height: 0;
+}
+.search-chip {
+  background: color-mix(in srgb, #3b82f6 12%, var(--surface-2, var(--surface)));
+  border: 1px solid color-mix(in srgb, #3b82f6 40%, transparent);
+  color: #3b82f6; border-radius: 999px; padding: 4px 14px;
+  font-size: 0.85rem; font-weight: 600;
+}
+/* Step panels */
+.search-step { display: none; }
+.search-step.active { display: block; }
+.search-step label {
+  display: block; font-weight: 700; margin-bottom: 10px; font-size: 0.95rem;
+}
+.search-step .step-hint {
+  font-size: 0.8rem; color: var(--muted); margin-bottom: 8px; display: block;
+}
+.search-step input[type="text"] {
+  width: 100%; padding: 12px 16px; border-radius: 10px;
+  border: 1.5px solid var(--border); background: var(--surface-2, var(--surface));
+  color: inherit; font-size: 1rem; outline: none;
+  box-sizing: border-box; transition: border-color 0.2s;
+}
+.search-step input[type="text"]:focus { border-color: #3b82f6; }
+.search-suggestions {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; margin-top: 6px; max-height: 230px; overflow-y: auto;
+  display: none; box-shadow: 0 6px 24px rgba(0,0,0,0.14); z-index: 50;
+  position: relative;
+}
+.search-suggestion-item {
+  padding: 11px 16px; cursor: pointer; transition: background 0.1s;
+  font-size: 0.95rem; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px;
+}
+.search-suggestion-item:last-child { border-bottom: none; }
+.search-suggestion-item:hover, .search-suggestion-item:focus-visible {
+  background: color-mix(in srgb, #3b82f6 10%, var(--surface));
+  outline: none;
+}
+/* Action buttons */
+.search-actions {
+  display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; align-items: center;
+}
+.search-btn-back {
+  padding: 10px 18px; border-radius: 10px; border: 1.5px solid var(--border);
+  background: transparent; color: inherit; cursor: pointer; font-weight: 600;
+  font-size: 0.95rem; transition: background 0.15s;
+}
+.search-btn-back:hover { background: var(--surface-2, var(--surface)); }
+.search-btn-reset {
+  padding: 10px 18px; border-radius: 10px; border: 1.5px solid var(--border);
+  background: var(--surface-2, var(--surface)); color: var(--muted);
+  cursor: pointer; font-weight: 600; font-size: 0.95rem;
+}
+.search-btn-next, .search-btn-check {
+  padding: 11px 24px; border-radius: 10px; border: none;
+  background: #3b82f6; color: #fff; cursor: pointer; font-weight: 700;
+  font-size: 0.95rem; transition: filter 0.15s, transform 0.1s;
+}
+.search-btn-next:hover, .search-btn-check:hover {
+  filter: brightness(1.12); transform: translateY(-1px);
+}
+.search-btn-check:disabled {
+  opacity: 0.45; cursor: not-allowed; transform: none; filter: none;
+}
+.search-error-msg {
+  color: #ef4444; font-size: 0.88rem; margin-top: 10px;
+  padding: 10px 14px; border-radius: 8px;
+  background: color-mix(in srgb, #ef4444 8%, transparent);
+  border: 1px solid color-mix(in srgb, #ef4444 25%, transparent);
+  display: none;
+}
+/* Responsive */
+@media (max-width: 600px) {
+  .search-food-section { padding: 16px; }
+  .search-actions { flex-direction: column; }
+  .search-actions button { width: 100%; justify-content: center; }
+}
+
 </style>
 </head>
 <body>
@@ -914,6 +1051,83 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                     <input type="file" id="mobile-camera-input" accept="image/*" capture="environment" hidden>
                 </div>
             </div>
+
+            <!-- ══════ SEARCH FOOD SAFETY WIZARD ══════ -->
+            <div class="search-divider" aria-hidden="true"><span>OR search by name</span></div>
+
+            <div id="search-section" class="search-food-section" role="region" aria-label="Search Food Safety by name">
+                <div class="search-header">
+                    <span class="new-pill" aria-label="New feature">NEW</span>
+                    <h2>🔍 Search Food Safety</h2>
+                </div>
+
+                <!-- Step progress bar -->
+                <div class="search-steps" role="group" aria-label="Search progress">
+                    <div class="step-dot active" id="sdot-1" aria-label="Step 1">1</div>
+                    <div class="step-line" id="sline-1"></div>
+                    <div class="step-dot" id="sdot-2" aria-label="Step 2">2</div>
+                    <div class="step-line" id="sline-2"></div>
+                    <div class="step-dot" id="sdot-3" aria-label="Step 3">3</div>
+                    <span class="step-label"><span id="search-step-num">1</span> / 3</span>
+                </div>
+
+                <!-- Selection chips (earlier choices shown as breadcrumb) -->
+                <div class="search-chips" id="search-chips" aria-live="polite" aria-label="Selected filters"></div>
+
+                <!-- Step 1: Food category -->
+                <div id="search-step-1" class="search-step active">
+                    <label for="food-input">What food are you checking?</label>
+                    <span class="step-hint">e.g. biscuit, noodles, chips, chocolate, juice…</span>
+                    <input type="text" id="food-input" maxlength="60" autocomplete="off"
+                           placeholder="Start typing a food or category…"
+                           aria-label="Food category" aria-autocomplete="list"
+                           aria-controls="food-suggestions" spellcheck="false">
+                    <div class="search-suggestions" id="food-suggestions" role="listbox" aria-label="Food suggestions"></div>
+                </div>
+
+                <!-- Step 2: Brand -->
+                <div id="search-step-2" class="search-step">
+                    <label for="brand-input">Which brand or company?</label>
+                    <span class="step-hint">e.g. Britannia, Nestle, Amul, Haldiram's, ITC…</span>
+                    <input type="text" id="brand-input" maxlength="60" autocomplete="off"
+                           placeholder="Start typing a brand name…"
+                           aria-label="Brand name" aria-autocomplete="list"
+                           aria-controls="brand-suggestions" spellcheck="false">
+                    <div class="search-suggestions" id="brand-suggestions" role="listbox" aria-label="Brand suggestions"></div>
+                </div>
+
+                <!-- Step 3: Variant -->
+                <div id="search-step-3" class="search-step">
+                    <label for="variant-input">Which exact product or variant?</label>
+                    <span class="step-hint">e.g. Good Day Butter, Maggi Masala… or choose "Not sure"</span>
+                    <input type="text" id="variant-input" maxlength="60" autocomplete="off"
+                           placeholder="Start typing or pick from list…"
+                           aria-label="Product variant" aria-autocomplete="list"
+                           aria-controls="variant-suggestions" spellcheck="false">
+                    <div class="search-suggestions" id="variant-suggestions" role="listbox" aria-label="Variant suggestions"></div>
+                </div>
+
+                <!-- Honeypot (hidden from humans, visible to bots) -->
+                <input type="text" id="search-honeypot" name="website" tabindex="-1"
+                       autocomplete="off" aria-hidden="true"
+                       style="position:absolute;opacity:0;height:0;width:0;pointer-events:none;">
+
+                <!-- Error message -->
+                <div class="search-error-msg" id="search-error-msg" role="alert" aria-live="assertive"></div>
+
+                <!-- Action buttons -->
+                <div class="search-actions">
+                    <button type="button" id="search-back-btn" class="search-btn-back" hidden
+                            aria-label="Go back to previous step">← Back</button>
+                    <button type="button" id="search-reset-btn" class="search-btn-reset"
+                            aria-label="Reset search">↺ Reset</button>
+                    <button type="button" id="search-next-btn" class="search-btn-next"
+                            aria-label="Go to next step">Next →</button>
+                    <button type="button" id="search-check-btn" class="search-btn-check" hidden disabled
+                            aria-label="Check food safety">🔍 Check Safety</button>
+                </div>
+            </div>
+            <!-- ══════ END SEARCH FOOD SAFETY WIZARD ══════ -->
 
             <div id="preview-section" class="hidden">
                 <div class="preview-wrap">
@@ -3708,6 +3922,383 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
     updateLiveBMR();
 
     window.addEventListener('pagehide', stopStream);
+})();
+
+/* ======================================================================
+   SEARCH FOOD SAFETY WIZARD — 3-step guided wizard with topic guard
+   Reuses existing: renderVision(), renderHealth(), runNews(),
+   show(), toast(), esc(), api(), setStep(), runId
+   ====================================================================== */
+(function () {
+    'use strict';
+
+    // ── State ─────────────────────────────────────────────────────────────
+    var currentStep = 1;
+    var selections = { food: '', brand: '', variant: '' };
+    var debounceTimer = null;
+    var rejectionCount = 0;
+    var cooldownUntil = 0;
+    var searchBusy = false;
+
+    // ── CSRF token (meta tag already set in <head>) ─────────────────────
+    function getCSRF() {
+        var m = document.querySelector('meta[name="csrf-token"]');
+        return m ? m.getAttribute('content') : '';
+    }
+
+    // ── Helper: get element by id ───────────────────────────────────────
+    function $$(id) { return document.getElementById(id); }
+
+    // ── Show/hide a search step ─────────────────────────────────────────
+    function showSearchStep(n) {
+        [1, 2, 3].forEach(function (i) {
+            var panel = $$('search-step-' + i);
+            if (panel) {
+                panel.classList.toggle('active', i === n);
+            }
+            var dot = $$('sdot-' + i);
+            if (dot) {
+                dot.classList.toggle('active', i === n);
+                dot.classList.toggle('done', i < n);
+            }
+            var line = $$('sline-' + i);
+            if (line) {
+                line.classList.toggle('done', i < n);
+            }
+        });
+
+        var stepNum = $$('search-step-num');
+        if (stepNum) stepNum.textContent = n;
+        currentStep = n;
+
+        var backBtn = $$('search-back-btn');
+        var nextBtn = $$('search-next-btn');
+        var checkBtn = $$('search-check-btn');
+
+        if (backBtn) backBtn.hidden = (n === 1);
+        if (nextBtn) nextBtn.hidden = (n === 3);
+        if (checkBtn) {
+            checkBtn.hidden = (n !== 3);
+            checkBtn.disabled = !selections.variant;
+        }
+
+        clearSearchError();
+        updateChips();
+
+        // Focus the active input
+        var inputIds = ['', 'food-input', 'brand-input', 'variant-input'];
+        var inp = $$(inputIds[n]);
+        if (inp) setTimeout(function () { inp.focus(); }, 80);
+    }
+
+    // ── Chips breadcrumb ────────────────────────────────────────────────
+    function updateChips() {
+        var chips = $$('search-chips');
+        if (!chips) return;
+        var html = '';
+        if (selections.food) html += '<span class="search-chip">🍽️ ' + esc(selections.food) + '</span>';
+        if (selections.brand && currentStep > 1) html += '<span class="search-chip">🏷️ ' + esc(selections.brand) + '</span>';
+        if (selections.variant && currentStep > 2) html += '<span class="search-chip">📦 ' + esc(selections.variant) + '</span>';
+        chips.innerHTML = html;
+    }
+
+    // ── Error display ───────────────────────────────────────────────────
+    function showSearchError(msg) {
+        var el = $$('search-error-msg');
+        if (!el) return;
+        el.textContent = msg;
+        el.style.display = 'block';
+    }
+
+    function clearSearchError() {
+        var el = $$('search-error-msg');
+        if (el) { el.style.display = 'none'; el.textContent = ''; }
+    }
+
+    // ── Fetch suggestions (debounced, 300ms) ────────────────────────────
+    function fetchSuggestions(type, q, food, brand, cb) {
+        if (q !== undefined && q.length < 1) { cb([]); return; }
+        var url = '/api/search/suggest?type=' + encodeURIComponent(type)
+            + '&q=' + encodeURIComponent(q || '');
+        if (food) url += '&food=' + encodeURIComponent(food);
+        if (brand) url += '&brand=' + encodeURIComponent(brand);
+        fetch(url)
+            .then(function (r) { return r.json(); })
+            .then(function (d) { cb(d.suggestions || []); })
+            .catch(function () { cb([]); });
+    }
+
+    function renderSuggestions(box, items, onSelect) {
+        box.innerHTML = '';
+        if (!items || items.length === 0) { box.style.display = 'none'; return; }
+        items.forEach(function (item) {
+            var div = document.createElement('div');
+            div.className = 'search-suggestion-item';
+            div.textContent = item;
+            div.setAttribute('role', 'option');
+            div.setAttribute('tabindex', '0');
+            div.addEventListener('mousedown', function (e) {
+                e.preventDefault(); // prevent blur before click registers
+                onSelect(item);
+                box.style.display = 'none';
+            });
+            div.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onSelect(item);
+                    box.style.display = 'none';
+                }
+                if (e.key === 'ArrowDown' && div.nextSibling) div.nextSibling.focus();
+                if (e.key === 'ArrowUp' && div.previousSibling) div.previousSibling.focus();
+            });
+            box.appendChild(div);
+        });
+        box.style.display = 'block';
+    }
+
+    // ── Wire up an input field with autocomplete ─────────────────────────
+    function wireInput(inputId, boxId, type, getExtra) {
+        var inp = $$(inputId);
+        var box = $$(boxId);
+        if (!inp || !box) return;
+
+        inp.addEventListener('input', function () {
+            clearTimeout(debounceTimer);
+            var val = inp.value;
+            debounceTimer = setTimeout(function () {
+                var extra = getExtra ? getExtra() : {};
+                fetchSuggestions(type, val, extra.food || '', extra.brand || '', function (items) {
+                    renderSuggestions(box, items, function (item) {
+                        inp.value = item;
+                        selections[type === 'variant' ? 'variant' : type] = item;
+                        if (type === 'variant') {
+                            var checkBtn = $$('search-check-btn');
+                            if (checkBtn) checkBtn.disabled = false;
+                        }
+                        updateChips();
+                    });
+                });
+            }, 300);
+        });
+
+        inp.addEventListener('focus', function () {
+            if (!inp.value) {
+                var extra = getExtra ? getExtra() : {};
+                fetchSuggestions(type, '', extra.food || '', extra.brand || '', function (items) {
+                    renderSuggestions(box, items, function (item) {
+                        inp.value = item;
+                        selections[type === 'variant' ? 'variant' : type] = item;
+                        if (type === 'variant') {
+                            var checkBtn = $$('search-check-btn');
+                            if (checkBtn) checkBtn.disabled = false;
+                        }
+                        updateChips();
+                    });
+                });
+            }
+        });
+
+        inp.addEventListener('keydown', function (e) {
+            if (e.key === 'ArrowDown' && box.firstChild) {
+                e.preventDefault();
+                box.firstChild.focus();
+            }
+        });
+
+        // Close suggestions on outside click
+        document.addEventListener('click', function (e) {
+            if (!box.contains(e.target) && e.target !== inp) {
+                box.style.display = 'none';
+            }
+        });
+    }
+
+    // ── Wire all three inputs ─────────────────────────────────────────
+    wireInput('food-input', 'food-suggestions', 'food', null);
+    wireInput('brand-input', 'brand-suggestions', 'brand', function () {
+        return { food: selections.food };
+    });
+    wireInput('variant-input', 'variant-suggestions', 'variant', function () {
+        return { food: selections.food, brand: selections.brand };
+    });
+
+    // ── Next button ───────────────────────────────────────────────────
+    var nextBtn = $$('search-next-btn');
+    if (nextBtn) {
+        nextBtn.addEventListener('click', function () {
+            clearSearchError();
+            if (currentStep === 1) {
+                var val = ($$('food-input') ? $$('food-input').value : '').trim();
+                if (!val) { showSearchError('Please enter or select a food.'); return; }
+                selections.food = val;
+                showSearchStep(2);
+            } else if (currentStep === 2) {
+                var val2 = ($$('brand-input') ? $$('brand-input').value : '').trim();
+                if (!val2) { showSearchError('Please enter or select a brand.'); return; }
+                selections.brand = val2;
+                showSearchStep(3);
+            }
+        });
+    }
+
+    // ── Back button ───────────────────────────────────────────────────
+    var backBtn = $$('search-back-btn');
+    if (backBtn) {
+        backBtn.addEventListener('click', function () {
+            if (currentStep > 1) showSearchStep(currentStep - 1);
+        });
+    }
+
+    // ── Reset button ──────────────────────────────────────────────────
+    var resetBtn = $$('search-reset-btn');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', function () {
+            selections = { food: '', brand: '', variant: '' };
+            ['food-input', 'brand-input', 'variant-input'].forEach(function (id) {
+                var el = $$(id);
+                if (el) el.value = '';
+            });
+            ['food-suggestions', 'brand-suggestions', 'variant-suggestions'].forEach(function (id) {
+                var el = $$(id);
+                if (el) el.style.display = 'none';
+            });
+            clearSearchError();
+            showSearchStep(1);
+        });
+    }
+
+    // ── Check Safety button ───────────────────────────────────────────
+    var checkBtn = $$('search-check-btn');
+    if (checkBtn) {
+        checkBtn.addEventListener('click', function () {
+            if (searchBusy) return;
+
+            // Client-side cooldown check
+            if (Date.now() < cooldownUntil) {
+                var wait = Math.ceil((cooldownUntil - Date.now()) / 1000);
+                showSearchError('Too many invalid attempts. Please wait ' + wait + ' seconds.');
+                return;
+            }
+
+            // Honeypot
+            var hp = $$('search-honeypot');
+            if (hp && hp.value) return; // Bot detected, silently ignore
+
+            var food = selections.food || ($$('food-input') ? $$('food-input').value.trim() : '');
+            var brand = selections.brand || ($$('brand-input') ? $$('brand-input').value.trim() : '');
+            var variant = selections.variant || ($$('variant-input') ? $$('variant-input').value.trim() : '') || 'Not sure / Any variant';
+
+            if (!food || !brand) {
+                showSearchError('Please complete all steps before checking.');
+                return;
+            }
+
+            searchBusy = true;
+            checkBtn.disabled = true;
+            clearSearchError();
+
+            // Show loading with correct messaging
+            if (typeof show === 'function') show('loading-section');
+            var lt = document.getElementById('loading-text');
+            if (lt) lt.textContent = 'Searching product database…';
+            if (typeof setStep === 'function') setStep('step-vision', 'active');
+
+            var csrf = getCSRF();
+
+            fetch('/api/search/analyze', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrf,
+                },
+                body: JSON.stringify({
+                    food: food,
+                    brand: brand,
+                    variant: variant,
+                    _hp: '',
+                }),
+            })
+            .then(function (resp) {
+                return resp.json().then(function (d) {
+                    return { status: resp.status, data: d };
+                });
+            })
+            .then(function (res) {
+                searchBusy = false;
+
+                if (res.status === 400 || res.status === 422) {
+                    // Topic guard rejection
+                    rejectionCount++;
+                    if (rejectionCount >= 3) {
+                        cooldownUntil = Date.now() + 60000;
+                        rejectionCount = 0;
+                    }
+                    if (typeof show === 'function') show('upload-section');
+                    var msg = (res.data && res.data.error) || 'Please search only for food products and brands.';
+                    showSearchError(msg);
+                    if (checkBtn) checkBtn.disabled = false;
+                    return;
+                }
+                if (res.status === 429) {
+                    if (typeof show === 'function') show('upload-section');
+                    showSearchError('Too many searches. Please wait a minute and try again.');
+                    if (checkBtn) checkBtn.disabled = false;
+                    return;
+                }
+                if (res.status >= 500) {
+                    if (typeof show === 'function') show('upload-section');
+                    showSearchError('Analysis failed. Please try again.');
+                    if (checkBtn) checkBtn.disabled = false;
+                    return;
+                }
+
+                // ── Success — render the report ──────────────────────
+                rejectionCount = 0;
+                var d = res.data;
+                var vision = d.vision || {};
+                var health = d.health || {};
+                var news = d.news || {};
+
+                // renderVision expects the shape from /analyze/vision
+                if (typeof renderVision === 'function') {
+                    renderVision(vision);
+                }
+
+                if (typeof setStep === 'function') {
+                    setStep('step-vision', 'done');
+                    setStep('step-health', 'active');
+                }
+
+                if (typeof renderHealth === 'function') {
+                    renderHealth(health);
+                }
+
+                if (typeof setStep === 'function') {
+                    setStep('step-health', 'done');
+                }
+
+                // Run news in parallel (non-blocking)
+                if (typeof runNews === 'function') {
+                    runNews(vision.brand || brand, typeof runId !== 'undefined' ? runId : 0);
+                } else if (typeof renderNews === 'function' && news.articles) {
+                    renderNews(news);
+                }
+
+                if (typeof show === 'function') show('report-section');
+            })
+            .catch(function (err) {
+                searchBusy = false;
+                console.error('[Search] fetch error:', err);
+                if (typeof show === 'function') show('upload-section');
+                showSearchError('Network error. Please check your connection and try again.');
+                if (checkBtn) checkBtn.disabled = false;
+            });
+        });
+    }
+
+    // ── Initialise on first load ──────────────────────────────────────
+    showSearchStep(1);
+
 })();
     </script>
 </body>
