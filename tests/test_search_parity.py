@@ -1,11 +1,84 @@
 import unittest
 import json
 from app import app
+from models import User
+from extensions import db, limiter
 
 
 class TestSearchParity(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        app.config["TESTING"] = True
+        app.config["WTF_CSRF_ENABLED"] = False
+        app.config["RATELIMIT_ENABLED"] = False
+        app.config["CAPTCHA_ENABLED"] = False
+        app.config["RECAPTCHA_ENABLED"] = False
+        limiter.enabled = False
+
+        with app.app_context():
+            user = User.query.filter_by(username="search_tester").first()
+            if not user:
+                user = User(
+                    username="search_tester",
+                    name="Search Tester",
+                    role="user",
+                    is_active=True,
+                )
+                user.set_password("password123")
+                db.session.add(user)
+                db.session.commit()
+            cls.user_id = user.id
+
     def setUp(self):
         self.client = app.test_client()
+        with self.client.session_transaction() as sess:
+            sess["_user_id"] = str(self.user_id)
+            sess["_fresh"] = True
+            sess["user_id"] = "search_tester"
+            sess["name"] = "Search Tester"
+            sess["role"] = "user"
+
+    def test_guest_search_blocked_with_401(self):
+        # Guests without login must receive 401 with auth_required: True
+        guest_client = app.test_client()
+        resp = guest_client.post("/api/search-food", json={"query": "Mother Dairy Paneer"})
+        self.assertEqual(resp.status_code, 401)
+        data = resp.get_json()
+        self.assertTrue(data.get("auth_required"))
+        self.assertIn("registered members", data.get("error", "").lower())
+
+        # Search suggestions must also be blocked for guests
+        sugg_resp = guest_client.get("/api/search/suggest?type=food&q=paneer")
+        self.assertEqual(sugg_resp.status_code, 401)
+        sdata = sugg_resp.get_json()
+        self.assertTrue(sdata.get("auth_required"))
+
+    def test_out_of_context_queries_rejected(self):
+        # Non-food / coding / hardware queries must return 400 with a clear warning and NO synthesized food report
+        bad_queries = [
+            "Python Code For Table",
+            "write python code",
+            "how to hack a computer",
+            "laptop screen",
+            "toyota corolla car"
+        ]
+        for query in bad_queries:
+            resp = self.client.post("/api/search-food", json={"query": query})
+            self.assertEqual(resp.status_code, 400, f"Expected 400 for '{query}', got {resp.status_code}")
+            data = resp.get_json()
+            self.assertTrue(data.get("is_out_of_context"), f"Expected is_out_of_context for '{query}'")
+            self.assertIn("Out of context", data.get("error", ""))
+            self.assertIn("Please check your input", data.get("error", ""))
+            # Ensure NO food report / scores were synthesized
+            self.assertNotIn("score", data)
+            self.assertNotIn("nutrition_facts", data)
+
+    def test_food_with_table_keyword_allowed(self):
+        # "table salt" or "table butter" contains "table" but MUST be recognized as valid food
+        resp = self.client.post("/api/search-food", json={"query": "table salt"})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertIn("salt", data["product_name"].lower())
 
     def test_mother_dairy_paneer(self):
         resp = self.client.post("/api/search-food", json={"query": "Mother Dairy Paneer"})

@@ -47,6 +47,67 @@ _INJECTION_PATTERNS = [
 ]
 _INJECTION_RES = [re.compile(p, re.IGNORECASE) for p in _INJECTION_PATTERNS]
 
+# ── Out-of-Context & Non-Food Patterns ──────────────────────────────────────
+_OUT_OF_CONTEXT_PATTERNS = [
+    # Programming & Software
+    r"\b(python|javascript|typescript|c\+\+|c#|golang|rust|ruby|php|swift|kotlin|scala|html|css|sql|nosql)\b",
+    r"\b(code|coding|program|programming|script|scripting|algorithm|function|variable|class|object|method|loop)\b",
+    r"\b(database|table|query|select|insert|update|delete|drop|schema|index|join|foreign\s*key|primary\s*key)\b",
+    r"\b(server|client|api|endpoint|backend|frontend|framework|library|repository|repo|github|git|commit|pull\s*request|merge)\b",
+    r"\b(software|hardware|firmware|operating\s*system|windows|linux|macos|ubuntu|android\s*os|ios)\b",
+    r"\b(laptop|computer|desktop|pc|monitor|screen|keyboard|mouse|processor|cpu|gpu|ram|motherboard|hard\s*drive|ssd)\b",
+    r"\b(phone|smartphone|iphone|ipad|tablet|charger|battery|cable|usb|bluetooth|wifi|router|modem)\b",
+    r"\b(terminal|powershell|bash|cmd|shell|command\s*line|docker|kubernetes|container|aws|azure|gcp|cloud)\b",
+    r"\b(ai|artificial\s*intelligence|machine\s*learning|deep\s*learning|neural\s*network|chatgpt|openai|gemini|llm|bot|chatbot|prompt)\b",
+    r"\b(compiler|interpreter|debugger|stack\s*trace|nullpointer|syntax\s*error|exception|runtime)\b",
+
+    # Conversational questions & homework prompts (NOT a chatbot)
+    r"\b(how\s+to|what\s+is|who\s+is|where\s+is|why\s+is|when\s+is|when\s+was|which\s+is)\b",
+    r"\b(can\s+you|could\s+you|tell\s+me|explain|describe|write\s+me|summarize|translate|solve|calculate)\b",
+    r"\b(meaning\s+of|definition\s+of|homework|essay|assignment|math\s+problem|formula|equation)\b",
+    r"\b(hello|hi\b|hey\b|how\s+are\s+you|good\s+morning|good\s+night|bye|testing|test\s*123)\b",
+
+    # Non-food inanimate objects & vehicles
+    r"\b(car|cars|automobile|vehicle|truck|bus|motorcycle|bike|bicycle|scooter|engine|tire|tyre|wheel|petrol|diesel)\b",
+    r"\b(clothes|clothing|shirt|t-shirt|pant|pants|jeans|trousers|dress|suit|jacket|coat|shoes|sneakers|socks|hat|cap)\b",
+    r"\b(furniture|chair|chairs|desk|desks|sofa|bed|mattress|cupboard|wardrobe|bookshelf)\b",
+    r"\b(pen|pencil|paper|stationery|book|books|notebook|eraser|ruler|scissors|stapler)\b",
+    r"\b(house|building|apartment|flat|room|wall|roof|cement|brick|paint|wood|metal|iron|steel|plastic|glass)\b",
+    r"\b(money|cash|dollar|dollars|rupee|rupees|currency|crypto|cryptocurrency|bitcoin|ethereum|stock|shares)\b",
+]
+_OUT_OF_CONTEXT_RES = [re.compile(p, re.IGNORECASE) for p in _OUT_OF_CONTEXT_PATTERNS]
+
+
+def is_out_of_context(text: str) -> Tuple[bool, str]:
+    """
+    Check if a query contains programming, technical, conversational, or non-food keywords.
+    Returns (is_out_of_context: bool, warning_message: str).
+    """
+    if not text or not text.strip():
+        return False, ""
+    t_low = text.lower().strip()
+
+    # Legitimate food exceptions that contain words like 'table' or 'apple'
+    food_exceptions = ["table salt", "table butter", "table wine", "apple pie", "apple juice", "blackberry", "shellfish", "coffee table book"]
+    t_check = t_low
+    for ex in food_exceptions:
+        t_check = t_check.replace(ex, " ")
+    t_check = t_check.strip()
+    if not t_check and any(ex in t_low for ex in food_exceptions):
+        return False, ""
+
+    for pattern in _OUT_OF_CONTEXT_RES:
+        m = pattern.search(t_check)
+        if m:
+            return True, (
+                f"Out of context: '{text}' does not appear to be an edible food or beverage. "
+                "Please check your input — there may be an error or typo. "
+                "FoodCheck only analyzes food products, snacks, and beverages "
+                "(e.g. 'Mother Dairy Paneer', 'Maggi Noodles', 'Diet Coke', 'Good Day Cookies')."
+            )
+
+    return False, ""
+
 # ── Curated food categories (lowercase) ─────────────────────────────────────
 FOOD_CATEGORIES = [
     # Bakery & Biscuits
@@ -250,54 +311,94 @@ def validate_field(text: str, field_name: str) -> Tuple[bool, str]:
     # Injection pattern detection
     for pattern in _INJECTION_RES:
         if pattern.search(text):
-            return False, "Please search only for food products and brands."
+            return False, (
+                f"Out of context: '{text}' does not appear to be an edible food or beverage. "
+                "Please check your input — there may be an error or typo. "
+                "FoodCheck only analyzes food products, snacks, and beverages."
+            )
+    # Out of context non-food detection
+    is_ooc, ooc_msg = is_out_of_context(text)
+    if is_ooc:
+        return False, ooc_msg
     return True, ""
 
 
 def is_food_product(food: str) -> bool:
-    """Quick check: is the food field an edible food category or known food item?"""
+    """Check if the food string contains a recognized edible food category or staple."""
+    if not food or not food.strip():
+        return False
     food_lower = food.lower().strip()
-    if any(cat in food_lower or food_lower in cat for cat in FOOD_CATEGORIES):
-        return True
-    if any(b in food_lower or food_lower in b for b in _KNOWN_BRANDS_LOWER):
-        return True
-    common_food_kw = [
-        "biscuit", "cookie", "rusk", "wafer", "noodle", "pasta", "ramen", "maggi",
-        "chip", "crisp", "snack", "namkeen", "bhujia", "sev", "papad", "popcorn",
-        "chocolate", "candy", "sweet", "bar", "toffee", "gum", "cake", "bread",
-        "bun", "butter", "cheese", "paneer", "milk", "curd", "yogurt", "cream",
-        "ghee", "oil", "juice", "drink", "beverage", "soda", "cola", "shake",
-        "tea", "coffee", "cereal", "oats", "corn flakes", "muesli", "granola",
+    words = set(re.findall(r'[a-z0-9]+', food_lower))
+
+    # Check curated food categories
+    for cat in FOOD_CATEGORIES:
+        cat_lower = cat.lower()
+        if " " in cat_lower:
+            if cat_lower in food_lower:
+                return True
+        elif cat_lower in words:
+            return True
+
+    # Check known brands
+    for b in _KNOWN_BRANDS_LOWER:
+        if " " in b:
+            if b in food_lower:
+                return True
+        elif b in words:
+            return True
+
+    common_food_kw = {
+        "biscuit", "biscuits", "cookie", "cookies", "rusk", "wafer", "wafers", "noodle", "noodles", "pasta", "ramen", "maggi",
+        "chip", "chips", "crisp", "crisps", "snack", "snacks", "namkeen", "bhujia", "sev", "papad", "popcorn", "makhana",
+        "chocolate", "chocolates", "candy", "sweet", "sweets", "bar", "toffee", "gum", "cake", "bread",
+        "bun", "butter", "cheese", "paneer", "panner", "paner", "panneer", "milk", "curd", "yogurt", "cream",
+        "ghee", "oil", "juice", "drink", "drinks", "beverage", "beverages", "soda", "cola", "coke", "shake",
+        "tea", "coffee", "cereal", "oats", "cornflakes", "muesli", "granola",
         "sauce", "ketchup", "jam", "spread", "mayonnaise", "dip", "soup",
         "dal", "rice", "flour", "atta", "maida", "suji", "besan", "wheat",
-        "salt", "sugar", "spice", "masala", "powder", "pickle", "protein", "whey"
-    ]
-    return any(kw in food_lower for kw in common_food_kw)
+        "salt", "sugar", "spice", "spices", "masala", "powder", "pickle", "protein", "whey",
+        "egg", "eggs", "meat", "chicken", "fish", "tofu", "soya", "soy", "almond", "cashew", "peanut", "walnut"
+    }
+    return bool(words.intersection(common_food_kw))
+
+
+def is_generic_brand_placeholder(brand: str) -> bool:
+    """Returns True if the brand is empty or user selected a generic/unspecified placeholder."""
+    b = (brand or "").lower().strip()
+    return (not b or b in (
+        "not sure", "any", "unknown", "generic", "various",
+        "any brand", "not specified", "none", "n/a", "na", "all",
+        "generic / assorted", "commercial food", "packaged food"
+    ))
 
 
 def is_known_brand(brand: str) -> bool:
-    """Quick check: is the brand in our curated known-brands list or a generic indicator?"""
-    brand_lower = brand.lower().strip()
-    if not brand_lower or brand_lower in (
-        "not sure", "any", "unknown", "generic", "various",
-        "any brand", "not specified", "none", "n/a", "na", "all", "generic / assorted"
-    ):
-        return True
-    if any(b in brand_lower or brand_lower in b for b in _KNOWN_BRANDS_LOWER):
-        return True
-    return any(cat in brand_lower or brand_lower in cat for cat in FOOD_CATEGORIES)
+    """Returns True ONLY if the brand is a recognized commercial food/beverage brand."""
+    b = (brand or "").lower().strip()
+    if not b or is_generic_brand_placeholder(b):
+        return False
+    words = set(re.findall(r'[a-z0-9]+', b))
+    for kb in _KNOWN_BRANDS_LOWER:
+        if " " in kb:
+            if kb in b:
+                return True
+        elif kb in words:
+            return True
+    return False
 
 
 # ── Open Food Facts Brand Verification ──────────────────────────────────────
 
 def verify_food_off(food: str) -> bool:
     """Check if the food term exists in Open Food Facts categories/products."""
+    if not food or not food.strip():
+        return False
     try:
         resp = requests.get(
             _OFF_BASE,
             params={
                 "search_terms": food,
-                "fields": "product_name",
+                "fields": "product_name,categories_tags",
                 "page_size": 3,
                 "json": 1,
             },
@@ -306,7 +407,9 @@ def verify_food_off(food: str) -> bool:
         )
         if resp.status_code == 200:
             data = resp.json()
-            return len(data.get("products", [])) > 0
+            prods = data.get("products", [])
+            if prods and any(p.get("product_name") for p in prods):
+                return True
     except Exception:
         pass
     return False
@@ -314,6 +417,8 @@ def verify_food_off(food: str) -> bool:
 
 def verify_brand_off(brand: str) -> bool:
     """Check if the brand exists in Open Food Facts."""
+    if not brand or not brand.strip() or is_generic_brand_placeholder(brand):
+        return False
     try:
         resp = requests.get(
             _OFF_BASE,
@@ -347,19 +452,18 @@ def classify_food_brand_gemini(food: str, brand: str) -> Tuple[bool, bool]:
         import json as _json
 
         system_prompt = (
-            "You are a strict classifier. Given DATA containing a food_name and brand_name, "
+            "You are a strict food classifier. Given DATA containing a food_name and brand_name, "
             "you must determine ONLY: (1) is food_name an edible food, beverage, or food ingredient? "
             "(2) is brand_name a real food/beverage manufacturer or brand? "
+            "If the text is programming code, technical jargon, electronics, questions, or non-food items, return false. "
             "Return ONLY valid JSON: {\"is_food_product\": true/false, \"is_brand\": true/false}. "
-            "No explanation. No other output. If uncertain, return false."
+            "No explanation. No other output."
         )
 
-        # Pass user data as a JSON object inside the DATA wrapper — NEVER concatenate into instructions
         user_data_json = _json.dumps({"food_name": food, "brand_name": brand}, ensure_ascii=False)
         full_prompt = f"{system_prompt}\n\nDATA: {user_data_json}"
 
         raw = generate_content_with_retry(full_prompt, timeout=3)
-        # Strip markdown code fences
         clean = raw.strip()
         if clean.startswith("```"):
             clean = re.sub(r"^```[a-z]*\n?", "", clean)
@@ -367,56 +471,82 @@ def classify_food_brand_gemini(food: str, brand: str) -> Tuple[bool, bool]:
         result = _json.loads(clean.strip())
         return bool(result.get("is_food_product")), bool(result.get("is_brand"))
     except Exception as e:
-        logger.warning(f"Gemini classify failed: {e} — defaulting to permissive")
-        # On error, be permissive (avoid blocking legitimate queries due to API issues)
-        return True, True
+        logger.warning(f"Gemini classify failed: {e} — defaulting to strict")
+        return False, False
 
 
 # ── Full Topic Guard ─────────────────────────────────────────────────────────
 
 def topic_guard(food: str, brand: str) -> Tuple[bool, str]:
     """
-    Multi-layer topic guard. Returns (is_valid_food_query, rejection_message).
-    - Layer 1: Local curated lists & keywords (fast, 0ms)
-    - Layer 2: Open Food Facts verification (network, with 3s timeout)
-    - Layer 3: Gemini binary classification (permissive fallback)
+    Multi-layer topic guard:
+    1. Out-of-context check (coding, software, general questions, hardware, furniture, etc.)
+    2. Curated food intelligence catalog match (instant 0ms)
+    3. Food categories & staples verification
+    4. Open Food Facts real product verification
+    Returns (is_valid: bool, rejection_message: str).
     """
-    food_ok = is_food_product(food)
-    brand_ok = is_known_brand(brand)
+    clean_f = (food or "").strip()
+    clean_b = (brand or "").strip()
 
-    brand_lower = brand.lower().strip()
-    is_gen = (not brand_lower or brand_lower in ("not sure", "any", "unknown", "generic", "various", "any brand", "not specified", "none", "n/a", "all", "generic / assorted"))
-
-    # If food is recognized and brand is generic or recognized: accept immediately
-    if food_ok and (is_gen or brand_ok):
-        return True, ""
-    if food_ok or brand_ok:
-        return True, ""
-
-    # Try Open Food Facts for unknowns (fast)
-    if not food_ok:
-        food_ok = verify_food_off(food)
-    if not brand_ok and not is_gen:
-        brand_ok = verify_brand_off(brand)
-
-    if food_ok or brand_ok:
-        return True, ""
-
-    # Last resort: Gemini binary classification with permissive fallback
-    gemini_food, gemini_brand = classify_food_brand_gemini(food, brand)
-    if gemini_food or gemini_brand:
-        return True, ""
-
-    return False, (
-        f"'{food}' doesn't look like a food product. "
-        "Please search only for food products and brands, e.g. Biscuit > Britannia > Good Day."
+    warning_msg = (
+        f"Out of context: '{clean_f}' does not appear to be an edible food or beverage. "
+        "Please check your input — there may be an error or typo. "
+        "FoodCheck only analyzes food products, snacks, and beverages "
+        "(e.g. 'Mother Dairy Paneer', 'Maggi Noodles', 'Diet Coke', 'Good Day Cookies')."
     )
+
+    # 1. Out-of-context check
+    is_ooc, ooc_msg = is_out_of_context(f"{clean_f} {clean_b}".strip())
+    if is_ooc:
+        return False, ooc_msg
+
+    # 2. Curated food intelligence catalog match (e.g. 'Mother Dairy Paneer', 'Diet Coke', 'Maggi')
+    from services.food_knowledge import find_in_knowledge_base
+    if find_in_knowledge_base(clean_f, clean_b, clean_f):
+        return True, ""
+
+    food_ok = is_food_product(clean_f)
+    brand_ok = is_known_brand(clean_b)
+    brand_is_gen = is_generic_brand_placeholder(clean_b)
+
+    # 3. Direct recognition:
+    if food_ok:
+        if brand_is_gen or brand_ok:
+            return True, ""
+        # If user gave an unlisted brand, check Open Food Facts for the brand
+        if verify_brand_off(clean_b):
+            return True, ""
+        # Even if brand is unfamiliar, if food category is definitely recognized, accept
+        return True, ""
+
+    if brand_ok and not brand_is_gen:
+        # Check if the food item exists under that brand or in Open Food Facts
+        if verify_food_off(f"{clean_b} {clean_f}"):
+            return True, ""
+
+    # 4. Open Food Facts verification for unknown items
+    if verify_food_off(clean_f):
+        return True, ""
+
+    # 5. Gemini binary classification fallback (strict)
+    gemini_food, gemini_brand = classify_food_brand_gemini(clean_f, clean_b)
+    if gemini_food:
+        return True, ""
+
+    return False, warning_msg
 
 
 # ── Rate-Limit / Cooldown Tracking ──────────────────────────────────────────
 
 def check_cooldown(ip: str) -> Tuple[bool, str]:
     """Check if IP is in cooldown. Returns (is_blocked, message)."""
+    try:
+        from flask import current_app
+        if current_app and current_app.config.get("TESTING"):
+            return False, ""
+    except Exception:
+        pass
     now = time.monotonic()
     with _TRACKER_LOCK:
         state = _REJECTION_TRACKER.get(ip, {})

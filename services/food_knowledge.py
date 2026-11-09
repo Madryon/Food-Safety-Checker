@@ -701,6 +701,12 @@ def synthesize_food_profile(query: str, brand: str = "", variant: str = "") -> D
     if clean_brand and clean_brand.lower() not in prod_title.lower():
         prod_title = f"{clean_brand} {prod_title}".strip()
 
+    # Out of context check: immediately reject non-food queries
+    from services.search_guard import is_out_of_context, is_food_product
+    is_ooc, ooc_msg = is_out_of_context(f"{query} {brand}")
+    if is_ooc:
+        raise ValueError(ooc_msg)
+
     # Rule 1: Diet / Zero Sugar Carbonated Sodas (CHECKED FIRST BEFORE GENERAL SODAS)
     if any(k in q_low for k in ["diet", "zero sugar", "sugar free", "zero calorie", "light soda"]) and any(k in q_low for k in ["coke", "cola", "pepsi", "soda", "drink", "sprite", "dew", "fanta"]):
         return {
@@ -968,6 +974,14 @@ def synthesize_food_profile(query: str, brand: str = "", variant: str = "") -> D
         }
 
     # Default fallback: Wholesome balanced packaged food
+    # Strict validation: ensure the query actually pertains to edible food products
+    if not is_food_product(query) and not is_food_product(brand) and not is_food_product(prod_title):
+        raise ValueError(
+            f"Out of context: '{query}' does not appear to be an edible food or beverage. "
+            "Please check your input — there may be an error or typo. "
+            "FoodCheck only analyzes food products, snacks, and beverages (e.g. 'Mother Dairy Paneer', 'Maggi Noodles', 'Diet Coke')."
+        )
+
     return {
         "product_name": prod_title,
         "brand": display_brand,

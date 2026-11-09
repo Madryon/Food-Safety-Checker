@@ -586,6 +586,11 @@ _FOOD_KNOWLEDGE_BASE = [
 
 def _generate_generic_food_profile(food: str, brand: str = "", variant: str = "") -> Dict[str, Any]:
     """Generate an authentic food packaging profile based on culinary & nutrition science."""
+    from services.search_guard import is_out_of_context, is_food_product
+    is_ooc, ooc_msg = is_out_of_context(f"{food} {brand}")
+    if is_ooc:
+        raise ValueError(ooc_msg)
+
     f_lower = f"{food} {brand} {variant}".lower()
     clean_brand = brand.title() if brand and brand.lower() not in ("generic", "not sure", "any", "unknown") else "Fresh"
     var_label = f" ({variant})" if variant and variant not in ("Not sure / Any variant", "Standard") else ""
@@ -682,6 +687,12 @@ def _generate_generic_food_profile(food: str, brand: str = "", variant: str = ""
             "data_source": "FoodCheck AI Knowledge Engine"
         }
     else:
+        if not is_food_product(food) and not is_food_product(brand):
+            raise ValueError(
+                f"Out of context: '{food}' does not appear to be an edible food or beverage. "
+                "Please check your input — there may be an error or typo. "
+                "FoodCheck only analyzes food products, snacks, and beverages."
+            )
         # Default wholesome food template
         return {
             "product_name": product_name,

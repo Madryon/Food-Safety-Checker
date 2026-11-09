@@ -777,6 +777,11 @@ def get_search_report(food: str = "", brand: str = "", variant: str = "", query:
     clean_brand = (brand or "").strip()
     clean_variant = (variant or "").strip()
 
+    from services.search_guard import is_out_of_context
+    is_ooc, ooc_msg = is_out_of_context(f"{clean_query} {clean_food} {clean_brand}".strip())
+    if is_ooc:
+        raise ValueError(ooc_msg)
+
     if not clean_food and clean_query:
         clean_food = clean_query
     if not clean_query and clean_food:

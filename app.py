@@ -696,8 +696,11 @@ def _log_rejection(food: str, brand: str, variant: str, reason: str, ip: str):
 def search_suggest():
     """
     GET /api/search/suggest?type=food|brand|variant&q=...&food=...&brand=...
-    Returns up to 8 autocomplete suggestions for any user (Guest or Logged-in).
+    Returns up to 8 autocomplete suggestions for registered users.
     """
+    if not (current_user and current_user.is_authenticated):
+        return jsonify({"suggestions": [], "auth_required": True}), 401
+
     from services.search_service import (
         get_food_suggestions,
         get_brand_suggestions,
@@ -739,9 +742,16 @@ def search_food():
     POST /api/search-food or /api/search/analyze or /analyze-text
     Body: { "query": "<food_name>", "category": "...", "brand": "...", "variant": "..." }
     Accepts both free-form queries (e.g. 'Maggi 2-Minute Noodles') and structured wizard inputs.
-    Open to ALL users (Guest or Logged-in).
+    Exclusively available for registered / signed-in users.
     Returns unified report: { vision, health, news, safety_score, verdict, ... }
     """
+    # 0. Authentication check: Search is exclusively for registered members
+    if not (current_user and current_user.is_authenticated):
+        return jsonify({
+            "error": "Food Safety Search is exclusively available for registered members. Please sign in or create a free account to search.",
+            "auth_required": True,
+        }), 401
+
     from services.search_guard import (
         validate_field,
         topic_guard,
@@ -793,28 +803,28 @@ def search_food():
     if not ok:
         _log_rejection(query, brand, variant, err, client_ip)
         record_rejection(client_ip)
-        return jsonify({"error": err}), 400
+        return jsonify({"error": err, "is_out_of_context": True}), 400
 
     if brand and brand.lower() not in ("generic", "not sure", "any", "unknown", "not specified"):
         ok, err = validate_field(brand, "Brand")
         if not ok:
             _log_rejection(query, brand, variant, err, client_ip)
             record_rejection(client_ip)
-            return jsonify({"error": err}), 400
+            return jsonify({"error": err, "is_out_of_context": True}), 400
 
     if variant and variant != "Not sure / Any variant":
         ok, err = validate_field(variant, "Variant")
         if not ok:
             _log_rejection(query, brand, variant, err, client_ip)
             record_rejection(client_ip)
-            return jsonify({"error": err}), 400
+            return jsonify({"error": err, "is_out_of_context": True}), 400
 
     # 4. Topic guard (OFF + curated lists + classifier)
     guard_ok, guard_msg = topic_guard(query, brand)
     if not guard_ok:
         _log_rejection(query, brand, variant, guard_msg, client_ip)
         record_rejection(client_ip)
-        return jsonify({"error": guard_msg}), 422
+        return jsonify({"error": guard_msg, "is_out_of_context": True}), 400
 
     # 5. 24-hour result cache
     cache_key = f"search::{query.lower()}::{brand.lower()}::{variant.lower()}"
@@ -863,6 +873,11 @@ def search_food():
             },
         )
         return jsonify(report)
+    except ValueError as ve:
+        return jsonify({
+            "error": str(ve),
+            "is_out_of_context": True,
+        }), 400
     except Exception as e:
         app.logger.error(f"Search food error: {e}", exc_info=True)
         log_error("search_food", str(e), path=request.path)
