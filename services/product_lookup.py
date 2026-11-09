@@ -63,7 +63,7 @@ def search(product_name: str, brand: str) -> dict | None:
             "action": "process",
             "json": 1,
             "page_size": 5,
-            "fields": "product_name,brands,nutriments,ingredients_text,nova_group,"
+            "fields": "product_name,brands,nutriments,ingredients_text,ingredients_text_en,nova_group,"
                       "nutriscore_grade,allergens_tags,image_url,categories",
         }
         
@@ -89,10 +89,7 @@ def search(product_name: str, brand: str) -> dict | None:
                     _set_in_cache(cache_key, result)
                     return result
             
-            # Return first result as fallback
-            result = _format_product(products[0])
-            _set_in_cache(cache_key, result)
-            return result
+            continue
         
         except (requests.RequestException, ValueError, TimeoutError):
             continue
@@ -114,6 +111,13 @@ def _format_product(product: dict) -> dict:
         "categories": product.get("categories"),
         "allergens": product.get("allergens_tags", []),
         "image_url": product.get("image_url"),
+        # Include ingredients text — critical for health analysis in search flow
+        "ingredients_text": (
+            product.get("ingredients_text_en")
+            or product.get("ingredients_text")
+            or product.get("ingredients_text_fr")
+            or ""
+        ),
         "nutriments": {
             "energy_kcal": nutriments.get("energy-kcal_100g"),
             "protein_g": nutriments.get("proteins_100g"),

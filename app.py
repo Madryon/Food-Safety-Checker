@@ -727,22 +727,43 @@ def search_analyze():
     if blocked:
         return jsonify({"error": block_msg}), 429
 
-    data = request.get_json(silent=True)
+    # Accept JSON body, Form data, or query parameters
+    data = request.get_json(silent=True) or request.form.to_dict() or request.args.to_dict() or {}
     if not data:
-        return jsonify({"error": "Invalid request body."}), 400
+        return jsonify({"error": "Invalid request body. Expected JSON or form data."}), 400
 
     # 2. Honeypot check (bots fill this hidden field)
     if data.get("_hp", ""):
         app.logger.warning(f"Search honeypot triggered from {client_ip}")
         return jsonify({"error": "Invalid request."}), 400
 
-    food = str(data.get("food", "")).strip()
-    brand = str(data.get("brand", "")).strip()
-    variant = str(data.get("variant", "") or "").strip() or "Not sure / Any variant"
+    # Flexible parameter support (e.g. food/product_name/query, brand/company, variant/flavor)
+    food = str(
+        data.get("food") or data.get("product_name") or data.get("query") or data.get("product") or data.get("name") or ""
+    ).strip()
+    brand = str(
+        data.get("brand") or data.get("company") or data.get("brand_name") or ""
+    ).strip()
+    variant = str(
+        data.get("variant") or data.get("flavor") or ""
+    ).strip() or "Not sure / Any variant"
+
+    if not food:
+        return jsonify({"error": "Food or product name is required."}), 400
+
+    # If brand not specified, default gracefully
+    if not brand:
+        brand = "Generic"
 
     # 3. Field format validation
-    for field_val, field_name in [(food, "Food"), (brand, "Brand")]:
-        ok, err = validate_field(field_val, field_name)
+    ok, err = validate_field(food, "Food")
+    if not ok:
+        _log_rejection(food, brand, variant, err, client_ip)
+        record_rejection(client_ip)
+        return jsonify({"error": err}), 400
+
+    if brand and brand.lower() not in ("generic", "not sure", "any", "unknown", "not specified"):
+        ok, err = validate_field(brand, "Brand")
         if not ok:
             _log_rejection(food, brand, variant, err, client_ip)
             record_rejection(client_ip)
@@ -756,7 +777,7 @@ def search_analyze():
             record_rejection(client_ip)
             return jsonify({"error": err}), 400
 
-    # 4. Topic guard (OFF + Gemini classify)
+    # 4. Topic guard (OFF + curated lists + classifier)
     guard_ok, guard_msg = topic_guard(food, brand)
     if not guard_ok:
         _log_rejection(food, brand, variant, guard_msg, client_ip)

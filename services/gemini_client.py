@@ -190,6 +190,8 @@ def generate_content_with_retry(
         key_hit_quota = False
 
         for model_name in models:
+            if key_hit_quota:
+                break
             for attempt in range(max_retries_per_model + 1):
                 try:
                     logger.info(f"⚡ Gemini [Key {key_hint}] → {model_name} (attempt {attempt + 1}, timeout {req_timeout}s)")
@@ -229,9 +231,19 @@ def generate_content_with_retry(
                         last_error = e
                         meaningful_error = e
                         break
-                    if "invalid api key" in err_str or "api_key_invalid" in err_str:
-                        logger.error(f"Invalid API key [Key {key_hint}]. Skipping this key completely.")
+                    if (
+                        "401" in err_str
+                        or "invalid api key" in err_str
+                        or "api key not valid" in err_str
+                        or "api_key_invalid" in err_str
+                        or "access_token_type_unsupported" in err_str
+                        or "permission_denied" in err_str
+                    ):
+                        logger.error(f"Invalid/unauthorized API key [Key {key_hint}]: {e}. Skipping key permanently.")
+                        _KEY_COOLDOWNS[api_key] = time.time() + 86400
                         key_hit_quota = True
+                        last_error = e
+                        meaningful_error = e
                         break
                     logger.error(f"API error on Gemini [Key {key_hint}] model '{model_name}': {e}")
                     last_error = e
