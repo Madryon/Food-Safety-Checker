@@ -136,10 +136,10 @@ def search(product_name: str, brand: str) -> Optional[Dict[str, Any]]:
         "User-Agent": "FoodCheck-India - WebApp - Version 1.0 (https://github.com/Madryon/Food-Safety-Checker)"
     }
 
-    # Search endpoints (prefer India catalog first, fallback to world catalog)
+    # Search endpoints (prefer global catalog which contains Indian and world foods)
     endpoints = [
-        "https://in.openfoodfacts.org/cgi/search.pl",
         "https://world.openfoodfacts.org/cgi/search.pl",
+        "https://in.openfoodfacts.org/cgi/search.pl",
     ]
 
     queries = [
@@ -163,7 +163,7 @@ def search(product_name: str, brand: str) -> Optional[Dict[str, Any]]:
             }
 
             try:
-                resp = requests.get(base_url, params=params, headers=headers, timeout=3.5)
+                resp = requests.get(base_url, params=params, headers=headers, timeout=2.0)
                 if resp.status_code != 200:
                     continue
 

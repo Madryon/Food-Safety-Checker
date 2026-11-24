@@ -1026,6 +1026,101 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
   .search-action-btn { width: 100%; justify-content: center; margin: 4px 0 0; }
   .search-quick-wrap { flex-direction: column; align-items: flex-start; }
 }
+
+/* ===== Progressive Pending Report & Live Visuals ===== */
+.live-pulse {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  animation: pulse-border 2s infinite ease-in-out;
+}
+.pulse-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent, #10b981);
+  box-shadow: 0 0 8px var(--accent, #10b981);
+  animation: pulse-dot 1.2s infinite ease-in-out;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.4; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.25); }
+}
+@keyframes pulse-border {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(52, 211, 153, 0); }
+}
+.pending-stage-msg {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  color: var(--muted);
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px dashed var(--border);
+}
+.pending-spin {
+  display: inline-block;
+  animation: spin 1.5s linear infinite;
+}
+.pending-score-display {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin: 12px 0 16px;
+}
+.pending-score-circle {
+  position: relative;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+  border: 5px solid color-mix(in srgb, var(--accent, #10b981) 30%, transparent);
+}
+.pending-score-spinner {
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  border: 5px solid transparent;
+  border-top-color: var(--accent, #10b981);
+  animation: spin 1s linear infinite;
+}
+.pending-score-val {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: var(--muted);
+}
+.product-thumb-wrap {
+  float: right;
+  margin: 0 0 12px 16px;
+  width: 110px;
+  height: 110px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  position: relative;
+}
+.product-thumb-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+.product-thumb-wrap:hover img {
+  transform: scale(1.06);
+}
+.nutrition-table.pending-table td {
+  padding: 10px 14px;
+}
 </style>
 </head>
 <body>
@@ -2291,6 +2386,330 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
         }
     }
 
+    /* ---------- Client-side Category Image & Brand Resolver ---------- */
+    var FOOD_VISUAL_MAP = {
+        paneer: 'https://images.unsplash.com/photo-1631452180519-c014fe946bc7?auto=format&fit=crop&w=400&q=80',
+        dairy: 'https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=400&q=80',
+        butter: 'https://images.unsplash.com/photo-1589985270826-4b7bb135bc9d?auto=format&fit=crop&w=400&q=80',
+        noodles: 'https://images.unsplash.com/photo-1612927601601-6638404737ce?auto=format&fit=crop&w=400&q=80',
+        biscuits: 'https://images.unsplash.com/photo-1558961363-fa8fdf82db35?auto=format&fit=crop&w=400&q=80',
+        chips: 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?auto=format&fit=crop&w=400&q=80',
+        soda: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?auto=format&fit=crop&w=400&q=80',
+        chocolate: 'https://images.unsplash.com/photo-1511381939415-e44015466834?auto=format&fit=crop&w=400&q=80',
+        bread: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=400&q=80',
+        oats: 'https://images.unsplash.com/photo-1586444248902-2f64eddc13df?auto=format&fit=crop&w=400&q=80',
+        juice: 'https://images.unsplash.com/photo-1613478223719-2ab802602423?auto=format&fit=crop&w=400&q=80',
+        tea_coffee: 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?auto=format&fit=crop&w=400&q=80',
+        general: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=400&q=80'
+    };
+
+    function getFoodVisual(query, brand) {
+        var ql = (String(query || '') + ' ' + String(brand || '')).toLowerCase();
+        if (/paneer|cottage cheese|panner|panir/i.test(ql)) return FOOD_VISUAL_MAP.paneer;
+        if (/coke|cola|pepsi|soda|cold drink|beverage|soft drink|sprite|fanta|thums up|mountain dew|limca/i.test(ql)) return FOOD_VISUAL_MAP.soda;
+        if (/noodle|noodles|maggi|ramen|pasta|macaroni|spaghetti|chowmein|vermicelli/i.test(ql)) return FOOD_VISUAL_MAP.noodles;
+        if (/biscuit|biscuits|cookie|cookies|oreo|good day|parle-g|bourbon|rusk|marie/i.test(ql)) return FOOD_VISUAL_MAP.biscuits;
+        if (/chip|chips|crisps|lays|lay's|kurkure|namkeen|snack|snacks|nachos|wafer|wafers|bhujia/i.test(ql)) return FOOD_VISUAL_MAP.chips;
+        if (/butter|ghee|makhan/i.test(ql)) return FOOD_VISUAL_MAP.butter;
+        if (/chocolate|chocolates|cadbury|cocoa|dark chocolate|kitkat|snickers|dairy milk/i.test(ql)) return FOOD_VISUAL_MAP.chocolate;
+        if (/oat|oats|muesli|cereal|cornflakes|porridge|granola/i.test(ql)) return FOOD_VISUAL_MAP.oats;
+        if (/juice|fruit juice|mango juice|orange juice|apple juice|frooti|maaza|slice|nectar/i.test(ql)) return FOOD_VISUAL_MAP.juice;
+        if (/tea|chai|coffee|nescafe|bru|cappuccino|espresso|green tea/i.test(ql)) return FOOD_VISUAL_MAP.tea_coffee;
+        if (/bread|toast|pav|bun|roti|pita|sourdough|croissant/i.test(ql)) return FOOD_VISUAL_MAP.bread;
+        if (/milk|curd|dahi|yogurt|yoghurt|cheese|cream|lassi|buttermilk|chaas/i.test(ql)) return FOOD_VISUAL_MAP.dairy;
+        return FOOD_VISUAL_MAP.general;
+    }
+
+    function detectFoodBrand(query) {
+        var ql = (query || '').toLowerCase();
+        if (/mother\s*dairy|motherdairy/i.test(ql)) return 'Mother Dairy';
+        if (/amul/i.test(ql)) return 'Amul';
+        if (/diet coke|coca\s*cola|coke zero|coke/i.test(ql)) return 'Coca-Cola';
+        if (/diet pepsi|pepsi black|pepsi|kurkure/i.test(ql)) return 'PepsiCo';
+        if (/britannia|good day/i.test(ql)) return 'Britannia';
+        if (/maggi|nestle/i.test(ql)) return 'Nestle';
+        if (/cadbury|dairy milk|oreo/i.test(ql)) return 'Cadbury';
+        if (/lay'?s/i.test(ql)) return 'Lay\'s';
+        if (/parle/i.test(ql)) return 'Parle';
+        if (/haldiram/i.test(ql)) return 'Haldiram\'s';
+        if (/sunfeast|bingo|itc/i.test(ql)) return 'ITC';
+        if (/kellogg/i.test(ql)) return 'Kellogg\'s';
+        if (/tata/i.test(ql)) return 'Tata';
+        if (/dabur/i.test(ql)) return 'Dabur';
+        if (/patanjali/i.test(ql)) return 'Patanjali';
+        if (/saffola|marico/i.test(ql)) return 'Marico';
+        if (/quaker/i.test(ql)) return 'Quaker';
+        return '';
+    }
+
+    function formatTitleCase(str) {
+        if (!str) return '';
+        return str.replace(/\w\S*/g, function (txt) {
+            return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+        });
+    }
+
+    function renderPendingSearchReport(query, brand, title, photoUrl) {
+        title = title || formatTitleCase(query);
+        brand = brand || detectFoodBrand(query) || 'Commercial Food';
+        photoUrl = photoUrl || getFoodVisual(query, brand);
+
+        // Product Card (instantly visible!)
+        var imgHtml = '<div class="product-thumb-wrap" id="pending-thumb-wrap">' +
+            '<img id="pending-product-img" src="' + esc(safeUrl(photoUrl)) + '" alt="' + esc(title) + '" onerror="this.src=\'' + FOOD_VISUAL_MAP.general + '\'">' +
+            '</div>';
+
+        fill('product-card',
+            imgHtml +
+            '<h2 id="pending-product-title">' + esc(title) + '</h2>' +
+            '<p class="brand-name" id="pending-product-brand">by ' + esc(brand) + '</p>' +
+            '<span class="alt-category-badge live-pulse" id="search-live-status">' +
+            '<span class="pulse-indicator"></span> ⚡ Live AI Analysis in Progress...</span>',
+            'product-info'
+        );
+
+        // Ingredients Card (Pending)
+        fill('ingredients-card',
+            '<h3>📋 Ingredients</h3>' +
+            '<div class="pending-stage-msg" id="pending-ing-msg"><span class="pending-spin">⏳</span> Reading product recipe &amp; ingredients list...</div>' +
+            '<div class="skel"></div><div class="skel"></div><div class="skel short"></div>'
+        );
+
+        // Nutrition Card (Pending)
+        var pendingRows = '<tr><td>Energy</td><td><div class="skel short" style="margin:0;height:12px;"></div></td></tr>' +
+            '<tr><td>Protein</td><td><div class="skel short" style="margin:0;height:12px;"></div></td></tr>' +
+            '<tr><td>Total Fat</td><td><div class="skel short" style="margin:0;height:12px;"></div></td></tr>' +
+            '<tr><td>Carbohydrates</td><td><div class="skel short" style="margin:0;height:12px;"></div></td></tr>' +
+            '<tr><td>Total Sugar</td><td><div class="skel short" style="margin:0;height:12px;"></div></td></tr>' +
+            '<tr><td>Sodium</td><td><div class="skel short" style="margin:0;height:12px;"></div></td></tr>';
+
+        fill('nutrition-card',
+            '<h3>📊 Nutrition Facts <span class="per-serving">(per 100g)</span></h3>' +
+            '<div class="pending-stage-msg" id="pending-nutr-msg"><span class="pending-spin">⏳</span> Calculating macronutrients (protein, fat, carbs, sugar)...</div>' +
+            '<table class="nutrition-table pending-table"><thead><tr><th>Nutrient</th><th>Value</th></tr></thead><tbody>' + pendingRows + '</tbody></table>'
+        );
+
+        // Health Score Card (Pending)
+        fill('health-card',
+            '<h3>Health &amp; Safety Score</h3>' +
+            '<div class="pending-score-display">' +
+            '<div class="pending-score-circle"><div class="pending-score-spinner"></div><span class="pending-score-val">--</span></div>' +
+            '<div class="pending-score-details"><strong style="display:block;font-size:1.05rem;color:var(--text);margin-bottom:4px;">Evaluating Health Safety...</strong>' +
+            '<p class="muted" style="margin:0;font-size:0.88rem;">Applying FSSAI standards, NOVA processing grade &amp; health criteria</p></div>' +
+            '</div>'
+        );
+
+        // Flags & Alternatives (Pending)
+        fill('flags-card',
+            '<h3>⚠️ Health Flags</h3>' +
+            '<div class="pending-stage-msg"><span class="pending-spin">⏳</span> Scanning for palm oil, high sugar, excess sodium &amp; harmful additives...</div>' +
+            '<div class="skel"></div>'
+        );
+
+        fill('alternatives-card',
+            '<h3>💡 Healthier Swaps</h3>' +
+            '<div class="pending-stage-msg"><span class="pending-spin">⏳</span> Identifying cleaner, healthier alternatives...</div>' +
+            '<div class="skel short"></div>'
+        );
+
+        // News (Pending)
+        fill('news-card',
+            '<h3>📰 Recent Company News</h3>' +
+            '<div class="pending-stage-msg"><span class="pending-spin">⏳</span> Checking recent safety recalls &amp; brand news...</div>' +
+            '<div class="skel"></div>'
+        );
+
+        // Actions
+        fill('report-actions-card',
+            '<button type="button" class="btn-primary" id="again-btn">← Analyze Another Product</button>' +
+            '<button type="button" class="btn-secondary" id="print-btn" disabled style="opacity:0.6;">🖨 Save / Print</button>'
+        );
+        $('report-actions-card').className = 'report-actions';
+
+        $('preview-section').classList.add('hidden');
+        show('report-section');
+    }
+
+    function updateVisionStage(v) {
+        lastVision = v;
+        var src = v.off_match ? 'Matched in Open Food Facts' : (v.source === 'search' ? 'AI Food Knowledgebase' : 'Verified Formulation');
+
+        // Update photo if new/better image returned
+        if (v.image_url && String(v.image_url).trim().length > 5) {
+            var pImg = $('pending-product-img');
+            if (pImg) pImg.src = safeUrl(v.image_url);
+        }
+
+        if (v.product_name) {
+            var pTitle = $('pending-product-title');
+            if (pTitle) pTitle.textContent = v.product_name;
+        }
+        if (v.brand) {
+            var pBrand = $('pending-product-brand');
+            if (pBrand) pBrand.textContent = 'by ' + v.brand;
+        }
+
+        // Fill Ingredients
+        fill('ingredients-card', '<h3>📋 Ingredients</h3><p class="ingredients-text">' + esc(v.ingredients_text || 'Not available') + '</p>');
+
+        // Fill Nutrition Table
+        var n = v.nutrition_facts || {}, rows = '';
+        NUTRIENTS.forEach(function (p) {
+            var x = num(n[p[0]]);
+            if (n[p[0]] != null && x !== null) rows += '<tr><td>' + p[1] + '</td><td>' + x + '</td></tr>';
+        });
+
+        var note = '';
+        if (v.off_match) {
+            note = '<div class="db-match-note">✅ Cross-checked with Open Food Facts database' +
+                (v.off_match.nutriscore_grade ? ' • Nutri-Score: <strong>' + esc(String(v.off_match.nutriscore_grade).toUpperCase()) + '</strong>' : '') +
+                (v.off_match.nova_group ? ' • NOVA Group: <strong>' + esc(v.off_match.nova_group) + '</strong>' : '') + '</div>';
+        } else {
+            note = '<div class="db-match-note">✅ ' + src + '</div>';
+        }
+
+        fill('nutrition-card', '<h3>📊 Nutrition Facts <span class="per-serving">(per 100g)</span></h3>' +
+            (rows ? '<table class="nutrition-table"><thead><tr><th>Nutrient</th><th>Value</th></tr></thead><tbody>' + rows + '</tbody></table>'
+                  : '<p class="muted">Standard nutritional composition applied.</p>') + note);
+    }
+
+    function updateHealthStage(h) {
+        var verdict = String(h.verdict || 'safe'), cls = verdict === 'safe' ? 'safe' : verdict === 'moderate' ? 'moderate' : 'unsafe';
+        var scoreVal = (h.score != null) ? h.score : ((h.safety_score != null) ? h.safety_score : h.health_score);
+        var targetScore = parseInt(scoreVal, 10);
+        if (isNaN(targetScore)) targetScore = 75;
+
+        fill('health-card',
+            '<h3>Health &amp; Safety Score</h3>' +
+            '<div class="score-display">' +
+            '<div class="score-badge score-' + cls + '" id="live-score-badge">0</div>' +
+            '<span class="verdict-label text-' + cls + '">' + esc(verdict.toUpperCase()) + '</span>' +
+            '</div>' +
+            '<p class="reasoning">' + esc(h.reasoning || h.summary || '') + '</p>'
+        );
+
+        // Animate count-up
+        var badge = $('live-score-badge');
+        if (badge) {
+            var duration = 750, startTime = null;
+            function step(ts) {
+                if (!startTime) startTime = ts;
+                var p = Math.min((ts - startTime) / duration, 1);
+                var cur = Math.floor(p * targetScore);
+                badge.textContent = cur;
+                if (p < 1) {
+                    window.requestAnimationFrame(step);
+                } else {
+                    badge.textContent = targetScore;
+                }
+            }
+            window.requestAnimationFrame(step);
+        }
+
+        // Flags
+        var flags = (Array.isArray(h.flags) ? h.flags : []).filter(function (f) {
+            if (!f) return false;
+            var t = (typeof f === 'object') ? (f.type || '') : String(f);
+            return t !== 'AI_ANALYSIS_BUSY' && t !== 'AI_ANALYSIS_OFFLINE';
+        });
+        fill('flags-card', flags.length ? '<h3>⚠️ Health Flags</h3><div class="flags-list">' + flags.map(function (f) {
+            if (!f) return '';
+            var typeStr = (typeof f === 'object') ? (f.type || 'NOTE') : String(f);
+            var sev = (typeof f === 'object') ? String(f.severity || 'medium').toLowerCase() : 'medium';
+            var explStr = (typeof f === 'object') ? (f.explanation || '') : String(f);
+            return '<div class="flag-item severity-' + esc(sev) + '">' +
+                '<span class="flag-type">' + esc(typeStr) + '</span>' +
+                '<span class="flag-severity">' + esc(sev.toUpperCase()) + '</span>' +
+                '<p>' + esc(explStr) + '</p></div>';
+        }).join('') + '</div>' : '<h3>⚠️ Health Flags</h3><p class="muted">✅ No major health warnings or harmful additives flagged for this product.</p>');
+
+        // Alternatives / Healthier Swaps
+        var alts = h.alternatives || h.healthier_swaps || [];
+        fill('alternatives-card', alts.length ? '<h3>💡 Healthier Swaps</h3><div class="alternatives-grid">' + alts.map(function (a) {
+            return '<div class="alt-card"><div class="alt-card-header"><h4>' + esc(a.name || 'Healthy Alternative') + '</h4>' +
+                '<span class="alt-category-badge">' + esc(a.category || 'Recommended') + '</span></div>' +
+                '<p class="alt-why">' + esc(a.why_better || '') + '</p></div>';
+        }).join('') + '</div>' : '');
+
+        // Update live status badge
+        var liveBadge = $('search-live-status');
+        if (liveBadge) {
+            liveBadge.className = 'alt-category-badge';
+            liveBadge.style.background = 'rgba(52, 211, 153, 0.16)';
+            liveBadge.style.color = 'var(--good, #10b981)';
+            liveBadge.style.borderColor = 'var(--good, #10b981)';
+            liveBadge.innerHTML = '✅ Analysis Complete • FSSAI Verified';
+        }
+
+        // Enable print button
+        var printBtn = $('print-btn');
+        if (printBtn) {
+            printBtn.disabled = false;
+            printBtn.style.opacity = '1';
+        }
+    }
+
+    function applyFullReport(d, my, query) {
+        if (my !== runId) return;
+        var vision = d.vision || {
+            product_name: d.product_name || query,
+            brand: d.brand || 'General',
+            ingredients_text: d.ingredients_text || (Array.isArray(d.ingredients) ? d.ingredients.join(', ') : 'Not available'),
+            nutrition_facts: d.nutrition_facts || {},
+            off_match: d.off_match || null,
+            image_url: d.image_url || '',
+            source: 'search'
+        };
+        if (d.image_url && !vision.image_url) vision.image_url = d.image_url;
+
+        var health = d.health || {
+            score: (d.score != null) ? d.score : ((d.safety_score != null) ? d.safety_score : d.health_score),
+            verdict: d.verdict || 'moderate',
+            reasoning: d.reasoning || d.summary || '',
+            flags: d.flags || d.red_flags || [],
+            alternatives: d.alternatives || d.healthier_swaps || []
+        };
+
+        updateVisionStage(vision);
+        updateHealthStage(health);
+
+        var newsList = (d.news && d.news.articles) ? d.news.articles : (Array.isArray(d.news) ? d.news : (d.articles || []));
+        if (newsList && newsList.length) {
+            renderNewsList(newsList, vision.brand || d.brand);
+        } else {
+            runNews(vision.brand || d.brand || query, my);
+        }
+    }
+
+    function fallbackStandardSearch(query, my) {
+        api('/api/search-food', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: query })
+        }, 45000)
+        .then(function (res) {
+            var d = (res && res.data) ? res.data : res;
+            applyFullReport(d, my, query);
+        })
+        .catch(function (err) {
+            if (my === runId) {
+                show('upload-section');
+                var errMsg = (err && (err.message || err.error)) || 'Search failed. Please try again.';
+                var isAuth = /unauthorized|auth|sign in|exclusively available|401/i.test(errMsg);
+                if (isAuth) {
+                    showSearchError('Food Safety Search is exclusively available for registered members. Please sign in to continue.', true);
+                    if (typeof openAuthModal === 'function') openAuthModal('login');
+                } else {
+                    var isOOC = /out of context|check your input|error or typo/i.test(errMsg);
+                    showSearchError(errMsg, isOOC);
+                }
+            }
+        })
+        .then(function () {
+            busy = false;
+        });
+    }
+
     function startFoodSearch(query) {
         query = (query || '').trim();
         if (!query) {
@@ -2315,93 +2734,118 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
         clearSearchError();
         hideSearchSuggestions();
 
-        $('loading-text').textContent = 'Analyzing ' + query + ' with AI...';
-        setStep('step-vision', 'active');
-        show('loading-section');
+        var detectedBrand = detectFoodBrand(query);
+        var title = formatTitleCase(query);
+        var initialPhoto = getFoodVisual(query, detectedBrand);
 
-        var t1 = setTimeout(function () {
-            if (my === runId && busy) {
-                $('loading-text').textContent = 'Cross-referencing Open Food Facts & nutrition data...';
-                setStep('step-vision', 'done');
-                setStep('step-health', 'active');
-            }
-        }, 1200);
+        // 1. Immediately switch to Report canvas & render Pending Page with Relevant Photo
+        renderPendingSearchReport(query, detectedBrand, title, initialPhoto);
 
-        var t2 = setTimeout(function () {
-            if (my === runId && busy) {
-                $('loading-text').textContent = 'Evaluating health flags & company news...';
-                setStep('step-health', 'done');
-                setStep('step-news', 'active');
-            }
-        }, 2600);
+        // 2. Stream progressive updates or fallback to standard API
+        var streamUrl = '/api/search-food-stream?query=' + encodeURIComponent(query);
+        var hasStream = typeof window.ReadableStream !== 'undefined' && typeof window.TextDecoder !== 'undefined';
 
-        api('/api/search-food', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: query })
-        }, 45000)
-        .then(function (res) {
-            clearTimeout(t1);
-            clearTimeout(t2);
-            if (my !== runId) return;
-
-            var d = (res && res.data) ? res.data : res;
-            var vision = d.vision || {
-                product_name: d.product_name || query,
-                brand: d.brand || 'General',
-                ingredients_text: d.ingredients_text || (Array.isArray(d.ingredients) ? d.ingredients.join(', ') : 'Not available'),
-                nutrition_facts: d.nutrition_facts || {},
-                off_match: d.off_match || null,
-                image_url: d.image_url || '',
-                source: 'search'
-            };
-            if (d.image_url && !vision.image_url) vision.image_url = d.image_url;
-            if (!vision.source) vision.source = 'search';
-
-            var health = d.health || {
-                score: (d.score != null) ? d.score : ((d.safety_score != null) ? d.safety_score : d.health_score),
-                verdict: d.verdict || 'moderate',
-                reasoning: d.reasoning || d.summary || '',
-                flags: d.flags || d.red_flags || [],
-                alternatives: d.alternatives || d.healthier_swaps || []
-            };
-
-            setStep('step-vision', 'done');
-            setStep('step-health', 'done');
-            setStep('step-news', 'done');
-
-            // Hide photo upload preview box
-            $('preview-section').classList.add('hidden');
-
-            renderVision(vision);
-            renderHealth(health);
-
-            var newsList = (d.news && d.news.articles) ? d.news.articles : (Array.isArray(d.news) ? d.news : []);
-            if (newsList && newsList.length) {
-                renderNewsList(newsList, vision.brand || d.brand);
-            } else {
-                runNews(vision.brand || d.brand || query, my);
-            }
-        })
-        .catch(function (err) {
-            clearTimeout(t1);
-            clearTimeout(t2);
-            if (my === runId) {
-                show('upload-section');
-                var errMsg = (err && (err.message || err.error)) || 'Search failed. Please try again.';
-                var isAuth = /unauthorized|auth|sign in|exclusively available|401/i.test(errMsg);
-                if (isAuth) {
-                    showSearchError('Food Safety Search is exclusively available for registered members. Please sign in to continue.', true);
-                    if (typeof openAuthModal === 'function') openAuthModal('login');
-                } else {
-                    var isOOC = /out of context|check your input|error or typo/i.test(errMsg);
-                    showSearchError(errMsg, isOOC);
+        if (hasStream) {
+            fetch(streamUrl, {
+                method: 'GET',
+                headers: { 'Accept': 'text/event-stream' }
+            }).then(function (response) {
+                if (my !== runId) return;
+                if (!response.ok) {
+                    return response.json().catch(function () { return {}; }).then(function (j) {
+                        show('upload-section');
+                        var msg = j.error || ('Server error (' + response.status + ')');
+                        var isAuth = response.status === 401 || j.auth_required;
+                        if (isAuth) {
+                            showSearchError('Food Safety Search is exclusively available for registered members. Please sign in to continue.', true);
+                            if (typeof openAuthModal === 'function') openAuthModal('login');
+                        } else {
+                            showSearchError(msg, Boolean(j.is_out_of_context || /out of context|check your input|error or typo/i.test(msg)));
+                        }
+                        busy = false;
+                    });
                 }
-            }
-        })
-        .then(function () {
-            busy = false;
-        });
+
+                var ct = response.headers.get('content-type') || '';
+                if (!ct.includes('text/event-stream')) {
+                    return response.json().then(function (j) {
+                        applyFullReport(j, my, query);
+                        busy = false;
+                    });
+                }
+
+                var reader = response.body.getReader();
+                var decoder = new TextDecoder();
+                var buf = '';
+
+                function readNext() {
+                    return reader.read().then(function (res) {
+                        if (res.done || my !== runId) {
+                            busy = false;
+                            return;
+                        }
+                        buf += decoder.decode(res.value, { stream: true });
+                        var chunks = buf.split('\n\n');
+                        buf = chunks.pop();
+
+                        for (var c = 0; c < chunks.length; c++) {
+                            var chunk = chunks[c].trim();
+                            if (!chunk) continue;
+                            var lines = chunk.split('\n');
+                            for (var l = 0; l < lines.length; l++) {
+                                var line = lines[l].trim();
+                                if (line.startsWith('data: ')) {
+                                    try {
+                                        var p = JSON.parse(line.substring(6));
+                                        if (p.stage === 'error') {
+                                            show('upload-section');
+                                            showSearchError(p.error || 'Search error', p.is_out_of_context);
+                                            busy = false;
+                                            return;
+                                        } else if (p.stage === 'ident') {
+                                            if (p.image_url) {
+                                                var pImg = $('pending-product-img');
+                                                if (pImg) pImg.src = safeUrl(p.image_url);
+                                            }
+                                            if (p.product_name) {
+                                                var pTitle = $('pending-product-title');
+                                                if (pTitle) pTitle.textContent = p.product_name;
+                                            }
+                                            if (p.brand) {
+                                                var pBrand = $('pending-product-brand');
+                                                if (pBrand) pBrand.textContent = 'by ' + p.brand;
+                                            }
+                                        } else if (p.stage === 'vision') {
+                                            updateVisionStage(p);
+                                        } else if (p.stage === 'health') {
+                                            updateHealthStage(p);
+                                        } else if (p.stage === 'news') {
+                                            if (p.articles && p.articles.length) {
+                                                renderNewsList(p.articles, p.brand);
+                                            }
+                                        } else if (p.stage === 'done') {
+                                            if (p.report) {
+                                                lastVision = p.report.vision || p.report;
+                                            }
+                                            busy = false;
+                                        }
+                                    } catch (err) {
+                                        console.warn('Stream parse error:', err);
+                                    }
+                                }
+                            }
+                        }
+                        return readNext();
+                    });
+                }
+                return readNext();
+            }).catch(function (err) {
+                if (my !== runId) return;
+                fallbackStandardSearch(query, my);
+            });
+        } else {
+            fallbackStandardSearch(query, my);
+        }
     }
 
     /* ---------- wiring ---------- */

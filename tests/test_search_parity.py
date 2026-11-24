@@ -183,6 +183,50 @@ class TestSearchParity(unittest.TestCase):
         self.assertNotIn("AI_ANALYSIS_OFFLINE", flag_types)
         self.assertTrue(any("SUGAR" in ft or "PALM" in ft for ft in flag_types))
 
+    def test_search_food_stream_progressive_events(self):
+        # Verify SSE stream returns 200 text/event-stream with progressive stages (ident, vision, health, done)
+        resp = self.client.get("/api/search-food-stream?query=Mother Dairy Paneer")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("text/event-stream", resp.headers.get("Content-Type", ""))
+
+        stages_received = []
+        ident_data = None
+        for chunk in resp.iter_encoded():
+            text = chunk.decode("utf-8", errors="ignore")
+            for line in text.split("\n"):
+                if line.startswith("data: "):
+                    payload = json.loads(line[6:])
+                    stage = payload.get("stage")
+                    stages_received.append(stage)
+                    if stage == "ident":
+                        ident_data = payload
+
+        self.assertIn("ident", stages_received)
+        self.assertIn("vision", stages_received)
+        self.assertIn("health", stages_received)
+        self.assertIn("done", stages_received)
+
+        # Verify instant photo and product name in initial stage
+        self.assertIsNotNone(ident_data)
+        self.assertIn("Paneer", ident_data.get("product_name", ""))
+        self.assertTrue(len(ident_data.get("image_url", "")) > 10)
+
+    def test_search_food_stream_out_of_context_rejected(self):
+        # Non-food query to stream endpoint must be rejected with 400 and warning before streaming
+        resp = self.client.get("/api/search-food-stream?query=Python Code For Table")
+        self.assertEqual(resp.status_code, 400)
+        data = resp.get_json()
+        self.assertTrue(data.get("is_out_of_context"))
+        self.assertIn("Out of context", data.get("error", ""))
+
+    def test_search_food_stream_guest_blocked(self):
+        # Guests without authentication must receive 401
+        guest_client = app.test_client()
+        resp = guest_client.get("/api/search-food-stream?query=Mother Dairy Paneer")
+        self.assertEqual(resp.status_code, 401)
+        data = resp.get_json()
+        self.assertTrue(data.get("auth_required"))
+
 
 if __name__ == "__main__":
     unittest.main()

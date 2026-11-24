@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # ── OFF config ───────────────────────────────────────────────────────────────
 _OFF_BASE = "https://world.openfoodfacts.org/api/v2/search"
 _OFF_HEADERS = {"User-Agent": "FoodCheck-India - WebApp - Version 1.0"}
-_TIMEOUT = 5
+_TIMEOUT = 2.0
 
 # ── Simple 60-second suggestion cache ────────────────────────────────────────
 _SUGGEST_CACHE: Dict[str, Any] = {}
@@ -769,6 +769,7 @@ def get_search_report(food: str = "", brand: str = "", variant: str = "", query:
         synthesize_food_profile,
         normalize_food_terms,
         correct_food_title,
+        get_food_visual,
     )
 
     # Harmonize and normalize parameters
@@ -854,7 +855,7 @@ def get_search_report(food: str = "", brand: str = "", variant: str = "", query:
         cons = kb_match.get("cons", [])
         fssai_notes = kb_match.get("fssai_notes", "")
         reasoning = kb_match.get("reasoning", "")
-        image_url = ""  # Clean UI: text search avoids broken 403 or wrong photos
+        image_url = kb_match.get("image_url") or get_food_visual(clean_query or product_name, brand_final)
 
         # Fetch brand news in background
         news_articles = []
@@ -961,21 +962,28 @@ def get_search_report(food: str = "", brand: str = "", variant: str = "", query:
         fut_news = pool.submit(_safe_news, actual_search_brand or search_term)
 
         try:
-            ai_product = fut_ai.result(timeout=6)
+            off_result = fut_off.result(timeout=2.0)
         except Exception as e:
-            logger.warning(f"AI product search failed or timed out: {e}")
-            ai_product = None
-
-        try:
-            off_result = fut_off.result(timeout=4)
-        except Exception as e:
-            logger.warning(f"OFF lookup failed or timed out: {e}")
+            logger.debug(f"OFF lookup timed out or failed: {e}")
             off_result = None
 
+        # If OFF already returned authentic packaging ingredients, do not block waiting for AI
+        if off_result and off_result.get("ingredients_text") and len(off_result.get("ingredients_text", "")) > 15:
+            try:
+                ai_product = fut_ai.result(timeout=0.1)
+            except Exception:
+                ai_product = None
+        else:
+            try:
+                ai_product = fut_ai.result(timeout=2.0)
+            except Exception as e:
+                logger.debug(f"AI product search timed out or failed: {e}")
+                ai_product = None
+
         try:
-            news_articles = fut_news.result(timeout=4) or []
+            news_articles = fut_news.result(timeout=1.5) or []
         except Exception as e:
-            logger.warning(f"News fetch failed: {e}")
+            logger.debug(f"News fetch failed: {e}")
             news_articles = []
 
     # ── Step 2: Build vision-like payload & merge sources ────────────────────
@@ -992,7 +1000,7 @@ def get_search_report(food: str = "", brand: str = "", variant: str = "", query:
         product_name = off_result.get("product_name") or (ai_product.get("product_name") if ai_product else None) or f"{display_brand} {variant_label or clean_food}".strip()
         brand_final = off_result.get("brands") or (ai_product.get("brand") if ai_product else None) or display_brand
         detected_labels = off_result.get("labels") or (ai_product.get("claims") if ai_product else [])
-        image_url = ""  # Clean UI: suppress external OFF image to prevent 403 / wrong photos
+        image_url = off_result.get("image_url") or get_food_visual(product_name, brand_final)
         data_source = "Open Food Facts"
 
     # Case B: AI Product Search (Gemini / Groq / FMCG Knowledgebase)
@@ -1002,7 +1010,7 @@ def get_search_report(food: str = "", brand: str = "", variant: str = "", query:
         product_name = ai_product.get("product_name") or f"{display_brand} {variant_label or clean_food}".strip()
         brand_final = ai_product.get("brand") or display_brand
         detected_labels = ai_product.get("claims") or []
-        image_url = ""
+        image_url = (ai_product.get("image_url") if isinstance(ai_product, dict) else None) or get_food_visual(product_name, brand_final)
         data_source = ai_product.get("data_source") or "Google Gemini AI Search"
 
     # Case C: Smart Parametric Synthesis (scientifically accurate fallback)
@@ -1013,7 +1021,7 @@ def get_search_report(food: str = "", brand: str = "", variant: str = "", query:
         product_name = synth["product_name"]
         brand_final = synth["brand"]
         detected_labels = synth.get("claims", [])
-        image_url = ""
+        image_url = synth.get("image_url") or get_food_visual(product_name, brand_final)
         data_source = synth.get("data_source", "FoodCheck AI Knowledge Engine")
 
     product_name = correct_food_title(product_name)

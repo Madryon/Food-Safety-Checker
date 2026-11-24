@@ -1000,6 +1000,61 @@ def synthesize_food_profile(query: str, brand: str = "", variant: str = "") -> D
         "allergens": [],
         "claims": ["100% Vegetarian"],
         "fssai_notes": "FSSAI compliant packaged food formulation.",
-        "image_url": "",
+        "image_url": get_food_visual(query, brand),
         "data_source": "FoodCheck AI Knowledge Engine"
     }
+
+
+# ── Curated Food Visuals Map (Instant Relevant Category Imagery) ───────────────
+
+FOOD_CATEGORY_IMAGES = {
+    "paneer": "https://images.unsplash.com/photo-1631452180519-c014fe946bc7?auto=format&fit=crop&w=400&q=80",
+    "dairy": "https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=400&q=80",
+    "butter": "https://images.unsplash.com/photo-1589985270826-4b7bb135bc9d?auto=format&fit=crop&w=400&q=80",
+    "noodles": "https://images.unsplash.com/photo-1612927601601-6638404737ce?auto=format&fit=crop&w=400&q=80",
+    "biscuits": "https://images.unsplash.com/photo-1558961363-fa8fdf82db35?auto=format&fit=crop&w=400&q=80",
+    "chips": "https://images.unsplash.com/photo-1566478989037-eec170784d0b?auto=format&fit=crop&w=400&q=80",
+    "soda": "https://images.unsplash.com/photo-1622483767028-3f66f32aef97?auto=format&fit=crop&w=400&q=80",
+    "chocolate": "https://images.unsplash.com/photo-1511381939415-e44015466834?auto=format&fit=crop&w=400&q=80",
+    "bread": "https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=400&q=80",
+    "oats": "https://images.unsplash.com/photo-1586444248902-2f64eddc13df?auto=format&fit=crop&w=400&q=80",
+    "juice": "https://images.unsplash.com/photo-1613478223719-2ab802602423?auto=format&fit=crop&w=400&q=80",
+    "tea_coffee": "https://images.unsplash.com/photo-1544787219-7f47ccb76574?auto=format&fit=crop&w=400&q=80",
+    "general": "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=400&q=80",
+}
+
+
+def get_food_visual(query: str, brand: str = "") -> str:
+    """
+    Resolve a high-quality, authentic food visual image URL based on food name and category keywords.
+    Ensures that whenever a food is searched, the user immediately sees a relevant photo without waiting.
+    """
+    ql = f"{query or ''} {brand or ''}".lower()
+
+    if any(k in ql for k in ["paneer", "cottage cheese", "panner", "panir"]):
+        return FOOD_CATEGORY_IMAGES["paneer"]
+    if any(k in ql for k in ["coke", "cola", "pepsi", "soda", "cold drink", "beverage", "soft drink", "sprite", "fanta", "thums up", "mountain dew", "limca"]):
+        return FOOD_CATEGORY_IMAGES["soda"]
+    if any(k in ql for k in ["noodle", "noodles", "maggi", "ramen", "pasta", "macaroni", "spaghetti", "chowmein", "vermicelli"]):
+        return FOOD_CATEGORY_IMAGES["noodles"]
+    if any(k in ql for k in ["biscuit", "biscuits", "cookie", "cookies", "oreo", "good day", "parle-g", "bourbon", "rusk", "marie"]):
+        return FOOD_CATEGORY_IMAGES["biscuits"]
+    if any(k in ql for k in ["chip", "chips", "crisps", "lays", "lay's", "kurkure", "namkeen", "snack", "snacks", "nachos", "wafer", "wafers", "bhujia"]):
+        return FOOD_CATEGORY_IMAGES["chips"]
+    if any(k in ql for k in ["butter", "ghee", "makhan"]):
+        return FOOD_CATEGORY_IMAGES["butter"]
+    if any(k in ql for k in ["chocolate", "chocolates", "cadbury", "cocoa", "dark chocolate", "kitkat", "snickers", "dairy milk"]):
+        return FOOD_CATEGORY_IMAGES["chocolate"]
+    if any(k in ql for k in ["oat", "oats", "muesli", "cereal", "cornflakes", "porridge", "granola"]):
+        return FOOD_CATEGORY_IMAGES["oats"]
+    if any(k in ql for k in ["juice", "fruit juice", "mango juice", "orange juice", "apple juice", "frooti", "maaza", "slice", "nectar"]):
+        return FOOD_CATEGORY_IMAGES["juice"]
+    if any(k in ql for k in ["tea", "chai", "coffee", "nescafe", "bru", "cappuccino", "espresso", "green tea"]):
+        return FOOD_CATEGORY_IMAGES["tea_coffee"]
+    if any(k in ql for k in ["bread", "toast", "pav", "bun", "roti", "pita", "sourdough", "croissant"]):
+        return FOOD_CATEGORY_IMAGES["bread"]
+    if any(k in ql for k in ["milk", "curd", "dahi", "yogurt", "yoghurt", "cheese", "cream", "lassi", "buttermilk", "chaas"]):
+        return FOOD_CATEGORY_IMAGES["dairy"]
+
+    return FOOD_CATEGORY_IMAGES["general"]
+

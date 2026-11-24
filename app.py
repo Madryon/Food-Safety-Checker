@@ -24,6 +24,8 @@ from flask import (
     abort,
     make_response,
     send_from_directory,
+    Response,
+    stream_with_context,
 )
 from flask_compress import Compress
 from concurrent.futures import ThreadPoolExecutor
@@ -885,6 +887,179 @@ def search_food():
             "error": "Food analysis failed. Please try again.",
             "detail": str(e)[:200],
         }), 500
+
+
+@app.route("/api/search-food-stream", methods=["GET", "POST"])
+@app.route("/api/search/stream", methods=["GET", "POST"])
+@limiter.limit("30 per minute")
+@csrf.exempt
+def search_food_stream():
+    """
+    Server-Sent Events (SSE) progressive streaming endpoint for food safety search.
+    Provides immediate (<50ms) initial rendering data, followed by live streaming
+    updates as ingredients, nutrition, health scores, and news are computed.
+    Requires authenticated user.
+    """
+    if not (current_user and current_user.is_authenticated):
+        return jsonify({
+            "error": "Food Safety Search is exclusively available for registered members. Please sign in or create a free account to search.",
+            "auth_required": True,
+        }), 401
+
+    from services.search_guard import (
+        validate_field,
+        topic_guard,
+        check_cooldown,
+        record_rejection,
+        record_success,
+    )
+    from services.food_knowledge import get_food_visual, correct_food_title
+    from services.search_service import get_search_report
+
+    client_ip = get_client_ip()
+
+    blocked, block_msg = check_cooldown(client_ip)
+    if blocked:
+        return jsonify({"error": block_msg}), 429
+
+    # Extract query from GET params or JSON/form body
+    data = request.get_json(silent=True) or request.form.to_dict() or request.args.to_dict() or {}
+    query = str(
+        data.get("query")
+        or data.get("food")
+        or data.get("product_name")
+        or data.get("product")
+        or data.get("name")
+        or ""
+    ).strip()
+    brand = str(data.get("brand") or data.get("company") or "").strip()
+    variant = str(data.get("variant") or data.get("flavor") or "").strip()
+
+    if not query:
+        return jsonify({"error": "Please enter a food or product name to search."}), 400
+
+    # 1. Field validation
+    ok, err = validate_field(query[:120], "Food query")
+    if not ok:
+        _log_rejection(query, brand, variant, err, client_ip)
+        record_rejection(client_ip)
+        return jsonify({"error": err, "is_out_of_context": True}), 400
+
+    # 2. Topic guard
+    guard_ok, guard_msg = topic_guard(query, brand)
+    if not guard_ok:
+        _log_rejection(query, brand, variant, guard_msg, client_ip)
+        record_rejection(client_ip)
+        return jsonify({"error": guard_msg, "is_out_of_context": True}), 400
+
+    user_id = current_user.id if (current_user and current_user.is_authenticated) else None
+
+    def generate_stream():
+        # Stage 1: Immediate identification (<10ms)
+        clean_title = correct_food_title(query)
+        visual_img = get_food_visual(query, brand)
+        ident_payload = {
+            "stage": "ident",
+            "product_name": clean_title,
+            "brand": brand or "Commercial Food",
+            "image_url": visual_img,
+            "query": query,
+        }
+        yield f"data: {json.dumps(ident_payload)}\n\n"
+
+        # Check 24-hour cache
+        cache_key = f"search::{query.lower()}::{brand.lower()}::{variant.lower()}"
+        cached = _search_cache_get(cache_key)
+        start_time = time.time()
+        try:
+            if cached:
+                report = cached
+                record_success(client_ip)
+            else:
+                report = get_search_report(food=query, brand=brand, variant=variant, query=query)
+                _search_cache_set(cache_key, report)
+                record_success(client_ip)
+
+            duration_ms = int((time.time() - start_time) * 1000)
+
+            # Stage 2: Vision & Nutrition facts payload
+            vision_payload = {
+                "stage": "vision",
+                "product_name": report.get("product_name") or clean_title,
+                "brand": report.get("brand") or brand or "Commercial Food",
+                "ingredients_text": report.get("ingredients_text") or "Not available",
+                "nutrition_facts": report.get("nutrition_facts") or {},
+                "off_match": report.get("off_match"),
+                "image_url": report.get("image_url") or visual_img,
+                "data_source": report.get("data_source"),
+            }
+            yield f"data: {json.dumps(vision_payload)}\n\n"
+
+            # Stage 3: Health & Safety Score payload
+            health_payload = {
+                "stage": "health",
+                "score": (report.get("health") or {}).get("score", report.get("score")),
+                "verdict": (report.get("health") or {}).get("verdict", report.get("verdict", "moderate")),
+                "reasoning": (report.get("health") or {}).get("reasoning", report.get("reasoning", "")),
+                "flags": (report.get("health") or {}).get("flags", report.get("flags", [])),
+                "alternatives": (report.get("health") or {}).get("alternatives", report.get("alternatives", [])),
+                "pros": report.get("pros", []),
+                "cons": report.get("cons", []),
+                "fssai_notes": report.get("fssai_notes", ""),
+            }
+            yield f"data: {json.dumps(health_payload)}\n\n"
+
+            # Stage 4: News articles payload
+            news_payload = {
+                "stage": "news",
+                "articles": report.get("articles") or (report.get("news") or {}).get("articles", []),
+                "brand": report.get("brand") or brand,
+            }
+            yield f"data: {json.dumps(news_payload)}\n\n"
+
+            # Log scan in database
+            scan_id = log_scan(
+                product_name=report.get("product_name") or query,
+                brand=report.get("brand") or brand or "Unknown",
+                source="search",
+                health_verdict=(report.get("health") or {}).get("verdict"),
+                health_score=(report.get("health") or {}).get("score"),
+                key_flags=[f.get("type") for f in (report.get("health") or {}).get("flags", []) if isinstance(f, dict)],
+                gemini_used=True,
+                response_time_ms=duration_ms,
+                image_size_bytes=0,
+                image_mime_type="text/plain",
+                success=True,
+                user_id=user_id,
+                ip=client_ip,
+            )
+            report["scan_id"] = scan_id
+
+            # Stage 5: Done payload
+            done_payload = {
+                "stage": "done",
+                "status": "ok",
+                "scan_id": scan_id,
+                "report": report,
+            }
+            yield f"data: {json.dumps(done_payload)}\n\n"
+
+        except ValueError as ve:
+            yield f"data: {json.dumps({'stage': 'error', 'error': str(ve), 'is_out_of_context': True})}\n\n"
+        except Exception as e:
+            app.logger.error(f"Search food stream error: {e}", exc_info=True)
+            yield f"data: {json.dumps({'stage': 'error', 'error': 'Search failed. Please try again.', 'detail': str(e)[:150]})}\n\n"
+
+    response = Response(
+        stream_with_context(generate_stream()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        }
+    )
+    return response
 
 
 @app.route("/health")
