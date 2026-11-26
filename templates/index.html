@@ -104,9 +104,10 @@ button { font: inherit; cursor: pointer; }
 .btn-icon { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--border); color: var(--text); background: var(--surface-2); }
 
 /* ===== Preview ===== */
-#preview-section { margin-top: 24px; }
+#preview-section { margin-top: 0; scroll-margin-top: 90px; }
+.hero-grid:not(.hidden) + #preview-section { margin-top: 24px; }
 .preview-wrap { display: grid; justify-items: center; gap: 16px; padding: 20px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
-#image-preview { max-height: 360px; border-radius: 14px; object-fit: contain; }
+#image-preview { display: block; width: auto; max-width: 100%; max-height: min(360px, 52vh); border-radius: 14px; object-fit: contain; }
 .preview-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
 
 /* ===== How it works / facts / stats ===== */
@@ -610,6 +611,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
 @media (max-width: 768px) {
     .nav-modes { order: 3; width: 100%; justify-content: center; margin-top: 6px; }
     .top-bar { flex-wrap: wrap; }
+    #preview-section, .search-food-section { scroll-margin-top: 124px; }
 }
 
 /* ===== Diet Planner & Calorie Tracker Styles ===== */
@@ -1263,6 +1265,16 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                 </div>
             </div>
 
+            <div id="preview-section" class="hidden">
+                <div class="preview-wrap">
+                    <img id="image-preview" alt="Product preview">
+                    <div class="preview-actions">
+                        <button id="change-btn" class="btn-secondary">✕ Change Photo</button>
+                        <button id="analyze-btn" class="btn-primary">🔍 Analyze This Product</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- ══════ SEARCH FOOD SAFETY ══════ -->
             <div class="search-divider" aria-hidden="true"><span>OR search by name</span></div>
 
@@ -1323,16 +1335,6 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
                 </div>
             </div>
             <!-- ══════ END SEARCH FOOD SAFETY ══════ -->
-
-            <div id="preview-section" class="hidden">
-                <div class="preview-wrap">
-                    <img id="image-preview" alt="Product preview">
-                    <div class="preview-actions">
-                        <button id="change-btn" class="btn-secondary">✕ Change Photo</button>
-                        <button id="analyze-btn" class="btn-primary">🔍 Analyze This Product</button>
-                    </div>
-                </div>
-            </div>
 
             <div class="how-grid">
                 <div class="how-card"><span class="how-num">1</span><h3>Add a photo</h3><p>Upload or snap the front or back of the pack.</p></div>
@@ -2123,6 +2125,8 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
     }
     function clearFile() {
         file = null;
+        if (previewURL) { URL.revokeObjectURL(previewURL); previewURL = null; }
+        $('image-preview').removeAttribute('src');
         $('file-input').value = ''; $('mobile-camera-input').value = '';
         $('preview-section').classList.add('hidden');
         document.querySelector('.hero-grid').classList.remove('hidden');
