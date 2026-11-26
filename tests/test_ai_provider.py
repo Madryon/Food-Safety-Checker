@@ -147,6 +147,72 @@ class TestAIProvider(unittest.TestCase):
         self.assertTrue("Groq" in res.get("_ai_provider", ""))
         self.assertIn("_latency_ms", res)
 
+    def test_groq_vision_default_not_decommissioned(self):
+        from services.ai_provider import DEFAULT_GROQ_VISION_MODEL, GROQ_VISION_MODELS
+        self.assertNotIn("llama-3.2-11b-vision-preview", DEFAULT_GROQ_VISION_MODEL)
+        self.assertNotIn("llama-3.2-11b-vision-preview", GROQ_VISION_MODELS)
+        self.assertIn("meta-llama/llama-4-scout-17b-16e-instruct", GROQ_VISION_MODELS)
+
+    @patch("services.gemini_client._GEMINI_SESSION.get")
+    def test_gemini_model_discovery_excludes_slow_non_vision_models(self, mock_get):
+        from services.gemini_client import discover_available_models, CACHED_AVAILABLE_MODELS
+        CACHED_AVAILABLE_MODELS.clear()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "models": [
+                {"name": "models/gemini-2.5-flash", "supportedGenerationMethods": ["generateContent"]},
+                {"name": "models/gemini-2.5-pro", "supportedGenerationMethods": ["generateContent"]},
+                {"name": "models/gemini-2.5-flash-preview-tts", "supportedGenerationMethods": ["generateContent"]},
+                {"name": "models/deep-research-pro-preview", "supportedGenerationMethods": ["generateContent"]},
+                {"name": "models/gemini-flash-latest", "supportedGenerationMethods": ["generateContent"]},
+                {"name": "models/gemma-3-27b-it", "supportedGenerationMethods": ["generateContent"]},
+            ]
+        }
+        mock_get.return_value = mock_resp
+
+        models = discover_available_models("AIzaTestDiscoveryKey123456")
+        self.assertEqual(models, ["gemini-2.5-flash", "gemini-flash-latest"])
+        self.assertNotIn("gemini-2.5-pro", models)
+        self.assertNotIn("gemini-2.5-flash-preview-tts", models)
+
+    @patch("services.ai_provider.call_groq_json")
+    @patch("services.ai_provider.generate_content_with_retry")
+    def test_vision_parallel_race_returns_fastest_and_surfaces_auth_errors(self, mock_gem, mock_groq):
+        import io
+        from PIL import Image
+        from services.ai_provider import extract_food_vision_bytes
+
+        os.environ["GEMINI_API_KEY"] = "AQ.InvalidTestKey"
+        os.environ["GROQ_API_KEY"] = "gsk_test_key"
+
+        buf = io.BytesIO()
+        Image.new("RGB", (200, 150), "white").save(buf, format="JPEG")
+        raw_bytes = buf.getvalue()
+
+        # Case 1: Gemini raises 401 auth error, Groq succeeds -> user immediately gets result!
+        mock_gem.side_effect = RuntimeError("HTTP 401 UNAUTHENTICATED: API key not valid [ACCESS_TOKEN_TYPE_UNSUPPORTED]")
+        mock_groq.return_value = (
+            {
+                "brand": "Nestle",
+                "product_name": "Maggi Noodles",
+                "ingredients_text": "Wheat flour, Palm oil",
+                "nutrition_facts": {"energy_kcal": 427},
+                "data_source": "image",
+            },
+            "{}",
+            None,
+        )
+        res = extract_food_vision_bytes(raw_bytes)
+        self.assertEqual(res.get("product_name"), "Maggi Noodles")
+
+        # Case 2: Both Gemini & Groq fail with 401 -> exact API auth error surfaces (NOT fake timeout!)
+        mock_groq.return_value = (None, None, "HTTP 401 (meta-llama/llama-4-scout-17b-16e-instruct): Invalid API Key")
+        err_res = extract_food_vision_bytes(raw_bytes)
+        self.assertEqual(err_res.get("error_type"), "auth_error")
+        self.assertIn("401", err_res.get("error", ""))
+        self.assertTrue(len(err_res.get("provider_errors", [])) >= 2)
+
 
 if __name__ == "__main__":
     unittest.main()

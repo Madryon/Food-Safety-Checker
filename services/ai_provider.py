@@ -6,6 +6,7 @@ import json
 import base64
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from typing import List, Dict, Any, Optional, Tuple
 import requests
 from PIL import Image
@@ -17,7 +18,16 @@ from services.gemini_client import (
     get_active_gemini_keys,
 )
 
+try:
+    import zxingcpp
+except ImportError:
+    zxingcpp = None
+
 logger = logging.getLogger(__name__)
+
+# Connection-pooled HTTP session + shared vision worker pool (created once at startup)
+_HTTP_SESSION = requests.Session()
+_VISION_POOL = ThreadPoolExecutor(max_workers=6, thread_name_prefix="fc_vision")
 
 # ── Endpoints ──────────────────────────────────────────────────────────────
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -25,13 +35,32 @@ OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 
 # ── Default Recommended Models ─────────────────────────────────────────────
+# Note: llama-3.2-11b-vision-preview & llama-3.2-90b-vision-preview were
+# decommissioned by Groq in April 2025. Replaced with Llama 4 Scout / Maverick.
+_DECOMMISSIONED_GROQ_MODELS = {
+    "llama-3.2-11b-vision-preview",
+    "llama-3.2-90b-vision-preview",
+    "llama-3.2-11b-vision",
+    "llama-3.2-90b-vision",
+}
+_env_groq_vision = os.getenv("GROQ_VISION_MODEL", "").strip()
 DEFAULT_GROQ_HEALTH_MODEL = os.getenv("GROQ_HEALTH_MODEL") or os.getenv("GROQ_MODEL") or "llama-3.3-70b-versatile"
-DEFAULT_GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL") or "llama-3.2-11b-vision-preview"
+DEFAULT_GROQ_VISION_MODEL = (
+    _env_groq_vision
+    if (_env_groq_vision and _env_groq_vision not in _DECOMMISSIONED_GROQ_MODELS)
+    else "meta-llama/llama-4-scout-17b-16e-instruct"
+)
+GROQ_VISION_MODELS = list(dict.fromkeys([
+    DEFAULT_GROQ_VISION_MODEL,
+    "meta-llama/llama-4-scout-17b-16e-instruct",
+    "meta-llama/llama-4-maverick-17b-128e-instruct",
+]))
 DEFAULT_OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL") or "meta-llama/llama-3.3-70b-instruct:free"
 DEFAULT_OPENAI_MODEL = os.getenv("OPENAI_MODEL") or "gpt-4o-mini"
 
 # ── Rotation trackers & cooldown registries ────────────────────────────────
 _GROQ_KEY_COOLDOWNS: Dict[str, float] = {}
+_GROQ_KEY_LAST_ERRORS: Dict[str, str] = {}
 _LAST_GROQ_KEY_INDEX = 0
 
 
@@ -150,7 +179,9 @@ def call_groq_json(
     ordered_keys = keys[start_idx:] + keys[:start_idx]
     _LAST_GROQ_KEY_INDEX = (start_idx + 1) % total_keys
 
+    last_err_detail = ""
     for key_idx, key in enumerate(ordered_keys):
+        key_hint = f"...{key[-4:]}" if len(key) > 6 else "key"
         headers = {
             "Authorization": f"Bearer {key}",
             "Content-Type": "application/json",
@@ -164,27 +195,54 @@ def call_groq_json(
         }
 
         try:
-            logger.info(f"⚡ Groq Cloud → {chosen_model} (key ...{key[-4:] if len(key)>6 else 'key'})")
-            resp = requests.post(GROQ_API_URL, headers=headers, json=payload, timeout=timeout)
+            logger.info(f"⚡ Groq Cloud → {chosen_model} (key {key_hint})")
+            resp = requests.post(
+                GROQ_API_URL,
+                headers=headers,
+                json=payload,
+                timeout=timeout,
+            )
             if resp.status_code == 200:
                 data = resp.json()
                 content = data["choices"][0]["message"]["content"].strip()
-                parsed = json.loads(content)
+                parsed = json.loads(_clean_markdown_json(content))
+                _GROQ_KEY_LAST_ERRORS.pop(key, None)
                 logger.info(f"✅ Groq success in {resp.elapsed.total_seconds():.2f}s with {chosen_model}")
                 return parsed, content, None
-            
-            # Quota or rate-limit: mark cooldown and rotate key
+
+            # Parse exact error detail from Groq JSON payload
+            err_msg = resp.text[:220]
+            try:
+                err_obj = resp.json().get("error", {})
+                if isinstance(err_obj, dict) and err_obj.get("message"):
+                    err_code = err_obj.get("code") or ""
+                    err_msg = f"{err_obj['message']}" + (f" [{err_code}]" if err_code else "")
+            except Exception:
+                pass
+            last_err_detail = f"HTTP {resp.status_code} ({chosen_model}): {err_msg}"
+            _GROQ_KEY_LAST_ERRORS[key] = last_err_detail
+
+            # Quota or rate-limit or auth error: mark cooldown and rotate key
+            if resp.status_code in (401, 403):
+                _GROQ_KEY_COOLDOWNS[key] = time.time() + 300
+                logger.error(f"Groq auth error ({resp.status_code}) on key {key_hint}: {err_msg}")
+                continue
             if resp.status_code in (429, 413, 503):
                 _GROQ_KEY_COOLDOWNS[key] = time.time() + 60
-                logger.warning(f"Groq rate limit ({resp.status_code}) on key ...{key[-4:] if len(key)>6 else 'key'}. Rotating...")
+                logger.warning(f"Groq rate limit ({resp.status_code}) on key {key_hint}. Rotating...")
                 continue
-            
-            logger.warning(f"Groq HTTP {resp.status_code}: {resp.text[:200]}")
+
+            logger.warning(f"Groq {last_err_detail}")
+            # Model error (e.g. model_decommissioned / 400 / 404) affects all keys equally
+            if resp.status_code in (400, 404) and "model" in err_msg.lower():
+                break
         except Exception as ex:
-            logger.warning(f"Groq call failed on key ...{key[-4:] if len(key)>6 else 'key'}: {ex}")
+            last_err_detail = f"Exception ({chosen_model}): {str(ex)[:180]}"
+            _GROQ_KEY_LAST_ERRORS[key] = last_err_detail
+            logger.warning(f"Groq call failed on key {key_hint}: {ex}")
             continue
 
-    return None, None, "All Groq keys failed or rate-limited."
+    return None, None, last_err_detail or "All Groq keys failed or rate-limited."
 
 
 # ── OpenRouter / OpenAI Calling Utilities ──────────────────────────────────
@@ -1011,52 +1069,59 @@ def _health_fallback_response(
 
 
 # ── Unified Food Packaging Vision Extraction ───────────────────────────────
-def _optimize_image_for_vision(image_path: str, max_dimension: int = 1024, quality: int = 80) -> Image.Image:
-    """Resize and compress image from a file path for rapid AI multimodal transmission."""
-    with Image.open(image_path) as raw_img:
-        return _optimize_pil_image(raw_img, max_dimension, quality)
+def _prepare_vision_payload(
+    raw_img: Image.Image,
+    source_bytes: Optional[bytes] = None,
+    max_dimension: int = 1024,
+    quality: int = 75,
+) -> Tuple[Image.Image, bytes]:
+    """Ensure image is RGB JPEG <= max_dimension in ONE pass (zero redundant re-encoding)."""
+    if (
+        source_bytes is not None
+        and raw_img.format == "JPEG"
+        and raw_img.mode == "RGB"
+        and max(raw_img.size) <= max_dimension
+        and len(source_bytes) <= 350 * 1024
+    ):
+        return raw_img.copy(), source_bytes
 
-
-def _optimize_image_bytes_for_vision(image_bytes: bytes, max_dimension: int = 1024, quality: int = 80) -> Image.Image:
-    """Resize and compress image from raw bytes for rapid AI multimodal transmission (no disk I/O)."""
-    with Image.open(io.BytesIO(image_bytes)) as raw_img:
-        return _optimize_pil_image(raw_img, max_dimension, quality)
-
-
-def _optimize_pil_image(raw_img: Image.Image, max_dimension: int = 1024, quality: int = 80) -> Image.Image:
-    """Core resize+compress logic shared by path and bytes variants."""
-    if raw_img.mode in ("RGBA", "P", "LA"):
-        img = raw_img.convert("RGB")
-    else:
-        img = raw_img.copy()
-
+    img = raw_img.convert("RGB") if raw_img.mode != "RGB" else raw_img.copy()
     w, h = img.size
     if max(w, h) > max_dimension:
         ratio = max_dimension / max(w, h)
         img = img.resize((int(w * ratio), int(h * ratio)), Image.BILINEAR)
 
     buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=quality, optimize=True)
-    buf.seek(0)
-    opt_img = Image.open(buf)
-    opt_img.load()
-    return opt_img
+    img.save(buf, format="JPEG", quality=quality)
+    return img, buf.getvalue()
+
+
+def _optimize_image_for_vision(image_path: str, max_dimension: int = 1024, quality: int = 75) -> Image.Image:
+    """Resize and compress image from a file path for rapid AI multimodal transmission."""
+    with Image.open(image_path) as raw_img:
+        img, _ = _prepare_vision_payload(raw_img, None, max_dimension, quality)
+        return img
+
+
+def _optimize_image_bytes_for_vision(image_bytes: bytes, max_dimension: int = 1024, quality: int = 75) -> Image.Image:
+    """Resize and compress image from raw bytes for rapid AI multimodal transmission (no disk I/O)."""
+    with Image.open(io.BytesIO(image_bytes)) as raw_img:
+        img, _ = _prepare_vision_payload(raw_img, image_bytes, max_dimension, quality)
+        return img
 
 
 def _image_to_base64_jpeg(image_path: str) -> str:
     """Convert an image file path to an optimized JPEG base64 string."""
-    opt_img = _optimize_image_for_vision(image_path)
-    buf = io.BytesIO()
-    opt_img.save(buf, format="JPEG", quality=80)
-    return base64.b64encode(buf.getvalue()).decode("utf-8")
+    with Image.open(image_path) as raw_img:
+        _, jpeg_bytes = _prepare_vision_payload(raw_img)
+        return base64.b64encode(jpeg_bytes).decode("utf-8")
 
 
 def _image_bytes_to_base64_jpeg(image_bytes: bytes) -> str:
     """Convert raw image bytes to an optimized JPEG base64 string (no disk I/O)."""
-    opt_img = _optimize_image_bytes_for_vision(image_bytes)
-    buf = io.BytesIO()
-    opt_img.save(buf, format="JPEG", quality=80)
-    return base64.b64encode(buf.getvalue()).decode("utf-8")
+    with Image.open(io.BytesIO(image_bytes)) as raw_img:
+        _, jpeg_bytes = _prepare_vision_payload(raw_img, image_bytes)
+        return base64.b64encode(jpeg_bytes).decode("utf-8")
 
 
 # ── Shared vision prompt (defined once at module level, not per-request) ───
@@ -1077,64 +1142,198 @@ RULES:
 Return ONLY raw JSON (no markdown code blocks) with keys: brand, product_name, ingredients_text, nutrition_facts, data_source"""
 
 
+def _detect_local_barcode(img: Image.Image) -> Optional[str]:
+    """Detect packaging barcode in-memory in ~5-15ms via zxing-cpp if installed."""
+    if zxingcpp is None:
+        return None
+    try:
+        barcodes = zxingcpp.read_barcodes(img)
+        for bc in barcodes:
+            code = re.sub(r"[^0-9A-Za-z]", "", (bc.text or "").strip())
+            if len(code) >= 6:
+                logger.info(f"[vision] Detected local barcode: {code} ({bc.format})")
+                return code
+    except Exception as ex:
+        logger.debug(f"[vision] Barcode scan skipped: {ex}")
+    return None
+
+
+def _classify_vision_errors(provider_errors: List[str]) -> Tuple[str, str]:
+    """Turn raw provider error strings into an accurate user-facing error + category."""
+    if not provider_errors:
+        return (
+            "no_keys",
+            "No AI vision providers are configured (configure GEMINI_API_KEY or GROQ_API_KEY).",
+        )
+
+    joined = " | ".join(provider_errors)
+    low = joined.lower()
+
+    if any(t in low for t in ("401", "403", "api key not valid", "api_key_invalid", "invalid api key", "access_token_type_unsupported", "unauthenticated", "permission_denied")):
+        return (
+            "auth_error",
+            f"Vision API authentication error — please check your API keys ({joined}).",
+        )
+    if any(t in low for t in ("429", "quota", "resource_exhausted", "rate limit")):
+        return (
+            "quota_exceeded",
+            f"AI vision API quota/rate limit reached ({joined}). Please wait 30-60 seconds or update API keys.",
+        )
+    if any(t in low for t in ("decommissioned", "model_not_found", "404")):
+        return (
+            "model_error",
+            f"AI vision model configuration error ({joined}).",
+        )
+    if any(t in low for t in ("timed out", "timeout", "deadline")):
+        return (
+            "timeout",
+            f"AI vision request timed out ({joined}). Please try again with a clear photo.",
+        )
+    return (
+        "api_error",
+        f"AI vision providers failed ({joined}). Please retry or search product name manually.",
+    )
+
+
 def _run_vision_extraction(opt_img: Image.Image, b64_getter) -> Dict[str, Any]:
     """
-    Run the multi-provider vision pipeline given a pre-processed PIL image (Gemini)
-    and a lazy b64_getter callable (Groq/OpenAI fallback).
-    Returns the first successful result dict, or the timeout error dict.
+    Run Barcode lookup + Gemini Vision + Groq Vision + OpenAI Vision IN PARALLEL.
+    Returns as soon as any provider produces a valid product identification (or
+    explicit non-food classification), with accurate API error reporting if all fail.
     """
-    # ── 1. Gemini Multi-Key Pool (Primary OCR) ───
-    t0 = time.time()
-    gemini_keys = get_gemini_api_keys()
-    if gemini_keys:
-        try:
-            raw_text = generate_content_with_retry([_VISION_PROMPT, opt_img], timeout=25)
-            clean_text = _clean_markdown_json(raw_text)
-            data = json.loads(clean_text)
-            logger.info(f"[vision] Gemini OCR done in {int((time.time()-t0)*1000)}ms")
-            if "error" not in data or data.get("brand") or data.get("product_name"):
-                return data
-        except Exception as ex:
-            logger.warning(f"[vision] Gemini failed in {int((time.time()-t0)*1000)}ms: {ex}. Trying fallback...")
+    t_all = time.time()
+    b64_img = b64_getter() if callable(b64_getter) else base64.b64encode(b64_getter).decode("utf-8")
 
-    # ── 2. Groq Vision Fallback ───
-    t1 = time.time()
-    groq_keys = get_groq_api_keys()
-    if groq_keys:
-        try:
-            b64_img = b64_getter()
-            messages = [{"role": "user", "content": [
-                {"type": "text", "text": _VISION_PROMPT},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}},
-            ]}]
-            res, _, _ = call_groq_json(messages, model=DEFAULT_GROQ_VISION_MODEL, timeout=20)
-            logger.info(f"[vision] Groq fallback done in {int((time.time()-t1)*1000)}ms")
-            if res:
-                return res
-        except Exception as ex:
-            logger.warning(f"[vision] Groq fallback failed in {int((time.time()-t1)*1000)}ms: {ex}")
+    # Quick ~10ms local barcode check before launching network calls
+    detected_barcode = _detect_local_barcode(opt_img)
 
-    # ── 3. OpenAI Vision Fallback ───
-    t2 = time.time()
-    openai_keys = get_openai_api_keys()
-    if openai_keys:
+    tasks: Dict[Any, str] = {}
+    provider_errors: List[str] = []
+
+    def _task_barcode() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+        from services.product_lookup import lookup_barcode
+        t0 = time.time()
+        off_prod = lookup_barcode(detected_barcode)
+        if off_prod and (off_prod.get("product_name") or off_prod.get("ingredients_text")):
+            logger.info(f"[vision] Barcode OFF match in {int((time.time()-t0)*1000)}ms: {off_prod.get('product_name')}")
+            return {
+                "brand": off_prod.get("brands") or "Packaged Brand",
+                "product_name": off_prod.get("product_name") or "Packaged Food",
+                "ingredients_text": off_prod.get("ingredients_text") or "",
+                "nutrition_facts": off_prod.get("nutriments") or {},
+                "data_source": "barcode",
+                "image_url": off_prod.get("image_url"),
+                "off_match": off_prod,
+            }, None
+        return None, f"Barcode {detected_barcode} not found in Open Food Facts"
+
+    def _task_gemini() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+        t0 = time.time()
         try:
-            b64_img = b64_getter()
-            messages = [{"role": "user", "content": [
-                {"type": "text", "text": _VISION_PROMPT},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}},
-            ]}]
-            res, _, _ = call_openai_compatible_json(
-                OPENAI_API_URL, openai_keys[0], "gpt-4o-mini", messages, timeout=20
+            img_part = {"inline_data": {"mime_type": "image/jpeg", "data": b64_img}}
+            raw_text = generate_content_with_retry(
+                [_VISION_PROMPT, img_part],
+                generation_config={"temperature": 0.2, "response_mime_type": "application/json"},
+                max_retries_per_model=0,
+                timeout=10,
+                total_timeout=13.0,
+                json_mode=True,
             )
-            logger.info(f"[vision] OpenAI fallback done in {int((time.time()-t2)*1000)}ms")
-            if res:
-                return res
+            data = json.loads(_clean_markdown_json(raw_text))
+            logger.info(f"[vision] Gemini OCR done in {int((time.time()-t0)*1000)}ms")
+            if isinstance(data, dict):
+                return data, None
+            return None, "Gemini returned non-object JSON"
         except Exception as ex:
-            logger.warning(f"[vision] OpenAI fallback failed in {int((time.time()-t2)*1000)}ms: {ex}")
+            err_s = str(ex)[:220]
+            logger.warning(f"[vision] Gemini failed in {int((time.time()-t0)*1000)}ms: {err_s}")
+            return None, err_s
 
+    def _task_groq() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+        t0 = time.time()
+        messages = [{"role": "user", "content": [
+            {"type": "text", "text": _VISION_PROMPT},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}},
+        ]}]
+        last_err = ""
+        for g_model in GROQ_VISION_MODELS:
+            res, _, err = call_groq_json(messages, model=g_model, timeout=10)
+            if res and isinstance(res, dict):
+                logger.info(f"[vision] Groq ({g_model}) done in {int((time.time()-t0)*1000)}ms")
+                return res, None
+            last_err = err or "Groq call returned empty response"
+            # Auth errors won't succeed on another model either
+            if "401" in last_err or "403" in last_err or "invalid api key" in last_err.lower():
+                break
+        logger.warning(f"[vision] Groq failed in {int((time.time()-t0)*1000)}ms: {last_err}")
+        return None, last_err
+
+    def _task_openai() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+        t0 = time.time()
+        openai_keys = get_openai_api_keys()
+        messages = [{"role": "user", "content": [
+            {"type": "text", "text": _VISION_PROMPT},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}},
+        ]}]
+        res, _, err = call_openai_compatible_json(
+            OPENAI_API_URL, openai_keys[0], "gpt-4o-mini", messages, timeout=10
+        )
+        if res and isinstance(res, dict):
+            logger.info(f"[vision] OpenAI done in {int((time.time()-t0)*1000)}ms")
+            return res, None
+        err_s = err or "OpenAI vision returned empty response"
+        logger.warning(f"[vision] OpenAI failed in {int((time.time()-t0)*1000)}ms: {err_s}")
+        return None, err_s
+
+    if detected_barcode:
+        tasks[_VISION_POOL.submit(_task_barcode)] = "Barcode"
+    if get_gemini_api_keys():
+        tasks[_VISION_POOL.submit(_task_gemini)] = "Gemini"
+    if get_groq_api_keys():
+        tasks[_VISION_POOL.submit(_task_groq)] = "Groq"
+    if get_openai_api_keys():
+        tasks[_VISION_POOL.submit(_task_openai)] = "OpenAI"
+
+    if not tasks:
+        err_type, msg = _classify_vision_errors([])
+        return {"error": msg, "error_type": err_type, "provider_errors": []}
+
+    pending = set(tasks.keys())
+    deadline = time.monotonic() + 15.0
+
+    while pending:
+        wait_sec = deadline - time.monotonic()
+        if wait_sec <= 0:
+            for fut in pending:
+                provider_errors.append(f"{tasks[fut]}: Timed out after 15s")
+            break
+        done, pending = wait(pending, timeout=wait_sec, return_when=FIRST_COMPLETED)
+        if not done:
+            for fut in pending:
+                provider_errors.append(f"{tasks[fut]}: Timed out after 15s")
+            break
+
+        for fut in done:
+            pname = tasks[fut]
+            try:
+                res, err = fut.result()
+            except Exception as ex:
+                res, err = None, str(ex)[:200]
+
+            if res:
+                if "error" not in res or res.get("brand") or res.get("product_name"):
+                    return res
+                # Explicit "Not a food product image" classification from AI
+                return res
+            if err:
+                provider_errors.append(f"{pname}: {err}")
+
+    error_type, msg = _classify_vision_errors(provider_errors)
+    logger.error(f"[vision] All vision providers failed ({error_type}): {' | '.join(provider_errors)}")
     return {
-        "error": "AI vision analysis timed out across all available providers. Please re-take a clear photo or enter product details manually."
+        "error": msg,
+        "error_type": error_type,
+        "provider_errors": provider_errors,
     }
 
 
@@ -1142,33 +1341,21 @@ def extract_food_vision(image_path: str) -> Dict[str, Any]:
     """Extract product name, ingredients, and nutrition facts from a packaging photo file path."""
     t_start = time.time()
     logger.info(f"[vision] Starting extraction from path: {image_path}")
-    opt_img = _optimize_image_for_vision(image_path)
-    logger.info(f"[vision] Image resize/compress done in {int((time.time()-t_start)*1000)}ms")
-    b64_cache: list = []
-    def _b64_getter():
-        if not b64_cache:
-            buf = io.BytesIO()
-            opt_img.save(buf, format="JPEG", quality=80)
-            b64_cache.append(base64.b64encode(buf.getvalue()).decode("utf-8"))
-        return b64_cache[0]
-    result = _run_vision_extraction(opt_img, _b64_getter)
+    with Image.open(image_path) as raw_img:
+        opt_img, jpeg_bytes = _prepare_vision_payload(raw_img)
+    logger.info(f"[vision] Image preprocess done in {int((time.time()-t_start)*1000)}ms ({len(jpeg_bytes)//1024}KB)")
+    result = _run_vision_extraction(opt_img, jpeg_bytes)
     logger.info(f"[vision] Total extraction time: {int((time.time()-t_start)*1000)}ms")
     return result
 
 
 def extract_food_vision_bytes(image_bytes: bytes) -> Dict[str, Any]:
-    """Extract product info from raw image bytes — no disk I/O at all."""
+    """Extract product info from raw image bytes — no disk I/O and single JPEG encode."""
     t_start = time.time()
     logger.info(f"[vision] Starting extraction from bytes ({len(image_bytes)//1024}KB)")
-    opt_img = _optimize_image_bytes_for_vision(image_bytes)
-    logger.info(f"[vision] Image resize/compress done in {int((time.time()-t_start)*1000)}ms")
-    b64_cache: list = []
-    def _b64_getter():
-        if not b64_cache:
-            buf = io.BytesIO()
-            opt_img.save(buf, format="JPEG", quality=80)
-            b64_cache.append(base64.b64encode(buf.getvalue()).decode("utf-8"))
-        return b64_cache[0]
-    result = _run_vision_extraction(opt_img, _b64_getter)
+    with Image.open(io.BytesIO(image_bytes)) as raw_img:
+        opt_img, jpeg_bytes = _prepare_vision_payload(raw_img, image_bytes)
+    logger.info(f"[vision] Image preprocess done in {int((time.time()-t_start)*1000)}ms ({len(jpeg_bytes)//1024}KB)")
+    result = _run_vision_extraction(opt_img, jpeg_bytes)
     logger.info(f"[vision] Total extraction time: {int((time.time()-t_start)*1000)}ms")
     return result

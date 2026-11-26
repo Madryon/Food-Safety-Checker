@@ -60,8 +60,14 @@ from services.ai_provider import (
     get_ai_status_summary,
     get_gemini_api_keys,
     get_groq_api_keys,
+    GROQ_VISION_MODELS,
+    call_groq_json,
 )
-from services.gemini_client import discover_available_models
+from services.gemini_client import (
+    discover_available_models,
+    get_key_diagnostics,
+    generate_content_with_retry,
+)
 from services.activity_tracker import (
     log_activity,
     log_scan,
@@ -467,6 +473,10 @@ def analyze_vision():
 
         if "error" in vision_result:
             duration_ms = int((time.time() - start_time) * 1000)
+            provider_errors = vision_result.get("provider_errors") or []
+            error_type = vision_result.get("error_type") or "vision_error"
+            if provider_errors:
+                app.logger.error(f"[vision] Failed in {duration_ms}ms ({error_type}): {' | '.join(provider_errors)}")
             log_scan(
                 source="vision",
                 response_time_ms=duration_ms,
@@ -476,17 +486,22 @@ def analyze_vision():
                 error_message=vision_result["error"],
                 sync=False,
             )
-            log_error("gemini", vision_result["error"], path=request.path)
-            return jsonify({"error": vision_result["error"]}), 422
+            log_error(error_type, vision_result["error"], path=request.path)
+            return jsonify({
+                "error": vision_result["error"],
+                "error_type": error_type,
+                "provider_errors": provider_errors,
+            }), 422
 
         brand = vision_result.get("brand", "Unknown")
         product_name = vision_result.get("product_name", "Unknown Product")
         ingredients_text = vision_result.get("ingredients_text", "")
         nutrition_facts = vision_result.get("nutrition_facts")
+        off_match = vision_result.get("off_match")
 
         # ── Parallel Network I/O via ThreadPoolExecutor ──────────────────────────
-        # 1. Fetch Open Food Facts in background
-        off_future = _io_pool.submit(search, product_name, brand)
+        # 1. Fetch Open Food Facts only if barcode didn't already match it
+        off_future = None if off_match else _io_pool.submit(search, product_name, brand)
 
         # 2. Concurrently pre-fetch brand news so /news responds immediately
         if brand and brand != "Unknown":
@@ -504,13 +519,13 @@ def analyze_vision():
                     pass
             _io_pool.submit(_prewarm_health)
 
-        # Await Open Food Facts with strict 5s timeout & graceful fallback
+        # Await Open Food Facts with strict 2s timeout so slow external API never stalls response
         t_off = time.time()
-        off_match = None
-        try:
-            off_match = off_future.result(timeout=5)
-        except Exception as off_err:
-            log_error("open_food_facts", str(off_err), path=request.path)
+        if off_future is not None:
+            try:
+                off_match = off_future.result(timeout=2.0)
+            except Exception as off_err:
+                log_error("open_food_facts", str(off_err), path=request.path)
         app.logger.info(f"[vision] off_lookup={int((time.time()-t_off)*1000)}ms")
 
         # Merge nutrition
@@ -521,22 +536,23 @@ def analyze_vision():
                     merged_nutrition[k] = v
 
         duration_ms = int((time.time() - start_time) * 1000)
-        app.logger.info(f"[vision] TOTAL={duration_ms}ms  product='{product_name}'")
+        app.logger.info(f"[vision] TOTAL={duration_ms}ms  product='{product_name}' source={vision_result.get('data_source', 'image')}")
 
-        # Log scan in database
-        scan_id = log_scan(
+        # Log scan asynchronously so database round-trip adds 0ms latency
+        log_scan(
             product_name=product_name,
             brand=brand,
-            source="vision",
-            gemini_used=True,
+            source=vision_result.get("data_source", "vision") if vision_result.get("data_source") == "barcode" else "vision",
+            gemini_used=vision_result.get("data_source") != "barcode",
             response_time_ms=duration_ms,
             image_size_bytes=image_size,
             image_mime_type=image_mime,
             success=True,
+            sync=False,
         )
         log_activity(
             action="analyze_vision",
-            details={"brand": brand, "product": product_name, "scan_id": scan_id},
+            details={"brand": brand, "product": product_name, "latency_ms": duration_ms},
         )
 
         return jsonify({
@@ -545,8 +561,8 @@ def analyze_vision():
             "ingredients_text": ingredients_text,
             "nutrition_facts": merged_nutrition,
             "off_match": off_match,
+            "image_url": vision_result.get("image_url") or (off_match.get("image_url") if off_match else None),
             "data_source": vision_result.get("data_source", "image"),
-            "scan_id": scan_id,
         })
 
     except (requests.exceptions.Timeout, TimeoutError) as te:
@@ -1069,7 +1085,9 @@ def health_check():
 
 @app.route("/debug/models")
 def debug_models():
-    """Diagnostic endpoint to inspect active models and key validity across all providers."""
+    """Diagnostic endpoint to inspect active models and key validity across all providers.
+    Pass ?probe=1 to run live 1-token checks on Gemini and Groq keys and expose exact API errors.
+    """
     ai_summary = get_ai_status_summary()
     gemini_keys = get_gemini_api_keys()
 
@@ -1084,10 +1102,37 @@ def debug_models():
             "priority_models": models[:4],
         })
 
-    return jsonify({
+    result = {
         "ai_engine": ai_summary,
         "gemini_keys": key_details,
-    })
+        "key_diagnostics": get_key_diagnostics(),
+        "groq_vision_models": GROQ_VISION_MODELS,
+    }
+
+    if request.args.get("probe") == "1":
+        # Live non-destructive 1-token API probe (Gemini & Groq)
+        try:
+            g_resp = generate_content_with_retry(
+                'Respond with JSON: {"ok": true}',
+                max_retries_per_model=0,
+                timeout=5,
+                total_timeout=6.0,
+                json_mode=True,
+            )
+            result["gemini_probe"] = {"ok": True, "sample": g_resp[:60]}
+        except Exception as ge:
+            result["gemini_probe"] = {"ok": False, "error": str(ge)}
+
+        if get_groq_api_keys():
+            parsed, _, gerr = call_groq_json(
+                [{"role": "user", "content": 'Respond with JSON: {"ok": true}'}],
+                model=GROQ_VISION_MODELS[0],
+                timeout=5,
+                max_tokens=32,
+            )
+            result["groq_probe"] = {"ok": bool(parsed), "model": GROQ_VISION_MODELS[0], "error": gerr}
+
+    return jsonify(result)
 
 
 # ── COMMUNITY FEEDBACK & EDIT ROUTES ────────────────────────────────────────

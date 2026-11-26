@@ -7,8 +7,11 @@ and ensures safe, verified photos.
 import time
 import threading
 import re
+import logging
 import requests
 from typing import Optional, Dict, Any, List
+
+logger = logging.getLogger(__name__)
 
 # In-memory TTL cache for repeated Open Food Facts lookups (60-second TTL)
 _OFF_CACHE = {}
@@ -217,3 +220,35 @@ def _format_product(product: dict) -> dict:
             "fiber_g": nutriments.get("fiber_100g") or nutriments.get("fiber") or 0.0,
         },
     }
+
+
+def lookup_barcode(barcode: str) -> Optional[Dict[str, Any]]:
+    """Lookup a food product directly by packaging barcode (EAN-13, UPC-A, Code-128) in Open Food Facts."""
+    clean_code = re.sub(r'[^0-9A-Za-z]', '', (barcode or "").strip())
+    if not clean_code or len(clean_code) < 6:
+        return None
+
+    cache_key = f"barcode:{clean_code}"
+    cached = _get_from_cache(cache_key)
+    if cached is not None:
+        return cached
+
+    url = f"https://world.openfoodfacts.org/api/v2/product/{clean_code}.json"
+    headers = {"User-Agent": "FoodSafetyChecker/1.0 (https://foodcheck.local)"}
+
+    try:
+        resp = requests.get(url, headers=headers, timeout=3.5)
+        if resp.status_code == 200:
+            data = resp.json()
+            product = data.get("product")
+            if product and isinstance(product, dict):
+                formatted = _format_product(product)
+                _set_in_cache(cache_key, formatted)
+                logger.info(f"✅ Barcode {clean_code} matched: {formatted.get('product_name')}")
+                return formatted
+    except Exception as e:
+        logger.warning(f"Barcode lookup failed for {clean_code}: {e}")
+
+    _set_in_cache(cache_key, None)
+    return None
+

@@ -2203,7 +2203,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
             if (blob.size > MAX_BYTES) throw new Error('This image is over 5MB even after resizing. Please use a smaller photo.');
             var fd = new FormData();
             fd.append('image', blob, 'photo.' + extFor(blob.type));
-            return api('/analyze/vision', { method: 'POST', body: fd }, 120000);
+            return api('/analyze/vision', { method: 'POST', body: fd }, 45000);
         }).then(function (v) {
             if (my !== runId) return;
             setStep('step-vision', 'done');
@@ -2216,7 +2216,7 @@ footer { padding: 24px 16px; text-align: center; font-size: .85rem; color: var(-
 
     function renderVision(v) {
         lastVision = v;
-        var src = v.off_match ? 'Matched in Open Food Facts' : (v.source === 'search' ? 'AI Food Knowledgebase' : 'Read from the photo');
+        var src = v.data_source === 'barcode' ? 'Barcode Matched (Open Food Facts)' : (v.off_match ? 'Matched in Open Food Facts' : (v.source === 'search' ? 'AI Food Knowledgebase' : 'Read from the photo'));
         var imgHtml = '';
         if (v.image_url && String(v.image_url).trim().length > 5) {
             imgHtml = '<div class="product-thumb-wrap" style="float:right; margin: 0 0 12px 16px; max-width: 100px; max-height: 100px; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); background: var(--surface-2);">' +
