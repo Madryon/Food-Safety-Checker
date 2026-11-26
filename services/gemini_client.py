@@ -36,6 +36,10 @@ CACHED_AVAILABLE_MODELS: Dict[str, List[str]] = {}
 _KEY_COOLDOWNS: Dict[str, float] = {}
 _LAST_KEY_INDEX = 0
 
+# Module-level GenerativeModel cache: (api_key, model_name) -> genai.GenerativeModel
+# Avoids re-instantiating the model object on every request (saves ~5-20ms per call).
+_MODEL_CACHE: Dict[tuple, object] = {}
+
 
 def get_gemini_api_keys() -> List[str]:
     """Retrieve all configured Gemini API keys from environment variables.
@@ -198,7 +202,12 @@ def generate_content_with_retry(
             for attempt in range(max_retries_per_model + 1):
                 try:
                     logger.info(f"⚡ Gemini [Key {key_hint}] → {model_name} (attempt {attempt + 1}, timeout {req_timeout}s)")
-                    model = genai.GenerativeModel(model_name)
+                    # Cache model objects at module level to avoid re-instantiation per request
+                    _cache_key = (api_key, model_name)
+                    model = _MODEL_CACHE.get(_cache_key)
+                    if model is None:
+                        model = genai.GenerativeModel(model_name)
+                        _MODEL_CACHE[_cache_key] = model
                     kwargs = {"request_options": {"timeout": req_timeout}}
                     cfg = dict(generation_config or {})
                     if "thinking_config" not in cfg:

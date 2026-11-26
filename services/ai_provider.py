@@ -1012,12 +1012,23 @@ def _health_fallback_response(
 
 # ── Unified Food Packaging Vision Extraction ───────────────────────────────
 def _optimize_image_for_vision(image_path: str, max_dimension: int = 1024, quality: int = 80) -> Image.Image:
-    """Resize and compress image for rapid AI multimodal transmission."""
+    """Resize and compress image from a file path for rapid AI multimodal transmission."""
     with Image.open(image_path) as raw_img:
-        if raw_img.mode in ("RGBA", "P", "LA"):
-            img = raw_img.convert("RGB")
-        else:
-            img = raw_img.copy()
+        return _optimize_pil_image(raw_img, max_dimension, quality)
+
+
+def _optimize_image_bytes_for_vision(image_bytes: bytes, max_dimension: int = 1024, quality: int = 80) -> Image.Image:
+    """Resize and compress image from raw bytes for rapid AI multimodal transmission (no disk I/O)."""
+    with Image.open(io.BytesIO(image_bytes)) as raw_img:
+        return _optimize_pil_image(raw_img, max_dimension, quality)
+
+
+def _optimize_pil_image(raw_img: Image.Image, max_dimension: int = 1024, quality: int = 80) -> Image.Image:
+    """Core resize+compress logic shared by path and bytes variants."""
+    if raw_img.mode in ("RGBA", "P", "LA"):
+        img = raw_img.convert("RGB")
+    else:
+        img = raw_img.copy()
 
     w, h = img.size
     if max(w, h) > max_dimension:
@@ -1033,22 +1044,23 @@ def _optimize_image_for_vision(image_path: str, max_dimension: int = 1024, quali
 
 
 def _image_to_base64_jpeg(image_path: str) -> str:
-    """Convert an image to optimized JPEG base64 string."""
+    """Convert an image file path to an optimized JPEG base64 string."""
     opt_img = _optimize_image_for_vision(image_path)
     buf = io.BytesIO()
     opt_img.save(buf, format="JPEG", quality=80)
     return base64.b64encode(buf.getvalue()).decode("utf-8")
 
 
-def extract_food_vision(image_path: str) -> Dict[str, Any]:
-    """Extract product name, ingredients, and nutrition facts from packaging photo.
-    
-    Multi-Provider Strategy:
-    1. Google Gemini Multi-Key Pool (Highest accuracy for packaging OCR).
-    2. Groq Vision (llama-3.2-11b-vision-preview via base64 data URL).
-    3. OpenAI Vision (gpt-4o-mini).
-    """
-    vision_prompt = """You are a food product identifier for the Indian market.
+def _image_bytes_to_base64_jpeg(image_bytes: bytes) -> str:
+    """Convert raw image bytes to an optimized JPEG base64 string (no disk I/O)."""
+    opt_img = _optimize_image_bytes_for_vision(image_bytes)
+    buf = io.BytesIO()
+    opt_img.save(buf, format="JPEG", quality=80)
+    return base64.b64encode(buf.getvalue()).decode("utf-8")
+
+
+# ── Shared vision prompt (defined once at module level, not per-request) ───
+_VISION_PROMPT = """You are a food product identifier for the Indian market.
 
 Look at this packaged food product image and extract:
 1. brand – Company/brand name (infer from knowledge if unclear)
@@ -1064,61 +1076,99 @@ RULES:
 
 Return ONLY raw JSON (no markdown code blocks) with keys: brand, product_name, ingredients_text, nutrition_facts, data_source"""
 
+
+def _run_vision_extraction(opt_img: Image.Image, b64_getter) -> Dict[str, Any]:
+    """
+    Run the multi-provider vision pipeline given a pre-processed PIL image (Gemini)
+    and a lazy b64_getter callable (Groq/OpenAI fallback).
+    Returns the first successful result dict, or the timeout error dict.
+    """
     # ── 1. Gemini Multi-Key Pool (Primary OCR) ───
+    t0 = time.time()
     gemini_keys = get_gemini_api_keys()
     if gemini_keys:
         try:
-            opt_img = _optimize_image_for_vision(image_path)
-            raw_text = generate_content_with_retry([vision_prompt, opt_img], timeout=30)
+            raw_text = generate_content_with_retry([_VISION_PROMPT, opt_img], timeout=25)
             clean_text = _clean_markdown_json(raw_text)
             data = json.loads(clean_text)
+            logger.info(f"[vision] Gemini OCR done in {int((time.time()-t0)*1000)}ms")
             if "error" not in data or data.get("brand") or data.get("product_name"):
                 return data
         except Exception as ex:
-            logger.warning(f"Gemini vision extraction failed: {ex}. Attempting vision fallback...")
+            logger.warning(f"[vision] Gemini failed in {int((time.time()-t0)*1000)}ms: {ex}. Trying fallback...")
 
-    # ── 2. Groq Vision Fallback (llama-3.2-11b-vision-preview) ───
+    # ── 2. Groq Vision Fallback ───
+    t1 = time.time()
     groq_keys = get_groq_api_keys()
     if groq_keys:
         try:
-            b64_img = _image_to_base64_jpeg(image_path)
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": vision_prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}},
-                    ],
-                }
-            ]
-            res, _, err = call_groq_json(messages, model=DEFAULT_GROQ_VISION_MODEL, timeout=25)
+            b64_img = b64_getter()
+            messages = [{"role": "user", "content": [
+                {"type": "text", "text": _VISION_PROMPT},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}},
+            ]}]
+            res, _, _ = call_groq_json(messages, model=DEFAULT_GROQ_VISION_MODEL, timeout=20)
+            logger.info(f"[vision] Groq fallback done in {int((time.time()-t1)*1000)}ms")
             if res:
                 return res
         except Exception as ex:
-            logger.warning(f"Groq vision extraction failed: {ex}")
+            logger.warning(f"[vision] Groq fallback failed in {int((time.time()-t1)*1000)}ms: {ex}")
 
-    # ── 3. OpenAI Vision Fallback (gpt-4o-mini) ───
+    # ── 3. OpenAI Vision Fallback ───
+    t2 = time.time()
     openai_keys = get_openai_api_keys()
     if openai_keys:
         try:
-            b64_img = _image_to_base64_jpeg(image_path)
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": vision_prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}},
-                    ],
-                }
-            ]
-            res, _, err = call_openai_compatible_json(
-                OPENAI_API_URL, openai_keys[0], "gpt-4o-mini", messages, timeout=25
+            b64_img = b64_getter()
+            messages = [{"role": "user", "content": [
+                {"type": "text", "text": _VISION_PROMPT},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}},
+            ]}]
+            res, _, _ = call_openai_compatible_json(
+                OPENAI_API_URL, openai_keys[0], "gpt-4o-mini", messages, timeout=20
             )
+            logger.info(f"[vision] OpenAI fallback done in {int((time.time()-t2)*1000)}ms")
             if res:
                 return res
         except Exception as ex:
-            logger.warning(f"OpenAI vision extraction failed: {ex}")
+            logger.warning(f"[vision] OpenAI fallback failed in {int((time.time()-t2)*1000)}ms: {ex}")
 
     return {
         "error": "AI vision analysis timed out across all available providers. Please re-take a clear photo or enter product details manually."
     }
+
+
+def extract_food_vision(image_path: str) -> Dict[str, Any]:
+    """Extract product name, ingredients, and nutrition facts from a packaging photo file path."""
+    t_start = time.time()
+    logger.info(f"[vision] Starting extraction from path: {image_path}")
+    opt_img = _optimize_image_for_vision(image_path)
+    logger.info(f"[vision] Image resize/compress done in {int((time.time()-t_start)*1000)}ms")
+    b64_cache: list = []
+    def _b64_getter():
+        if not b64_cache:
+            buf = io.BytesIO()
+            opt_img.save(buf, format="JPEG", quality=80)
+            b64_cache.append(base64.b64encode(buf.getvalue()).decode("utf-8"))
+        return b64_cache[0]
+    result = _run_vision_extraction(opt_img, _b64_getter)
+    logger.info(f"[vision] Total extraction time: {int((time.time()-t_start)*1000)}ms")
+    return result
+
+
+def extract_food_vision_bytes(image_bytes: bytes) -> Dict[str, Any]:
+    """Extract product info from raw image bytes — no disk I/O at all."""
+    t_start = time.time()
+    logger.info(f"[vision] Starting extraction from bytes ({len(image_bytes)//1024}KB)")
+    opt_img = _optimize_image_bytes_for_vision(image_bytes)
+    logger.info(f"[vision] Image resize/compress done in {int((time.time()-t_start)*1000)}ms")
+    b64_cache: list = []
+    def _b64_getter():
+        if not b64_cache:
+            buf = io.BytesIO()
+            opt_img.save(buf, format="JPEG", quality=80)
+            b64_cache.append(base64.b64encode(buf.getvalue()).decode("utf-8"))
+        return b64_cache[0]
+    result = _run_vision_extraction(opt_img, _b64_getter)
+    logger.info(f"[vision] Total extraction time: {int((time.time()-t_start)*1000)}ms")
+    return result

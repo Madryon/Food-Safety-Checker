@@ -52,7 +52,7 @@ from models import (
 from cli import register_cli_commands
 from auth import auth_bp
 from admin import admin_bp
-from services.vision_extractor import extract
+from services.vision_extractor import extract, extract_bytes
 from services.product_lookup import search
 from services.health_analyzer import analyze
 from services.news_fetcher import get_news
@@ -454,19 +454,16 @@ def analyze_vision():
     if not allowed_file(file.filename):
         return jsonify({"error": "Invalid file type. Upload JPG, PNG, or WebP."}), 400
 
-    job_id = str(uuid.uuid4())
-    job_dir = os.path.join(UPLOAD_FOLDER, job_id)
-    os.makedirs(job_dir, exist_ok=True)
-
-    filename = secure_filename(file.filename)
-    image_path = os.path.join(job_dir, filename)
-    file.save(image_path)
-
-    image_size = os.path.getsize(image_path)
+    # -- Read image bytes in-memory (zero disk write) ----------------------
+    image_bytes = file.read()
+    image_size = len(image_bytes)
     image_mime = file.mimetype
+    app.logger.info(f"[vision] receive={int((time.time()-start_time)*1000)}ms  size={image_size//1024}KB")
 
+    t_ai = time.time()
     try:
-        vision_result = extract(image_path)
+        vision_result = extract_bytes(image_bytes)
+        app.logger.info(f"[vision] ai_call={int((time.time()-t_ai)*1000)}ms")
 
         if "error" in vision_result:
             duration_ms = int((time.time() - start_time) * 1000)
@@ -508,11 +505,13 @@ def analyze_vision():
             _io_pool.submit(_prewarm_health)
 
         # Await Open Food Facts with strict 5s timeout & graceful fallback
+        t_off = time.time()
         off_match = None
         try:
             off_match = off_future.result(timeout=5)
         except Exception as off_err:
             log_error("open_food_facts", str(off_err), path=request.path)
+        app.logger.info(f"[vision] off_lookup={int((time.time()-t_off)*1000)}ms")
 
         # Merge nutrition
         merged_nutrition = nutrition_facts or {}
@@ -522,6 +521,7 @@ def analyze_vision():
                     merged_nutrition[k] = v
 
         duration_ms = int((time.time() - start_time) * 1000)
+        app.logger.info(f"[vision] TOTAL={duration_ms}ms  product='{product_name}'")
 
         # Log scan in database
         scan_id = log_scan(
@@ -558,11 +558,6 @@ def analyze_vision():
         log_error("gemini", str(e), path=request.path)
         return jsonify({"error": f"Vision analysis failed: {str(e)}"}), 500
 
-    finally:
-        try:
-            shutil.rmtree(job_dir)
-        except OSError:
-            pass
 
 
 # ── STAGE 2: Health Scoring (Gemini Text Assessment) ────────────────────────
